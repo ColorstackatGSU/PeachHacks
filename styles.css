@@ -8,7 +8,7 @@
   --ink: #12364a;
   --line: rgba(247, 237, 220, .28);
   --space-sm: 12px; --space-md: 24px; --space-lg: 48px; --space-xl: 96px;
-  font-family: Manrope, sans-serif;
+  font-family: 'Open Sans', sans-serif;
   color: var(--cream);
   background: var(--blue);
 }
@@ -37,7 +37,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .hero-note { display: flex; justify-content: space-between; align-items: flex-end; max-width: 960px; margin-top: 64px; position: relative; z-index: 1; }
 .hero-note p { max-width: 420px; color: #cae0e9; line-height: 1.7; margin: 0; font-size: 15px; }
 .hero-date { font: 20px Bowlby One SC; color: var(--cream); text-align: right; }
-.hero-date small { display: block; font: 11px Manrope; letter-spacing: .15em; color: var(--peach-light); margin-top: 7px; text-transform: uppercase; }
+.hero-date small { display: block; font: 11px 'Open Sans', sans-serif; letter-spacing: .15em; color: var(--peach-light); margin-top: 7px; text-transform: uppercase; }
 .peach-orb { position: absolute; z-index: 1; right: clamp(30px, 13vw, 190px); top: 245px; width: 126px; height: 126px; background: var(--peach); border-radius: 50% 46% 52% 44%; transform: rotate(16deg); box-shadow: 20px 19px 0 var(--blue-deep); }
 .peach-orb:before { content: ''; position: absolute; width: 34px; height: 21px; background: #4f8a55; border-radius: 90% 0 90% 0; top: -14px; left: 49px; transform: rotate(-22deg); }
 .peach-orb:after { content: '✦'; position: absolute; left: 41px; top: 42px; color: var(--blue); font-size: 35px; transform: rotate(-16deg); }
