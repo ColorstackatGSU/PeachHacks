@@ -1,4 +1,4 @@
-## Peachhacks Pre-Registration From
+## Peachhacks Registration From
 
 Pre-Registration Form: Capture the initial interest of your hackers. Getting their name, email and some social channels is a great starting point to send outreach once registrations have opened up. If you plan on working with MLH, including our required fields will speed up the Member Event onboarding process.
 
@@ -43,4 +43,3 @@ One optional checkbox:
 - Shipping address
 - Major/field of study
 - LinkedIn URL
-
