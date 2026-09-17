@@ -48,9 +48,13 @@ function App() {
 
   return (
     <main className="page-shell">
+      <div className="page-stars" aria-hidden="true" />
       <section className="intro" aria-labelledby="page-title">
+        <img className="top-cloud cloud-one" src="/assets/Cloud.svg" alt="" aria-hidden="true" />
+        <img className="top-cloud cloud-two" src="/assets/Cloud.svg" alt="" aria-hidden="true" />
+        <img className="top-cloud cloud-three" src="/assets/Cloud.svg" alt="" aria-hidden="true" />
+        <div className="hero-logo-circle" aria-hidden="true" />
         <img className="hero-logo" src="/assets/logo.svg" alt="PeachHacks" />
-        <img className="hero-moon" src="/assets/moon.svg" alt="" aria-hidden="true" />
         <div className="hero-card">
           <h1 id="page-title">Join PeachHacks!</h1>
           <p className="intro-copy">We're excited to bring together students, mentors, and industry professionals for a weekend of learning, building, and networking this February. Exact dates and registration details are on the way.</p>
@@ -89,8 +93,17 @@ function App() {
       </section>
 
       <section className="partners-section" id="details" aria-labelledby="partners-title">
+        <img className="partners-moon" src="/assets/moon.svg" alt="" aria-hidden="true" />
         <h2 id="partners-title">Our<br /><span>partners.</span></h2>
         <p>PeachHacks is a student-centered, beginner-friendly weekend hosted by ColorStack. We’re looking for partners who want to support the next generation of builders through mentorship, workshops, prizes, and food.</p>
+        <div className="partners-grid">
+          {['TBA', 'TBA', 'TBA', 'TBA', 'TBA', 'TBA'].map((slot, idx) => (
+            <div className="partner-box" key={idx}>
+              <span className="partner-box-label">Partner</span>
+              <span className="partner-box-text">{slot}</span>
+            </div>
+          ))}
+        </div>
         <a className="sponsor-email" href="mailto:sponsors@peachhacks.org">Sponsor PeachHacks <span>↗</span></a>
       </section>
 
@@ -116,8 +129,8 @@ function App() {
       </section>
 
       <footer className="site-footer">
+        <img className="footer-art" src="/assets/Footer.svg" alt="" aria-hidden="true" />
         <p>PeachHacks <span>·</span> Hosted by ColorStack</p>
-        <a href="mailto:hello@colorstack.org">Say hello <span>↗</span></a>
       </footer>
     </main>
   );
