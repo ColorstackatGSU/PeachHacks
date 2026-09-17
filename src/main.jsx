@@ -133,6 +133,7 @@ function App() {
           <h2 id="interest-title">Interested?</h2>
           <p className="interest-copy">Click below to sign up for updates!</p>
           <a className="interest-button" href="/form.html">Interest Form</a>
+          <a className="interest-card-weblink" href="https://www.colorstackatgsu.com/involvement">Not For You? Visit Our Website For More Events Like This!<span>↗</span></a>
         </div>
       </section>
 

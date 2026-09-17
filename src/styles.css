@@ -191,7 +191,9 @@ a { color: inherit; text-decoration: none; }
 .interest-button-section h2 { position: relative; z-index: 1; margin: 14px 0 18px; font-family: 'Open Sans', sans-serif; font-weight: 800; font-style: normal; color: var(--peach); font-size: clamp(34px, 6vw, 68px); line-height: 1; letter-spacing: -.05em; text-shadow: 0 2px 3px rgba(0, 20, 36, 0.35); }
 .interest-copy { max-width: 46ch; margin: 0; color: var(--cream); font-size: 18px; line-height: 1.6; }
 .interest-button { position: relative; z-index: 1; display: inline-flex; align-items: center; gap: 12px; margin-top: 30px; padding: 20px 34px; outline: 2px solid var(--cream); outline-offset: 8px; background: var(--peach); color: var(--navy); font-family: 'Sarina', cursive; font-size: 18px; font-weight: 400; letter-spacing: 0; text-transform: none; transition: transform .2s, background .2s; }
-.interest-button:hover { background: #ffc15d; transform: translateY(-3px); }
+.interest-button:hover { background: #ffc15d; transform: translateY(-1px); }
+.interest-card-weblink{color: var(--peach); padding:30px; transition: transform .2s;}
+.interest-card-weblink:hover{color: var(--cream); transform: translateY(-3px);}
 @media (max-width: 620px) { .interest-button-section { padding-top: 28px; } .interest-card { width: min(100%, 420px); padding: 28px 20px 32px; border-width: 4px; } .interest-button { padding: 17px 24px; } }
 .interest-form-section { display: grid; justify-items: center; gap: 28px; width: 100%; max-width: 620px; margin: 0 auto; padding: 80px 24px; text-align: center; }
 .form-logo-link { display: block; transition: transform .2s; }
