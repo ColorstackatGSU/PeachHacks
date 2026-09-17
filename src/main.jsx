@@ -2,27 +2,47 @@ import React, { useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
 
-const events = [
-  { day: 'FRI', time: '6:00 PM', title: 'Check-in + welcome', note: 'Find your people' },
-  { day: 'FRI', time: '8:00 PM', title: 'Opening ceremony', note: 'Let’s begin' },
-  { day: 'SAT', time: '9:00 AM', title: 'Workshops + hacking', note: 'Make the thing' },
-  { day: 'SAT', time: '7:00 PM', title: 'Dinner + demos', note: 'Share the progress' },
-  { day: 'SUN', time: '2:00 PM', title: 'Judging + closing', note: 'Big finish' },
+const scheduleData = [
+  {
+    day: 'Day 1:',
+    events: [
+      { time: '9:00 AM', title: 'Check-in' },
+      { time: '10:00 AM', title: 'Opening Ceremony' },
+      { time: '11:00 AM', title: 'Hacking Begins' },
+    ],
+  },
+  {
+    day: 'Day 2:',
+    events: [
+      { time: '9:00 AM', title: 'Mentorship Sessions' },
+      { time: '10:00 AM', title: 'Testorship Sessions' },
+      { time: '12:00 AM', title: 'Hacking Ceremony' },
+      { time: '1:00 AM', title: 'Hacking Ceremony' },
+    ],
+  },
 ];
 
 function App() {
   useEffect(() => {
     const page = document.querySelector('.page-shell');
-    const moveStars = (event) => {
-      page.style.setProperty('--star-x', `${(event.clientX / window.innerWidth - 0.5) * 14}px`);
-      page.style.setProperty('--star-y', `${(event.clientY / window.innerHeight - 0.5) * 10}px`);
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    let frame = 0;
+
+    const moveStarsOnScroll = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        page.style.setProperty('--star-scroll', `${Math.min(window.scrollY * 0.16, 260)}px`);
+      });
     };
-    const scrollStars = () => page.style.setProperty('--star-scroll', `${Math.min(window.scrollY * 0.08, 120)}px`);
-    window.addEventListener('pointermove', moveStars);
-    window.addEventListener('scroll', scrollStars, { passive: true });
+
+    if (!reducedMotion.matches) {
+      moveStarsOnScroll();
+      window.addEventListener('scroll', moveStarsOnScroll, { passive: true });
+    }
+
     return () => {
-      window.removeEventListener('pointermove', moveStars);
-      window.removeEventListener('scroll', scrollStars);
+      cancelAnimationFrame(frame);
+      window.removeEventListener('scroll', moveStarsOnScroll);
     };
   }, []);
 
@@ -34,7 +54,7 @@ function App() {
         <div className="hero-card">
           <h1 id="page-title">Join PeachHacks!</h1>
           <p className="intro-copy">We're excited to bring together students, mentors, and industry professionals for a weekend of learning, building, and networking this February. Exact dates and registration details are on the way.</p>
-          <a className="register-button" href="#details">Register your interest <span>↗</span></a>
+          <a className="register-button" href="#details">Register</a>
         </div>
       </section>
 
@@ -44,18 +64,25 @@ function App() {
       </section>
 
       <section className="schedule-section" id="schedule" aria-labelledby="schedule-title">
-        <img className="schedule-art" src="/assets/schedule-rocks.svg" alt="" aria-hidden="true" />
-        <div className="schedule-content">
+        <div className="schedule-board">
+          <img className="schedule-art" src="/assets/schedule-rocks.svg" alt="" aria-hidden="true" />
           <div className="schedule-heading">
             <h2 id="schedule-title">Schedule</h2>
           </div>
-          <div className="event-list">
-            {events.map((event, index) => (
-              <article className="event" key={`${event.day}-${event.time}`} style={{ '--delay': `${index * 80}ms` }}>
-                <div className="event-time"><b>{event.day}</b><span>{event.time}</span></div>
-                <h3>{event.title}</h3>
-                <p>{event.note}</p>
-              </article>
+          <div className="schedule-body">
+            {scheduleData.map((group) => (
+              <div className="schedule-day-group" key={group.day}>
+                <span className="schedule-day-label">{group.day}</span>
+                <div className="schedule-day-events">
+                  {group.events.map((event, idx) => (
+                    <div className="schedule-event-row" key={idx}>
+                      <span className="schedule-event-time">{event.time}</span>
+                      <span className="schedule-event-dash">-</span>
+                      <span className="schedule-event-title">{event.title}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
             ))}
           </div>
         </div>
