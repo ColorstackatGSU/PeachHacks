@@ -48,7 +48,11 @@ function App() {
 
   return (
     <main className="page-shell">
+      <div className="page-stars" aria-hidden="true" />
       <section className="intro" aria-labelledby="page-title">
+        <img className="top-cloud cloud-one" src="/assets/Cloud.svg" alt="" aria-hidden="true" />
+        <img className="top-cloud cloud-two" src="/assets/Cloud.svg" alt="" aria-hidden="true" />
+        <img className="top-cloud cloud-three" src="/assets/Cloud.svg" alt="" aria-hidden="true" />
         <img className="hero-logo" src="/assets/logo.svg" alt="PeachHacks" />
         <img className="hero-moon" src="/assets/moon.svg" alt="" aria-hidden="true" />
         <div className="hero-card">
@@ -116,8 +120,8 @@ function App() {
       </section>
 
       <footer className="site-footer">
+        <img className="footer-art" src="/assets/Footer.svg" alt="" aria-hidden="true" />
         <p>PeachHacks <span>·</span> Hosted by ColorStack</p>
-        <a href="mailto:hello@colorstack.org">Say hello <span>↗</span></a>
       </footer>
     </main>
   );
