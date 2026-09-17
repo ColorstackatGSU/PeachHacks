@@ -128,6 +128,14 @@ function App() {
         </div>
       </section>
 
+      <section className="interest-button-section" aria-labelledby="interest-title">
+        <div className="interest-card">
+          <h2 id="interest-title">Interested?</h2>
+          <p className="interest-copy">Click below to sign up for updates!</p>
+          <a className="interest-button" href="/form.html">Interest Form</a>
+        </div>
+      </section>
+
       <footer className="site-footer">
         <img className="footer-art" src="/assets/Footer.svg" alt="" aria-hidden="true" />
         <p>PeachHacks <span>·</span> Hosted by ColorStack</p>
