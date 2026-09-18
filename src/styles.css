@@ -9,9 +9,9 @@ a { color: inherit; text-decoration: none; }
 .intro { order: 1; }
 .about-section { order: 2; }
 .partners-section { order: 3; }
-.schedule-section { order: 4; }
-.faq-section { order: 5; }
-.interest-button-section { order: 6; }
+.interest-button-section { order: 4; }
+.schedule-section { order: 5; }
+.faq-section { order: 6; }
 .site-footer { order: 7; }
 .page-shell > * { position: relative; z-index: 1; }
 .page-stars { position: fixed; z-index: 0; inset: 0; pointer-events: none; opacity: .9; transform: translateY(calc(var(--star-scroll, 0px) * -1)); background-image: url('/assets/star.svg'), url('/assets/star.svg'), url('/assets/star.svg'), url('/assets/star.svg'), url('/assets/star.svg'), url('/assets/star.svg'), url('/assets/star.svg'); background-repeat: no-repeat; background-position: 8% 9%, 25% 17%, 45% 8%, 68% 15%, 88% 10%, 19% 56%, 79% 68%; background-size: 22px, 16px, 28px, 18px, 24px, 15px, 20px; filter: drop-shadow(0 0 7px rgba(244,246,237,.85)); }

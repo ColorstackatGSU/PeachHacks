@@ -107,6 +107,15 @@ function App() {
         <a className="sponsor-email" href="mailto:sponsors@peachhacks.org">Sponsor PeachHacks <span>↗</span></a>
       </section>
 
+      <section className="interest-button-section" aria-labelledby="interest-title">
+        <div className="interest-card">
+          <h2 id="interest-title">Interested?</h2>
+          <p className="interest-copy">Click below to sign up for updates!</p>
+          <a className="interest-button" href="/form.html">Interest Form</a>
+          <a className="interest-card-weblink" href="https://www.colorstackatgsu.com/involvement">Not For You? Visit Our Website For More Events Like This!<span>↗</span></a>
+        </div>
+      </section>
+
       <section className="faq-section" aria-labelledby="faq-title">
         <h2 id="faq-title">FAQ<span>.</span></h2>
         <div className="faq-list">
@@ -125,15 +134,6 @@ function App() {
           <details><summary>Are you sending acceptances? Is there a deadline or waitlist?</summary><p>We’ll send acceptances XX days before the event. Applications will close once we reach the maximum number of hackers we can support, and a local waitlist will open on event day for unfilled spots.</p></details>
           <details><summary>How do I sign up to be a mentor, judge, or volunteer?</summary><p>You’ll be able to sign up here when those forms open: <a href="#">link coming soon ↗</a></p></details>
           <details><summary>I have a different question!</summary><p>Email us at <a href="mailto:hello@peachhacks.org">hello@peachhacks.org</a> and our team will get back to you.</p></details>
-        </div>
-      </section>
-
-      <section className="interest-button-section" aria-labelledby="interest-title">
-        <div className="interest-card">
-          <h2 id="interest-title">Interested?</h2>
-          <p className="interest-copy">Click below to sign up for updates!</p>
-          <a className="interest-button" href="/form.html">Interest Form</a>
-          <a className="interest-card-weblink" href="https://www.colorstackatgsu.com/involvement">Not For You? Visit Our Website For More Events Like This!<span>↗</span></a>
         </div>
       </section>
 
