@@ -50,15 +50,27 @@ function App() {
     <main className="page-shell">
       <div className="page-stars" aria-hidden="true" />
       <section className="intro" aria-labelledby="page-title">
+        <img className="hero-art" src="/assets/Hero.svg" alt="" aria-hidden="true" />
         <img className="top-cloud cloud-one" src="/assets/Cloud.svg" alt="" aria-hidden="true" />
         <img className="top-cloud cloud-two" src="/assets/Cloud.svg" alt="" aria-hidden="true" />
         <img className="top-cloud cloud-three" src="/assets/Cloud.svg" alt="" aria-hidden="true" />
         <div className="hero-logo-circle" aria-hidden="true" />
         <img className="hero-logo" src="/assets/logo.svg" alt="PeachHacks" />
-        <div className="hero-card">
-          <h1 id="page-title">Join PeachHacks!</h1>
-          <p className="intro-copy">We're excited to bring together students, mentors, and industry professionals for a weekend of learning, building, and networking this February. Exact dates and registration details are on the way.</p>
-          <a className="register-button" href="#details">Register</a>
+        <div className="hero-card window-card">
+          <div className="window-header">
+            <div className="window-controls">
+              <span className="window-dot dot-red" />
+              <span className="window-dot dot-yellow" />
+              <span className="window-dot dot-green" />
+            </div>
+            <span className="window-title">peachhacks.app</span>
+            <div className="window-spacer" aria-hidden="true" />
+          </div>
+          <div className="window-content">
+            <h1 id="page-title">Join PeachHacks!</h1>
+            <p className="intro-copy">We're excited to bring together students, mentors, and industry professionals for a weekend of learning, building, and networking this February. Exact dates and registration details are on the way.</p>
+            <a className="register-button" href="#details">Register</a>
+          </div>
         </div>
       </section>
 
@@ -108,11 +120,22 @@ function App() {
       </section>
 
       <section className="interest-button-section" aria-labelledby="interest-title">
-        <div className="interest-card">
-          <h2 id="interest-title">Interested?</h2>
-          <p className="interest-copy">Click below to sign up for updates!</p>
-          <a className="interest-button" href="/form.html">Interest Form</a>
-          <a className="interest-card-weblink" href="https://www.colorstackatgsu.com/involvement">Not For You? Visit Our Website For More Events Like This!<span>↗</span></a>
+        <div className="interest-card window-card">
+          <div className="window-header">
+            <div className="window-controls">
+              <span className="window-dot dot-red" />
+              <span className="window-dot dot-yellow" />
+              <span className="window-dot dot-green" />
+            </div>
+            <span className="window-title">interest.app</span>
+            <div className="window-spacer" aria-hidden="true" />
+          </div>
+          <div className="window-content">
+            <h2 id="interest-title">Interested?</h2>
+            <p className="interest-copy">Click below to sign up for updates!</p>
+            <a className="interest-button" href="/form.html">Interest Form</a>
+            <a className="interest-card-weblink" href="https://www.colorstackatgsu.com/involvement">Not For You? Visit Our Website For More Events Like This!<span>↗</span></a>
+          </div>
         </div>
       </section>
 
