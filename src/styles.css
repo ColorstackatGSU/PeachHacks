@@ -52,12 +52,12 @@ a { color: inherit; text-decoration: none; }
 .about-facts strong { color: var(--peach); font-family: 'Open Sans', sans-serif; font-size: 28px; font-weight: 800; }
 .about-facts span { color: var(--navy); font-size: 9px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
 .schedule-section { position: relative; z-index: 2; isolation: isolate; width: 100%; margin: 0 auto 40px; padding: 40px 0 0; overflow: visible; }
-.schedule-board { position: relative; left: 50%; width: 115vw; aspect-ratio: 820 / 373; transform: translateX(-50%); }
+.schedule-board { position: relative; left: 50%; width: 115vw; aspect-ratio: 873 / 373; transform: translateX(-50%); }
 .schedule-art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; pointer-events: none; z-index: 0; }
-.schedule-heading { position: absolute; top: 0; left: 31.8%; width: 36.8%; height: 29.2%; display: flex; align-items: center; justify-content: center; z-index: 2; text-align: center; }
+.schedule-heading { position: absolute; top: 0; left: 35.9%; width: 34.6%; height: 29.2%; display: flex; align-items: center; justify-content: center; z-index: 2; text-align: center; }
 .schedule-heading h2 { margin: 0; font-family: 'Sarina', cursive; font-size: clamp(26px, 3.8vw, 54px); line-height: 1; color: var(--peach); font-weight: 400; letter-spacing: -.02em; }
 .schedule-heading h2 span { color: var(--peach); }
-.schedule-body { position: absolute; top: 28.5%; left: 22.5%; width: 55%; height: 60%; display: flex; flex-direction: column; align-items: center; justify-content: center; box-sizing: border-box; padding: 0; gap: clamp(10px, 1.4vw, 22px); z-index: 2; text-align: left; }
+.schedule-body { position: absolute; top: 28.5%; left: 27.2%; width: 51.7%; height: 60%; display: flex; flex-direction: column; align-items: center; justify-content: center; box-sizing: border-box; padding: 0; gap: clamp(10px, 1.4vw, 22px); z-index: 2; text-align: left; }
 .schedule-day-group { display: grid; grid-template-columns: clamp(95px, 8.5vw, 140px) 1fr; width: 100%; max-width: 680px; align-items: start; gap: clamp(12px, 1.6vw, 26px); }
 .schedule-day-label { color: var(--peach); font-family: 'Open Sans', sans-serif; font-size: clamp(18px, 2.2vw, 30px); font-weight: 800; line-height: 1.35; white-space: nowrap; text-align: left; text-shadow: 0 2px 3px rgba(0, 20, 36, 0.35); }
 .schedule-day-events { display: flex; flex-direction: column; align-items: flex-start; gap: clamp(2px, 0.4vw, 6px); }
