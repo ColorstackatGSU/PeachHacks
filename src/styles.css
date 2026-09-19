@@ -224,6 +224,10 @@ a { color: inherit; text-decoration: none; }
 .form-field .grow-wrap > textarea:focus { outline: 2px solid var(--peach); outline-offset: 2px; }
 .form-submit { justify-self: center; margin-top: 8px; padding: 16px 40px; border: none; outline: 2px solid var(--cream); outline-offset: 6px; background: var(--peach); color: var(--navy); font-family: 'Open Sans', sans-serif; font-size: 15px; font-weight: 800; letter-spacing: .04em; cursor: pointer; transition: transform .2s, background .2s; }
 .form-submit:hover { background: #ffc15d; transform: translateY(-3px); }
+.form-submit:disabled { opacity: .6; cursor: not-allowed; transform: none; }
+.form-status { margin: 0; text-align: center; font-size: 14px; line-height: 1.6; }
+.form-status-success { color: var(--peach); }
+.form-status-error { color: #ff8a8a; }
 @media (max-width: 620px) { .form-section { padding: 20px 20px; } .form { padding: 28px 20px; border-width: 4px; } }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; } }
 @media (prefers-reduced-motion: reduce) { .page-shell::before, .page-shell::after { transform: none; } }
