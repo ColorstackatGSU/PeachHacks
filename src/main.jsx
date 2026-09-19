@@ -68,7 +68,7 @@ function App() {
           </div>
           <div className="window-content">
             <h1 id="page-title">Join PeachHacks!</h1>
-            <p className="intro-copy">We're excited to bring together students, mentors, and industry professionals for a weekend of learning, building, and networking this February. Exact dates and registration details are on the way.</p>
+            <p className="intro-copy">We’re excited to bring together students, mentors, and industry professionals for a weekend of learning, building, and networking this February. Exact dates and registration details are on the way.</p>
             <a className="register-button" href="#details">Register</a>
           </div>
         </div>
@@ -143,8 +143,8 @@ function App() {
         <h2 id="faq-title">FAQ<span>.</span></h2>
         <div className="faq-list">
           <details><summary>Is PeachHacks free to attend?</summary><p>Yes! Food will be provided for the duration of the event. We’ll also have swag and prizes.</p></details>
-          <details><summary>Where is the event? Is it in person or virtual?</summary><p>The event is planned to be in person at Georgia State University, in the XXXX Building at STREET ADDRESS. Parking information will be shared here once confirmed: <a href="#">campus parking site ↗</a></p></details>
-          <details><summary>Who can attend? What if I have no experience?</summary><p>PeachHacks is open to students and is beginner friendly, with workshops and mentors available throughout the event. Attendees must be at least 13 years old. If you’re under 18, you’ll need the university liability form: <a href="#">form link coming soon ↗</a></p></details>
+          <details><summary>Where is the event? Is it in person or virtual?</summary><p>The event is planned to be in person at Georgia State University, in the XXXX Building at STREET ADDRESS. Parking information will be shared here once confirmed: campus parking site coming soon.</p></details>
+          <details><summary>Who can attend? What if I have no experience?</summary><p>PeachHacks is open to students and is beginner friendly, with workshops and mentors available throughout the event. Attendees must be at least 13 years old. If you’re under 18, you’ll need the university liability form: form link coming soon.</p></details>
           <details><summary>What is the team size limit?</summary><p>Teams should be between 1 and 4 people. We’ll have a team-building activity right after opening ceremony if you’d like to find teammates.</p></details>
           <details><summary>Are there travel reimbursements?</summary><p>We are not able to provide travel reimbursements at this time.</p></details>
           <details><summary>What should I bring?</summary><p>Your laptop, charger, headphones, deodorant, and a pillow or blanket.</p></details>
@@ -155,7 +155,7 @@ function App() {
           <details><summary>What is a hackathon?</summary><p>A hackathon is an event where students “hack” together to create an app, website, game, or other project in 24–48 hours. There will be no malicious hacking.</p></details>
           <details><summary>Will hardware be available?</summary><p>We do not have hardware available, but you’re welcome to bring your own. Due to building fire codes, soldering kits are not allowed in the venue.</p></details>
           <details><summary>Are you sending acceptances? Is there a deadline or waitlist?</summary><p>We’ll send acceptances XX days before the event. Applications will close once we reach the maximum number of hackers we can support, and a local waitlist will open on event day for unfilled spots.</p></details>
-          <details><summary>How do I sign up to be a mentor, judge, or volunteer?</summary><p>You’ll be able to sign up here when those forms open: <a href="#">link coming soon ↗</a></p></details>
+          <details><summary>How do I sign up to be a mentor, judge, or volunteer?</summary><p>You’ll be able to sign up here when those forms open: link coming soon.</p></details>
           <details><summary>I have a different question!</summary><p>Email us at <a href="mailto:hello@peachhacks.org">hello@peachhacks.org</a> and our team will get back to you.</p></details>
         </div>
       </section>
