@@ -16,7 +16,12 @@ function SponsorForm() {
       </a>
       <form className="form" id="sponsor-form">
         <h1 id="sponsor-form-title">Peachhacks Sponsor Form</h1>
-        <p className="form-copy">Thank you for your interest in sponsoring Peachhacks! Fill out this sponsor form to get in contact with us.</p>
+        <p className="form-copy">
+          Thank you for your interest in sponsoring Peachhacks! Fill out this sponsor form to get in contact with us.
+        </p>
+        <p className="form-copy">
+          Submissions will be emailed to <a className="sponsor-email" href="mailto:sponsors@peachhacks.org">sponsors@peachhacks.org</a>
+        </p>
 
         <div className="form-field">
           <label htmlFor="name">Organization name:</label>
