@@ -24,7 +24,7 @@ function SponsorForm() {
         </div>
 
         <div className="form-field">
-          <label htmlFor="email">Organization email:</label>
+          <label htmlFor="email">Email:</label>
           <input type="email" id="email" name="email" placeholder="example@email.com" required />
         </div>
 
