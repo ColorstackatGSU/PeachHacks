@@ -1,0 +1,26 @@
+name: Merge Conflict Check
+
+on:
+  pull_request:
+    branches: [ main ]
+    types: [ opened, synchronize, reopened ]
+
+jobs:
+  check-conflicts:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for merge conflicts
+        run: |
+          git fetch origin main
+          # Try to simulate a merge without committing
+          if ! git merge-tree $(git merge-base HEAD origin/main) origin/main HEAD > /dev/null; then
+            echo "❌ MERGE CONFLICT DETECTED: This PR conflicts with the main branch."
+            exit 1
+          else
+            echo "✅ CLEAN: No merge conflicts found."
+          fi
