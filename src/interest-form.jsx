@@ -2,13 +2,13 @@ import React from 'react';
 
 function InterestForm() {
   return (
-    <section className="interest-form-section" aria-labelledby="interest-form-title">
+    <section className="form-section" aria-labelledby="interest-form-title">
       <a className="form-logo-link" href="/" aria-label="Back to PeachHacks home">
         <img className="form-logo" src="/assets/logo.svg" alt="PeachHacks" />
       </a>
-      <form className="interest-form" id="interest-form">
+      <form className="form" id="interest-form">
         <h1 id="interest-form-title">Peachhacks Interest Form</h1>
-        <p className="interest-form-copy">Sign up to receive updates about Peachhacks as event details are announced.</p>
+        <p className="form-copy">Sign up to receive updates about Peachhacks as event details are announced.</p>
 
         <div className="form-field">
           <label htmlFor="name">Name:</label>
