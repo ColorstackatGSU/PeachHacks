@@ -116,7 +116,7 @@ function App() {
             </div>
           ))}
         </div>
-        <a className="sponsor-email" href="mailto:sponsors@peachhacks.org">Sponsor PeachHacks <span>↗</span></a>
+        <a className="sponsor-email" href="/sponsor-form.html">Sponsor PeachHacks <span>↗</span></a>
       </section>
 
       <section className="interest-button-section" aria-labelledby="interest-title">
