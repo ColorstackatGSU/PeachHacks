@@ -14,7 +14,7 @@ body:has(.page-shell) { background: transparent; }
 a { color: inherit; text-decoration: none; }
 .page-shell { position: relative; isolation: isolate; display: flex; flex-direction: column; min-height: 100vh; overflow: hidden; background: #003f64; }
 .intro { order: 1; z-index: 4; overflow: hidden; position: relative; display: grid; justify-items: center; min-height: max(620px, calc(100vw * 644 / 705 + 34px)); text-align: center; padding: 34px 24px 82px; }
-.partners-section { order: 2; position: relative; display: grid; justify-items: center; width: 100%; max-width: none; margin: 0; padding: 334px 24px 112px; background: #003f64; text-align: center; }
+.partners-section { order: 2; position: relative; display: grid; justify-items: center; width: 100%; max-width: none; margin: 0; padding: 454px 24px 112px; background: #003f64; text-align: center; }
 .schedule-section { order: 3; position: relative; z-index: 3; isolation: isolate; width: 100%; margin: 0; padding: 40px 0 0; overflow: visible; }
 .schedule-section::after { position: absolute; z-index: 0; right: 0; bottom: 0; left: 0; height: 50%; background: #F4F6EC; content: ''; pointer-events: none; }
 .faq-section { order: 4; position: relative; z-index: 0; width: 100%; max-width: none; margin-top: 0; padding-top: 80px; padding-bottom: 124px; background: #F4F6EC; color: var(--navy); text-align: left; }
@@ -80,7 +80,7 @@ a { color: inherit; text-decoration: none; }
 .intro h1::before { display: none; }
 .intro h1 em { color: var(--peach); font-style: normal; }
 .intro-copy { max-width: 55ch; margin: 0; color: #233e56; font-size: 17px; line-height: 1.55; }
-.register-button { position: relative; z-index: 1; display: inline-flex; align-items: center; gap: 12px; margin-top: 28px; padding: 17px 30px; outline: 2px solid var(--navy); outline-offset: 5px; background: var(--peach); color: var(--navy); border-radius: 2px; font-family: "Agbalumo", system-ui; font-size: 18px; font-weight: 400; letter-spacing: 0; text-transform: none; transition: transform .2s, background .2s; }
+.register-button { position: relative; z-index: 1; display: inline-flex; align-items: center; gap: 12px; margin-top: 28px; padding: 15px 28px; outline: 2px solid var(--navy); outline-offset: 5px; background: var(--peach); color: var(--navy); border-radius: 2px; font-family: "Agbalumo", system-ui; font-size: 20px; font-weight: 400; letter-spacing: 0; text-transform: none; transition: transform .2s, background .2s; }
 .register-button:hover { background: #ffb341; transform: translateY(-3px) rotate(1deg); }
 .date-lockup { display: grid; gap: 7px; margin-top: 34px; }
 .date-lockup strong { font-family: 'Open Sans', sans-serif; font-size: clamp(20px, 3vw, 30px); font-weight: 800; letter-spacing: .04em; }
@@ -264,7 +264,7 @@ a { color: inherit; text-decoration: none; }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; } .partner-box:hover { transform: none; } }
 @media (prefers-reduced-motion: reduce) { .page-shell::before, .page-shell::after { transform: none; } }
 @media (max-width: 620px) { .details-section, .faq-section { padding: 76px 20px; }.details-grid { grid-template-columns: 1fr; }.details-grid article { min-height: 0; padding: 24px; }.details-grid a, .release-note { margin-top: 10px; }.sponsor-section { padding: 76px 24px; }.faq-section { margin-top: 0; padding-top: 64px; padding-bottom: 92px; }.faq-list summary { font-size: 13px; } }
-@media (max-width: 620px) { .hero-logo { width: min(90vw, 350px); margin-bottom: 22px; }.intro { padding-top: 28px; }.hero-card { top: 59vh; width: min(78vw, 410px); padding: 0; }.hero-card::before { left: -40px; width: 52px; }.hero-card::after { inset: 9px; }.hero-card .window-content { padding: 28px 22px 32px; }.intro-copy { font-size: 15px; }.register-button { padding: 15px 22px; } }
+@media (max-width: 620px) { .hero-logo { width: min(90vw, 350px); margin-bottom: 22px; }.intro { padding-top: 28px; }.hero-card { top: 59vh; width: min(78vw, 410px); padding: 0; }.hero-card::before { left: -40px; width: 52px; }.hero-card::after { inset: 9px; }.hero-card .window-content { padding: 28px 22px 32px; }.intro-copy { font-size: 15px; }.register-button { padding: 13px 20px; } }
 @media (max-width: 620px) { .hero-card { min-height: 0; aspect-ratio: auto; border-radius: 3px; }.partners-section { padding: 220px 24px 76px; } .partners-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; margin: 28px auto 24px; } .partner-box { min-height: 88px; padding: 14px; } .partner-box-label { font-size: 10px; } .partner-box-text { font-size: 18px; } }
 @media (max-width: 620px) { .site-footer { height: 24vh; min-height: 210px; padding: 24px 20px; } }
 @media (min-width: 621px) and (min-aspect-ratio: 5/4) {
