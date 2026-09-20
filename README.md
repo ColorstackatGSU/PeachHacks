@@ -1,1 +1,1 @@
-# cs-gsu_peachhacks_website
+# PeachHacks Website
