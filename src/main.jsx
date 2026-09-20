@@ -51,21 +51,17 @@ function App() {
       <div className="page-stars" aria-hidden="true" />
       <section className="intro" aria-labelledby="page-title">
         <img className="hero-art" src="/assets/Hero.svg" alt="" aria-hidden="true" />
+        <div className="hero-water-lines" aria-hidden="true">
+          {Array.from({ length: 15 }, (_, idx) => (
+            <span className="hero-water-line" key={idx} />
+          ))}
+        </div>
         <img className="top-cloud cloud-one" src="/assets/Cloud.svg" alt="" aria-hidden="true" />
         <img className="top-cloud cloud-two" src="/assets/Cloud.svg" alt="" aria-hidden="true" />
         <img className="top-cloud cloud-three" src="/assets/Cloud.svg" alt="" aria-hidden="true" />
         <div className="hero-logo-circle" aria-hidden="true" />
         <img className="hero-logo" src="/assets/logo.svg" alt="PeachHacks" />
         <div className="hero-card window-card">
-          <div className="window-header">
-            <div className="window-controls">
-              <span className="window-dot dot-red" />
-              <span className="window-dot dot-yellow" />
-              <span className="window-dot dot-green" />
-            </div>
-            <span className="window-title">peachhacks.app</span>
-            <div className="window-spacer" aria-hidden="true" />
-          </div>
           <div className="window-content">
             <h1 id="page-title">Join PeachHacks!</h1>
             <p className="intro-copy">We’re excited to bring together students, mentors, and industry professionals for a weekend of learning, building, and networking this February. Exact dates and registration details are on the way.</p>
@@ -74,14 +70,9 @@ function App() {
         </div>
       </section>
 
-      <section className="about-section" aria-labelledby="about-title">
-        <img className="about-cloud" src="/assets/cloud-divider.svg" alt="" aria-hidden="true" />
-        <p className="about-copy">A weekend for curious minds, bold ideas, and the people who make tech feel more like home. Come with a team, a sketch, or just yourself — and make something useful, weird, and yours.</p>
-      </section>
-
       <section className="schedule-section" id="schedule" aria-labelledby="schedule-title">
         <div className="schedule-board">
-          <img className="schedule-art" src="/assets/schedule-rocks.svg" alt="" aria-hidden="true" />
+          <img className="schedule-art" src="/assets/Brick Wall.svg" alt="" aria-hidden="true" />
           <div className="schedule-heading">
             <h2 id="schedule-title">Schedule</h2>
           </div>
@@ -105,36 +96,27 @@ function App() {
       </section>
 
       <section className="partners-section" id="details" aria-labelledby="partners-title">
+        <img className="section-cloud-divider" src="/assets/cloud-divider.svg" alt="" aria-hidden="true" />
         <img className="partners-moon" src="/assets/moon.svg" alt="" aria-hidden="true" />
         <h2 id="partners-title">Our<br /><span>partners.</span></h2>
         <p>PeachHacks is a student-centered, beginner-friendly weekend hosted by ColorStack. We’re looking for partners who want to support the next generation of builders through mentorship, workshops, prizes, and food.</p>
         <div className="partners-grid">
-          {['TBA', 'TBA', 'TBA', 'TBA', 'TBA', 'TBA'].map((slot, idx) => (
+          {Array.from({ length: 6 }, (_, idx) => (
             <div className="partner-box" key={idx}>
               <span className="partner-box-label">Partner</span>
-              <span className="partner-box-text">{slot}</span>
+              <span className="partner-box-text">TBA</span>
             </div>
           ))}
         </div>
-        <a className="sponsor-email" href="mailto:sponsors@peachhacks.org">Sponsor PeachHacks <span>↗</span></a>
+        <a className="sponsor-email" href="mailto:sponsors@peachhacks.org">This could be YOU! Sponsor PeachHacks <span>↗</span></a>
       </section>
 
       <section className="interest-button-section" aria-labelledby="interest-title">
         <div className="interest-card window-card">
-          <div className="window-header">
-            <div className="window-controls">
-              <span className="window-dot dot-red" />
-              <span className="window-dot dot-yellow" />
-              <span className="window-dot dot-green" />
-            </div>
-            <span className="window-title">interest.app</span>
-            <div className="window-spacer" aria-hidden="true" />
-          </div>
           <div className="window-content">
             <h2 id="interest-title">Interested?</h2>
             <p className="interest-copy">Click below to sign up for updates!</p>
             <a className="interest-button" href="/form.html">Interest Form</a>
-            <a className="interest-card-weblink" href="https://www.colorstackatgsu.com/involvement">Not For You? Visit Our Website For More Events Like This!<span>↗</span></a>
           </div>
         </div>
       </section>
@@ -162,7 +144,15 @@ function App() {
 
       <footer className="site-footer">
         <img className="footer-art" src="/assets/Footer.svg" alt="" aria-hidden="true" />
-        <p>PeachHacks <span>·</span> Hosted by ColorStack</p>
+        <div className="site-footer-content">
+          <p>PeachHacks <span>·</span> Hosted by ColorStack</p>
+          <nav className="footer-links" aria-label="Footer navigation">
+            <a href="#schedule">Schedule</a>
+            <a href="#details">Sponsors</a>
+            <a href="/form.html">Interest Form</a>
+            <a href="mailto:hello@peachhacks.org">Contact</a>
+          </nav>
+        </div>
       </footer>
     </main>
   );
