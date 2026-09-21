@@ -59,8 +59,9 @@ a { color: inherit; text-decoration: none; }
 .details-grid a, .release-note { align-self: end; color: var(--peach); font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
 .faq-list a { color: var(--peach); }
 .site-footer a { justify-self: center; color: var(--cream); font-size: 15px; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; transition: color .2s, transform .2s; }
-.site-footer a:hover { color: var(--cream); transform: translateY(-2px); }
 .site-footer a span { color: var(--cream); font-size: 15px; margin-left: 5px; }
+.footer-links a { color: var(--cream); transform: none; transition: color .2s ease; }
+.site-footer a:hover { color: var(--cream); transform: translateY(-2px); }
 .eyebrow { margin: 0; color: var(--peach); font-size: 11px; font-weight: 800; letter-spacing: .18em; text-transform: uppercase; }
 .hero-card { position: absolute; z-index: 5; top: 63vh; left: 50%; display: flex; flex-direction: column; width: min(58vw, 720px); min-height: 0; margin: 0; padding: 0; overflow: visible; background: #b9d3dc; border: 0; border-radius: 5px 3px 3px 5px; box-shadow: 0 14px 0 rgba(0, 31, 58, .3), 0 24px 38px rgba(0, 15, 30, .26); color: #233e56; transform: translate(-50%, -50%) rotate(-2deg); animation: banner-float 7s ease-in-out infinite; }
 .hero-card::before { position: absolute; z-index: -1; top: 0; bottom: 0; left: -76px; width: 94px; background: #b9d3dc; clip-path: polygon(100% 0, 100% 100%, 0 78%, 28% 50%, 0 22%); content: ''; filter: drop-shadow(-2px 12px 0 rgba(0, 31, 58, .24)); }
@@ -118,13 +119,12 @@ a { color: inherit; text-decoration: none; }
 .details-grid p { margin: 0; color: var(--mist); font-size: 12px; line-height: 1.7; }
 .sponsor-email b, .details-grid a b { font-size: 15px; margin-left: 4px; }
 .release-note { color: var(--mist); }
+.site-footer-content, .site-footer-content * { text-shadow: 10px 5px 10px rgb(0, 31, 58); }
 .partners-section > *:not(.partners-moon):not(.section-cloud-divider):not(.section-stars) { position: relative; z-index: 1; }
 .partners-section h2 { margin-bottom: 24px; }
 .site-footer-content { position: absolute; z-index: 2; top: 50%; left: 50%; display: grid; justify-items: center; gap: 8px; width: min(100%, 720px); transform: translate(-50%, -50%); }
-.site-footer-content * { text-shadow: 10px 5px 10px rgb(0, 31, 58); }
 .site-footer p { margin: 0; color: var(--cream); font-size: 15px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
 .footer-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px 24px; color: var(--cream); font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
-.footer-links a { color: var(--cream); transform: none; transition: color .2s ease; }
 .footer-links a:hover { color: var(--peach); transform: none; }
 .site-footer .footer-note { color: var(--cream); font-size: 11px; font-weight: 600; letter-spacing: .04em; line-height: 1.5; text-transform: none; }
 .faq-list details p { max-width: 85ch; margin: -4px 0 22px; color: var(--mist); font-size: 13px; line-height: 1.75; }
@@ -136,8 +136,7 @@ a { color: inherit; text-decoration: none; }
 .partner-box-text { color: var(--cream); font-family: 'Open Sans', sans-serif; font-size: 22px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
 .sponsor-email { margin-top: 12px; padding-bottom: 7px; border-bottom: 1px solid var(--peach); color: var(--peach); font-size: 13px; font-weight: 800; letter-spacing: .08em; }
 .faq-list { display: grid; gap: 12px; text-align: left; }
-.faq-section > .eyebrow, .faq-section > h2, .faq-section > .faq-list { width: min(100%, 960px); margin-left: auto; margin-right: auto; }
-.faq-section > .eyebrow, .faq-section > h2, .faq-section > .faq-list { position: relative; z-index: 1; }
+.faq-section > .eyebrow, .faq-section > h2, .faq-section > .faq-list { width: min(100%, 960px); margin-left: auto; margin-right: auto; position: relative; z-index: 1; }
 .faq-section h2 { margin-bottom: 48px; text-align: left; }
 .faq-list details { min-height: 72px; padding: 0 22px; border-radius: 8px; background: #003757; color: var(--cream); }
 .faq-list summary { display: flex; justify-content: space-between; align-items: center; gap: 20px; min-height: 72px; padding: 22px 0; cursor: pointer; list-style: none; font-size: 14px; font-weight: 800; }
