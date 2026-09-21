@@ -75,8 +75,15 @@ function App() {
       </section>
 
       <section className="about-section" aria-labelledby="about-title">
-        <img className="about-cloud" src="/assets/cloud-divider.svg" alt="" aria-hidden="true" />
-        <p className="about-copy">A weekend for curious minds, bold ideas, and the people who make tech feel more like home. Come with a team, a sketch, or just yourself — and make something useful, weird, and yours.</p>
+        <div className="about-cloud-cap about-cloud-top" aria-hidden="true">
+          <img src="/assets/cloud-divider.svg" alt="" />
+        </div>
+        <div className="about-middle">
+          <p className="about-copy">A weekend for curious minds, bold ideas, and the people who make tech feel more like home. Come with a team, a sketch, or just yourself — and make something useful, weird, and yours.</p>
+        </div>
+        <div className="about-cloud-cap about-cloud-bottom" aria-hidden="true">
+          <img src="/assets/cloud-divider.svg" alt="" />
+        </div>
       </section>
 
       <section className="schedule-section" id="schedule" aria-labelledby="schedule-title">
