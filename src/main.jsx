@@ -108,14 +108,16 @@ function App() {
         <img className="top-cloud cloud-one" src="/assets/Cloud.svg" alt="" aria-hidden="true" />
         <img className="top-cloud cloud-two" src="/assets/Cloud.svg" alt="" aria-hidden="true" />
         <img className="top-cloud cloud-three" src="/assets/Cloud.svg" alt="" aria-hidden="true" />
-        <div className="hero-logo-circle" aria-hidden="true" />
-        <img className="hero-logo" src="/assets/logo.svg" alt="PeachHacks" />
-        <div className="hero-card window-card">
-          <span className="banner-tow-line" aria-hidden="true" />
-          <div className="window-content">
-            <h1 id="page-title">Join PeachHacks!</h1>
-            <p className="intro-copy">We’re excited to bring together students, mentors, and industry professionals for a weekend of learning, building, and networking this February. Exact dates and registration details are on the way.</p>
-            <a className="register-button" href="/form.html">Register</a>
+        <div className="hero-stack">
+          <div className="hero-logo-circle" aria-hidden="true" />
+          <img className="hero-logo" src="/assets/logo.svg" alt="PeachHacks" />
+          <div className="hero-card window-card">
+            <span className="banner-tow-line" aria-hidden="true" />
+            <div className="window-content">
+              <h1 id="page-title">Join PeachHacks!</h1>
+              <p className="intro-copy">We’re excited to bring together students, mentors, and industry professionals for a weekend of learning, building, and networking this February. Exact dates and registration details are on the way.</p>
+              <a className="register-button" href="/interest-form.html">Pre-register</a>
+            </div>
           </div>
         </div>
       </section>
@@ -159,7 +161,7 @@ function App() {
             </div>
           ))}
         </div>
-        <a className="sponsor-email" href="mailto:sponsors@peachhacks.org">This could be YOU! Sponsor PeachHacks <span>↗</span></a>
+        <a className="sponsor-email" href="/sponsor-form.html">This could be YOU! Sponsor PeachHacks <span>↗</span></a>
       </section>
 
       <section className="faq-section" aria-labelledby="faq-title">
@@ -181,9 +183,6 @@ function App() {
           <details><summary>How do I sign up to be a mentor, judge, or volunteer?</summary><p>You’ll be able to sign up here when those forms open: link coming soon.</p></details>
           <details><summary>I have a different question!</summary><p>Email us at <a href="mailto:hello@peachhacks.org">hello@peachhacks.org</a> and our team will get back to you.</p></details>
         </div>
-        <a className="faq-card-weblink"href="https://www.colorstackatgsu.com/involvement">
-          Not For You? Visit Our Website For More Events Like This! <span aria-hidden="true">↗</span>
-        </a>
       </section>
 
       <footer className="site-footer">
