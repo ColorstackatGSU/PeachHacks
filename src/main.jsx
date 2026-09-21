@@ -22,11 +22,46 @@ const scheduleData = [
   },
 ];
 
+const introStars = [
+  ['7%', '12%', '14px', '-1.2s'], ['18%', '24%', '10px', '-3.8s'], ['31%', '9%', '18px', '-2.4s'],
+  ['44%', '20%', '12px', '-5.1s'], ['58%', '7%', '16px', '-4.2s'], ['70%', '26%', '11px', '-.8s'],
+  ['83%', '13%', '19px', '-6.4s'], ['94%', '29%', '12px', '-2.9s'], ['12%', '42%', '9px', '-4.7s'],
+  ['39%', '35%', '13px', '-1.9s'], ['64%', '39%', '10px', '-5.8s'], ['88%', '47%', '15px', '-3.3s'],
+];
+
+const partnerStars = [
+  ['5%', '8%', '12px', '-2.2s'], ['15%', '18%', '9px', '-4.9s'], ['27%', '6%', '16px', '-1.1s'],
+  ['40%', '14%', '11px', '-5.6s'], ['54%', '5%', '14px', '-3.7s'], ['68%', '19%', '10px', '-.4s'],
+  ['80%', '9%', '17px', '-6.1s'], ['93%', '23%', '12px', '-2.8s'], ['9%', '33%', '15px', '-4.1s'],
+  ['22%', '45%', '10px', '-1.7s'], ['35%', '31%', '13px', '-5.2s'], ['49%', '40%', '9px', '-3.2s'],
+  ['63%', '29%', '16px', '-.9s'], ['76%', '48%', '11px', '-4.5s'], ['89%', '38%', '14px', '-2.1s'],
+  ['4%', '63%', '10px', '-5.9s'], ['18%', '76%', '15px', '-3.6s'], ['31%', '88%', '9px', '-1.4s'],
+  ['47%', '69%', '13px', '-4.8s'], ['61%', '84%', '11px', '-2.6s'], ['78%', '73%', '16px', '-6.5s'],
+  ['94%', '91%', '10px', '-.6s'],
+];
+
+function StarField({ className, stars }) {
+  return (
+    <div className={`section-stars ${className}`} aria-hidden="true">
+      {stars.map(([x, y, size, delay], index) => (
+        <img
+          className="section-star"
+          key={`${x}-${y}-${index}`}
+          src="/assets/star.svg"
+          alt=""
+          style={{ '--star-x': x, '--star-y': y, '--star-size': size, '--star-delay': delay }}
+        />
+      ))}
+    </div>
+  );
+}
+
 function App() {
   useEffect(() => {
     const page = document.querySelector('.page-shell');
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
     let frame = 0;
+    let pointerFrame = 0;
 
     const moveStarsOnScroll = () => {
       cancelAnimationFrame(frame);
@@ -35,14 +70,27 @@ function App() {
       });
     };
 
+    const moveStarsWithPointer = (event) => {
+      cancelAnimationFrame(pointerFrame);
+      pointerFrame = requestAnimationFrame(() => {
+        const x = (event.clientX / window.innerWidth - 0.5) * 2;
+        const y = (event.clientY / window.innerHeight - 0.5) * 2;
+        page.style.setProperty('--star-pointer-x', `${x.toFixed(3)}`);
+        page.style.setProperty('--star-pointer-y', `${y.toFixed(3)}`);
+      });
+    };
+
     if (!reducedMotion.matches) {
       moveStarsOnScroll();
       window.addEventListener('scroll', moveStarsOnScroll, { passive: true });
+      window.addEventListener('pointermove', moveStarsWithPointer, { passive: true });
     }
 
     return () => {
       cancelAnimationFrame(frame);
+      cancelAnimationFrame(pointerFrame);
       window.removeEventListener('scroll', moveStarsOnScroll);
+      window.removeEventListener('pointermove', moveStarsWithPointer);
     };
   }, []);
 
@@ -50,22 +98,20 @@ function App() {
     <main className="page-shell">
       <div className="page-stars" aria-hidden="true" />
       <section className="intro" aria-labelledby="page-title">
+        <StarField className="intro-stars" stars={introStars} />
         <img className="hero-art" src="/assets/Hero.svg" alt="" aria-hidden="true" />
+        <div className="hero-water-lines" aria-hidden="true">
+          {Array.from({ length: 15 }, (_, idx) => (
+            <span className="hero-water-line" key={idx} />
+          ))}
+        </div>
         <img className="top-cloud cloud-one" src="/assets/Cloud.svg" alt="" aria-hidden="true" />
         <img className="top-cloud cloud-two" src="/assets/Cloud.svg" alt="" aria-hidden="true" />
         <img className="top-cloud cloud-three" src="/assets/Cloud.svg" alt="" aria-hidden="true" />
         <div className="hero-logo-circle" aria-hidden="true" />
         <img className="hero-logo" src="/assets/logo.svg" alt="PeachHacks" />
         <div className="hero-card window-card">
-          <div className="window-header">
-            <div className="window-controls">
-              <span className="window-dot dot-red" />
-              <span className="window-dot dot-yellow" />
-              <span className="window-dot dot-green" />
-            </div>
-            <span className="window-title">peachhacks.app</span>
-            <div className="window-spacer" aria-hidden="true" />
-          </div>
+          <span className="banner-tow-line" aria-hidden="true" />
           <div className="window-content">
             <h1 id="page-title">Join PeachHacks!</h1>
             <p className="intro-copy">We’re excited to bring together students, mentors, and industry professionals for a weekend of learning, building, and networking this February. Exact dates and registration details are on the way.</p>
@@ -74,14 +120,9 @@ function App() {
         </div>
       </section>
 
-      <section className="about-section" aria-labelledby="about-title">
-        <img className="about-cloud" src="/assets/cloud-divider.svg" alt="" aria-hidden="true" />
-        <p className="about-copy">A weekend for curious minds, bold ideas, and the people who make tech feel more like home. Come with a team, a sketch, or just yourself — and make something useful, weird, and yours.</p>
-      </section>
-
       <section className="schedule-section" id="schedule" aria-labelledby="schedule-title">
         <div className="schedule-board">
-          <img className="schedule-art" src="/assets/schedule-rocks.svg" alt="" aria-hidden="true" />
+          <img className="schedule-art" src="/assets/Brick Wall.svg" alt="" aria-hidden="true" />
           <div className="schedule-heading">
             <h2 id="schedule-title">Schedule</h2>
           </div>
@@ -105,38 +146,20 @@ function App() {
       </section>
 
       <section className="partners-section" id="details" aria-labelledby="partners-title">
+        <StarField className="partners-stars" stars={partnerStars} />
+        <img className="section-cloud-divider" src="/assets/cloud-divider.svg" alt="" aria-hidden="true" />
         <img className="partners-moon" src="/assets/moon.svg" alt="" aria-hidden="true" />
         <h2 id="partners-title">Our<br /><span>partners.</span></h2>
         <p>PeachHacks is a student-centered, beginner-friendly weekend hosted by ColorStack. We’re looking for partners who want to support the next generation of builders through mentorship, workshops, prizes, and food.</p>
         <div className="partners-grid">
-          {['TBA', 'TBA', 'TBA', 'TBA', 'TBA', 'TBA'].map((slot, idx) => (
+          {Array.from({ length: 6 }, (_, idx) => (
             <div className="partner-box" key={idx}>
               <span className="partner-box-label">Partner</span>
-              <span className="partner-box-text">{slot}</span>
+              <span className="partner-box-text">TBA</span>
             </div>
           ))}
         </div>
-        <a className="sponsor-email" href="/sponsor-form.html">Sponsor PeachHacks <span>↗</span></a>
-      </section>
-
-      <section className="interest-button-section" aria-labelledby="interest-title">
-        <div className="interest-card window-card">
-          <div className="window-header">
-            <div className="window-controls">
-              <span className="window-dot dot-red" />
-              <span className="window-dot dot-yellow" />
-              <span className="window-dot dot-green" />
-            </div>
-            <span className="window-title">interest.app</span>
-            <div className="window-spacer" aria-hidden="true" />
-          </div>
-          <div className="window-content">
-            <h2 id="interest-title">Interested?</h2>
-            <p className="interest-copy">Click below to sign up for updates!</p>
-            <a className="interest-button" href="/interest-form.html">Interest Form</a>
-            <a className="interest-card-weblink" href="https://www.colorstackatgsu.com/involvement">Not For You? Visit Our Website For More Events Like This!<span>↗</span></a>
-          </div>
-        </div>
+        <a className="sponsor-email" href="/sponsor-form.html">This could be YOU! Sponsor PeachHacks <span>↗</span></a>
       </section>
 
       <section className="faq-section" aria-labelledby="faq-title">
@@ -162,7 +185,14 @@ function App() {
 
       <footer className="site-footer">
         <img className="footer-art" src="/assets/Footer.svg" alt="" aria-hidden="true" />
-        <p>PeachHacks <span>·</span> Hosted by ColorStack</p>
+        <div className="site-footer-content">
+          <p>PeachHacks <span>·</span> Hosted by ColorStack</p>
+          <nav className="footer-links" aria-label="Footer navigation">
+            <a href="#schedule">Schedule</a>
+            <a href="#details">Sponsors</a>
+            <a href="mailto:hello@peachhacks.org">Contact</a>
+          </nav>
+        </div>
       </footer>
     </main>
   );
