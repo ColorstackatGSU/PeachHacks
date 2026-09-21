@@ -115,7 +115,7 @@ function App() {
           <div className="window-content">
             <h1 id="page-title">Join PeachHacks!</h1>
             <p className="intro-copy">We’re excited to bring together students, mentors, and industry professionals for a weekend of learning, building, and networking this February. Exact dates and registration details are on the way.</p>
-            <a className="register-button" href="#details">Register</a>
+            <a className="register-button" href="/interest-form.html">Pre-register</a>
           </div>
         </div>
       </section>
@@ -159,7 +159,7 @@ function App() {
             </div>
           ))}
         </div>
-        <a className="sponsor-email" href="mailto:sponsors@peachhacks.org">This could be YOU! Sponsor PeachHacks <span>↗</span></a>
+        <a className="sponsor-email" href="/sponsor-form.html">This could be YOU! Sponsor PeachHacks <span>↗</span></a>
       </section>
 
       <section className="faq-section" aria-labelledby="faq-title">
