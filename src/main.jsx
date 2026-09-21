@@ -115,7 +115,7 @@ function App() {
           <div className="window-content">
             <h1 id="page-title">Join PeachHacks!</h1>
             <p className="intro-copy">We’re excited to bring together students, mentors, and industry professionals for a weekend of learning, building, and networking this February. Exact dates and registration details are on the way.</p>
-            <a className="register-button" href="#details">Register</a>
+            <a className="register-button" href="/interest-form.html">Pre-register</a>
           </div>
         </div>
       </section>
