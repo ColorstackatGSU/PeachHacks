@@ -136,7 +136,7 @@ a { color: inherit; text-decoration: none; }
 .partner-box-label { margin-bottom: 4px; color: var(--mist); font-family: 'Open Sans', sans-serif; font-size: 11px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
 .partner-box-text { color: var(--cream); font-family: 'Open Sans', sans-serif; font-size: 22px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
 .sponsor-email { margin-top: 12px; padding-bottom: 7px; border-bottom: 1px solid var(--peach); color: var(--peach); font-size: 13px; font-weight: 800; letter-spacing: .08em; }
-.faq-list { display: grid; gap: 12px; text-align: left; }
+.faq-list { display: grid; gap: 12px; bottom: 30px; text-align: left; }
 .faq-section > .eyebrow, .faq-section > h2, .faq-section > .faq-list { width: min(100%, 960px); margin-left: auto; margin-right: auto; }
 .faq-section > .eyebrow, .faq-section > h2, .faq-section > .faq-list { position: relative; z-index: 1; }
 .faq-section h2 { margin-bottom: 48px; text-align: left; }
@@ -145,6 +145,9 @@ a { color: inherit; text-decoration: none; }
 .faq-list summary::-webkit-details-marker { display: none; }
 .faq-list summary::after { content: ''; flex: 0 0 9px; width: 9px; height: 9px; border-right: 2px solid var(--cream); border-bottom: 2px solid var(--cream); transform: translateY(-3px) rotate(45deg); transition: transform .2s ease; }
 .faq-list details[open] summary::after { transform: translateY(2px) rotate(225deg); }
+.faq-card-weblink { display: inline-flex; align-items: center; justify-content: center; color: var(--peach); font-size: 15px; font-weight: 800; letter-spacing: .04em; line-height: 1.5; text-align: center;transition: transform .2s ease; border-bottom: 2px solid var(--peach);}
+.faq-card-weblink:hover {transform: translateY(-3px);}
+
 .footer-art { position: absolute; z-index: 1; bottom: 0; left: 50%; width: auto; height: 100%; max-width: none; transform: translateX(-50%); pointer-events: none; }
 .site-footer p span { color: var(--cream); padding: 0 5px; }
 @keyframes twinkle {
