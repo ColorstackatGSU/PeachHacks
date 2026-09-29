@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: peachhacks
+      POSTGRES_USER: peachhacks
+      POSTGRES_PASSWORD: peachhacks
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U peachhacks -d peachhacks"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - peachhacks-pgdata:/var/lib/postgresql/data
+
+volumes:
+  peachhacks-pgdata:

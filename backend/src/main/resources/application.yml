@@ -1,0 +1,36 @@
+spring:
+  application:
+    name: peachhacks-backend
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/peachhacks}
+    username: ${SPRING_DATASOURCE_USERNAME:peachhacks}
+    password: ${SPRING_DATASOURCE_PASSWORD:peachhacks}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: none
+  docker:
+    compose:
+      enabled: false
+
+server:
+  port: ${PORT:8080}
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-components: always
+
+app:
+  cors:
+    allowed-origins:
+      - http://localhost:5173
+      - http://localhost:5174
+      - https://www.peachhacks.com

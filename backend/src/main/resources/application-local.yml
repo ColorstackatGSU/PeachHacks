@@ -1,0 +1,12 @@
+spring:
+  docker:
+    compose:
+      enabled: true
+      file: compose.yaml
+  jpa:
+    show-sql: false
+
+logging:
+  level:
+    root: INFO
+    com.peachhacks: INFO
