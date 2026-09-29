@@ -50,7 +50,7 @@ a { color: inherit; text-decoration: none; }
 .cloud-one { top: 4%; }
 .cloud-two { top: 10%; width: clamp(150px, 20vw, 300px); animation-duration: 360s; }
 .cloud-three { top: 16%; width: clamp(130px, 17vw, 260px); animation-duration: 320s; }
-.hero-logo-circle { grid-row: 1; grid-column: 1; align-self: center; justify-self: center; z-index: 1; width: calc(var(--hero-logo-w) * .4); aspect-ratio: 1; background: url('/assets/hero-moon.svg') center / contain no-repeat; filter: drop-shadow(0 0 18px rgba(244, 246, 237, .35)); pointer-events: none; }
+.hero-logo-circle { grid-row: 1; grid-column: 1; align-self: center; justify-self: center; z-index: 1; width: calc(var(--hero-logo-w) * .32); aspect-ratio: 1; border-radius: 50%; background: #ffffff; box-shadow: 0 0 24px rgba(255, 255, 255, 0.35); pointer-events: none; }
 .hero-stack { --hero-top: clamp(16px, 3.8vh, 34px); --hero-bottom: clamp(28px, 4.5vh, 48px); position: relative; z-index: 3; display: grid; grid-template-rows: auto minmax(8px, clamp(0px, 20vw, 200px)) auto; align-content: start; justify-items: center; height: var(--screen-h); padding: var(--hero-top) 24px var(--hero-bottom); }
 .hero-logo-shell { grid-row: 1; display: grid; transform-origin: 50% 20%; }
 .hero-card-shell { grid-row: 3; position: relative; z-index: 5; display: grid; justify-items: center; width: 100%; }
@@ -58,7 +58,7 @@ a { color: inherit; text-decoration: none; }
 .hero-front-cloud-left { left: -9vw; }
 .hero-front-cloud-right { right: -9vw; bottom: 30dvh; width: clamp(180px, 26vw, 460px); transform: scaleX(-1); }
 .hero-logo { grid-row: 1; grid-column: 1; position: relative; z-index: 1; display: block; width: var(--hero-logo-w); height: auto; margin: 0; object-fit: contain; clip-path: inset(15% 0); filter: drop-shadow(0 8px 0 rgba(0,31,58,.18)); }
-.partners-moon { position: absolute; z-index: 0; top: calc(var(--divider-h) * .8 + 8px); right: max(28px, calc(50% - 600px)); width: clamp(84px, min(11vw, 15dvh), 140px); opacity: 1; filter: drop-shadow(0 0 18px rgba(244,246,237,.4)); transform: rotate(-8deg); pointer-events: none; --fx-from: .06; --fx-to: .42; animation-name: moon-arc; }
+.partners-moon { position: absolute; z-index: 0; top: calc(var(--divider-h) * .8 + 8px); right: max(28px, calc(50% - 600px)); width: clamp(84px, min(11vw, 15dvh), 140px); opacity: 1; filter: brightness(1.08) drop-shadow(0 0 18px rgba(244,246,237,.62)); transform: rotate(-8deg); pointer-events: none; --fx-from: .06; --fx-to: .42; animation-name: moon-arc; }
 .section-stars { position: absolute; z-index: 0; inset: 0; overflow: hidden; pointer-events: none; transform: translate3d(calc(var(--star-pointer-x, 0) * -4px), calc(var(--star-pointer-y, 0) * -3px), 0); transition: transform .6s cubic-bezier(.2, .8, .2, 1); }
 .intro-stars { z-index: 1; height: 30%; }
 .section-star { position: absolute; top: var(--star-y); left: var(--star-x); width: var(--star-size); height: var(--star-size); opacity: .72; filter: drop-shadow(0 0 5px rgba(244,246,237,.8)); }
