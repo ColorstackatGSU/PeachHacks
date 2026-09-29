@@ -1,41 +1,12 @@
 <svg width="118" height="118" viewBox="0 0 118 118" fill="none" xmlns="http://www.w3.org/2000/svg">
-<defs>
-<clipPath id="moon-disc"><circle cx="59" cy="59" r="46"/></clipPath>
-<radialGradient id="moon-glow" cx="59" cy="59" r="59" gradientUnits="userSpaceOnUse"><stop offset=".74" stop-color="#F4F6ED" stop-opacity=".3"/><stop offset=".86" stop-color="#F4F6ED" stop-opacity=".1"/><stop offset="1" stop-color="#F4F6ED" stop-opacity="0"/></radialGradient>
-</defs>
-<!-- glow -->
-<circle cx="59" cy="59" r="59" fill="url(#moon-glow)"/>
-<g clip-path="url(#moon-disc)">
-<!-- shaded limb (light from upper left) -->
-<rect x="13" y="13" width="92" height="92" fill="#BCCDD3"/>
-<circle cx="55" cy="55" r="47" fill="#DDE6E3"/>
-<circle cx="52" cy="52" r="45" fill="#F4F6ED"/>
-<!-- maria -->
-<g fill="#A9BFC7" opacity=".45">
-<path d="M34 40c4-9 15-12 22-8 6 3 5 11-1 14-5 3-4 9-11 10-8 1-13-8-10-16z"/>
-<path d="M60 58c5-5 14-4 18 1 4 6 1 13-6 15-6 2-9 7-15 5-6-3-3-15 3-21z"/>
-<ellipse cx="68" cy="34" rx="9" ry="6.5" transform="rotate(-20 68 34)"/>
-<ellipse cx="46" cy="72" rx="6" ry="4.5" transform="rotate(25 46 72)"/>
-</g>
-<!-- craters: light rim offset down-right, darker bowl on top -->
-<g>
-<ellipse cx="37.5" cy="85.5" rx="7.5" ry="6.5" fill="#FFFFFF" opacity=".85"/>
-<ellipse cx="36.5" cy="84.5" rx="7" ry="6" fill="#B3C7CE"/>
-<ellipse cx="79" cy="47" rx="6" ry="5.2" fill="#FFFFFF" opacity=".85"/>
-<ellipse cx="78" cy="46" rx="5.6" ry="4.8" fill="#B3C7CE"/>
-<ellipse cx="29" cy="58" rx="4.4" ry="3.8" fill="#FFFFFF" opacity=".85"/>
-<ellipse cx="28.2" cy="57.2" rx="4" ry="3.4" fill="#BCCDD3"/>
-<ellipse cx="85" cy="76" rx="4.8" ry="4" fill="#FFFFFF" opacity=".6"/>
-<ellipse cx="84.2" cy="75.2" rx="4.4" ry="3.6" fill="#BFD0D5"/>
-<ellipse cx="50.8" cy="24.8" rx="3.4" ry="2.8" fill="#FFFFFF" opacity=".85"/>
-<ellipse cx="50.2" cy="24.2" rx="3" ry="2.4" fill="#BCCDD3"/>
-<ellipse cx="62.6" cy="89.6" rx="3" ry="2.6" fill="#FFFFFF" opacity=".7"/>
-<ellipse cx="62" cy="89" rx="2.6" ry="2.2" fill="#BCCDD3"/>
-<ellipse cx="41" cy="49" rx="2.2" ry="1.9" fill="#FFFFFF" opacity=".8"/>
-<ellipse cx="40.5" cy="48.5" rx="1.9" ry="1.6" fill="#BCCDD3"/>
-<ellipse cx="94" cy="58" rx="2.2" ry="2.8" fill="#BFD0D5"/>
-<ellipse cx="68" cy="68" rx="2" ry="1.7" fill="#BCCDD3"/>
-<ellipse cx="24" cy="72" rx="1.6" ry="1.4" fill="#C9D8DC"/>
-</g>
-</g>
+<circle cx="59" cy="59" r="59" fill="#F4F6ED"/>
+<ellipse cx="30.2489" cy="85.2098" rx="9.13186" ry="11.3158" transform="rotate(-8.7742 30.2489 85.2098)" fill="#DEE0DB"/>
+<ellipse cx="47.5" cy="102.681" rx="5.31759" ry="8.31629" transform="rotate(-73.1636 47.5 102.681)" fill="#DEE0DB"/>
+<ellipse cx="90.8974" cy="91.1269" rx="2.21911" ry="3.50081" transform="rotate(-142.269 90.8974 91.1269)" fill="#DEE0DB"/>
+<ellipse cx="98.8974" cy="74.1269" rx="2.21911" ry="3.50081" transform="rotate(-162.952 98.8974 74.1269)" fill="#DEE0DB"/>
+<ellipse cx="10.3355" cy="67.5741" rx="2.21911" ry="3.50081" transform="rotate(167.451 10.3355 67.5741)" fill="#DEE0DB"/>
+<ellipse cx="18.6772" cy="45.1099" rx="8.15926" ry="6.41416" transform="rotate(106.268 18.6772 45.1099)" fill="#DEE0DB"/>
+<ellipse cx="33.4517" cy="20.407" rx="3.69962" ry="2.56636" transform="rotate(136.629 33.4517 20.407)" fill="#DEE0DB"/>
+<ellipse cx="91" cy="54" rx="8" ry="10" fill="#DEE0DB"/>
+<ellipse cx="76.5193" cy="37.3602" rx="10" ry="11" transform="rotate(-8.51964 76.5193 37.3602)" fill="#DEE0DB"/>
 </svg>
