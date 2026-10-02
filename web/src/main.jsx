@@ -194,7 +194,19 @@ function App() {
             <a href="#details">Sponsors</a>
             <a href="mailto:hello@peachhacks.org">Contact</a>
           </nav>
+          <div className="footer-social-grid" aria-label="Social media links">
+            <a href="https://www.instagram.com/colorstackatgsu?stkn=aW5qMTlzYTJxZ2Rk" >
+              <img src="/assets/instagram_logo.png" alt="ColorStack At GSU Instagram Link" />
+            </a>
+            <a href="https://www.linkedin.com/company/colorstack-gsu/posts/?feedView=all" >
+              <img src="/assets/linkedin_logo.png" alt="ColorStack At GSU LinkedIn Link" />
+            </a>
+            <a href="https://discord.gg/s5TjpBYW4B" >
+              <img src="/assets/discord_logo.png" alt="ColorStack At GSU Discord Link" />
+            </a>
+          </div>
         </div>
+        
       </footer>
     </main>
   );

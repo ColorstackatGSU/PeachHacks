@@ -125,6 +125,8 @@ a { color: inherit; text-decoration: none; }
 .partners-section h2 { margin-bottom: 24px; }
 .site-footer-content { position: absolute; z-index: 2; top: 50%; left: 50%; display: grid; justify-items: center; gap: 8px; width: min(100%, 720px); transform: translate(-50%, -50%); }
 .site-footer p { margin: 0; color: var(--cream); font-size: 15px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+.footer-social-grid { display: grid; grid-template-columns: repeat(3, 36px); gap: 14px; align-items: center; justify-content: center; }
+.footer-social-grid img { display: block; width: 30px; height: 30px; object-fit: contain; border-radius: 30%; }
 .footer-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px 24px; color: var(--cream); font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
 .footer-links a:hover { color: var(--peach); transform: none; }
 .site-footer .footer-note { color: var(--cream); font-size: 11px; font-weight: 600; letter-spacing: .04em; line-height: 1.5; text-transform: none; }
