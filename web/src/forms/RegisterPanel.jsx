@@ -108,7 +108,7 @@ export default function RegisterPanel({ titleId, onClose, onDone }) {
       title="Register"
       titleId={titleId}
       headingRef={headingRef}
-      intro="Registration for PeachHacks is open. The first part is required and takes a couple of minutes; the rest is optional."
+      intro={'Registration for PeachHacks is open. Fields marked with * are required.'}
       panel
     >
       <RegisterForm titleId={titleId} onSuccess={handleSuccess} onClosed={handleClosed} />
