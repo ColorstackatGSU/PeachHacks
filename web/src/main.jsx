@@ -120,8 +120,6 @@ const TAG_MAX_TILT = 6;
 const TOW_ANGLE = (26 * Math.PI) / 180;
 const TAG_TOW_SPRING = { type: 'spring', stiffness: 120, damping: 13 };
 const TAG_PEEK = 72;
-const TAG_TAIL = 76;
-const TAG_TAIL_TUCK = 12;
 const TAG_OFFSCREEN = 120;
 const TAG_RELEASE_OFFSET = 80;
 const TAG_RELEASE_VELOCITY = 400;
@@ -149,12 +147,15 @@ function HeroTag({ registerButtonRef, tagCloseRef }) {
   const x = useMotionValue(0);
   const y = useMotionValue(0);
   const tilt = useSpring(useTransform(useVelocity(x), [-600, 600], [-TAG_MAX_TILT, TAG_MAX_TILT]), { stiffness: 180, damping: 12 });
+  const ropeTie = useRef(0);
+  const tied = useMotionValue(0);
   const towTransform = useTransform(() => {
     const reach = window.innerWidth * 0.5;
     const restX = -reach * Math.cos(TOW_ANGLE);
     const restY = -reach * Math.sin(TOW_ANGLE);
-    const towX = restX - x.get();
-    const towY = restY - y.get();
+    const blend = tied.get();
+    const towX = restX + (ropeTie.current - restX) * blend - x.get();
+    const towY = restY * (1 - blend) - y.get();
     let bend = ((Math.atan2(towY, towX) - Math.atan2(restY, restX)) * 180) / Math.PI;
     if (bend > 180) bend -= 360;
     if (bend < -180) bend += 360;
@@ -167,17 +168,22 @@ function HeroTag({ registerButtonRef, tagCloseRef }) {
     if (add) tagRef.current?.classList.add(add);
   };
 
-  // Parked, the tag's tail tucks under the right edge of the sign-up panel so
-  // the two read as one piece. offsetLeft/offsetWidth ignore the panel's
-  // opening transform, which getBoundingClientRect would not.
-  const parkedX = useCallback(() => {
+  // Parked, a strip of the tag stays on screen at the right edge of the hero.
+  const restLeft = () => {
     const tag = tagRef.current;
-    const restLeft = tag.offsetParent.getBoundingClientRect().left + tag.offsetLeft + tag.firstElementChild.offsetLeft;
-    const edge = tag.closest('.intro').getBoundingClientRect().right;
-    if (isSheet()) return edge + TAG_OFFSCREEN - restLeft;
+    return tag.offsetParent.getBoundingClientRect().left + tag.offsetLeft + tag.firstElementChild.offsetLeft;
+  };
+  const parkedX = useCallback(() => {
+    const edge = tagRef.current.closest('.intro').getBoundingClientRect().right;
+    return (isSheet() ? edge + TAG_OFFSCREEN : edge - TAG_PEEK) - restLeft();
+  }, []);
+
+  // While the panel is open the rope ties to its right edge instead of
+  // running off to the left. offsetLeft/offsetWidth ignore the panel's
+  // opening transform, which getBoundingClientRect would not.
+  const tieRopeToPanel = useCallback(() => {
     const panel = document.querySelector('.register-panel');
-    if (!panel) return edge - TAG_PEEK - restLeft;
-    return panel.offsetLeft + panel.offsetWidth + TAG_TAIL - TAG_TAIL_TUCK - restLeft;
+    if (panel) ropeTie.current = panel.offsetLeft + panel.offsetWidth - restLeft();
   }, []);
 
   // The tag drives itself with the motion values the drag uses, so the tow
@@ -205,12 +211,20 @@ function HeroTag({ registerButtonRef, tagCloseRef }) {
     const first = !settled.current;
     settled.current = true;
     if (first && !parked) return undefined;
-    towTo(parked ? parkedX() : 0, reduceMotion || (first && openedOnLoad));
+    const instant = reduceMotion || (first && openedOnLoad);
+    const tie = parked && !sheet ? 1 : 0;
+    if (tie) tieRopeToPanel();
+    if (instant) tied.jump(tie);
+    else animateSingleValue(tied, tie, TAG_TOW_SPRING);
+    towTo(parked ? parkedX() : 0, instant);
     if (!parked) return undefined;
-    const onResize = () => towTo(parkedX(), true);
+    const onResize = () => {
+      tieRopeToPanel();
+      towTo(parkedX(), true);
+    };
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
-  }, [parked, sheet, reduceMotion, parkedX, towTo]);
+  }, [parked, sheet, reduceMotion, parkedX, towTo, tieRopeToPanel, tied]);
 
   return (
     <motion.div
