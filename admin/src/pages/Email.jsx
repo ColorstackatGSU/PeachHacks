@@ -11,7 +11,7 @@ export const REGISTRATION_OPEN_TEMPLATE = {
   body: [
     "Hi {{firstName}},",
     "You pre-registered for PeachHacks, and we promised you would be the first to know: registration is now open.",
-    `Complete your registration here:\n${WEB_BASE}/register`,
+    `Complete your registration here:\n${WEB_BASE}/#register`,
     "It only takes a few minutes. Pre-registering does not hold a spot on its own, so please finish the full registration to be considered.",
     "See you in Atlanta,\nThe PeachHacks team",
   ].join("\n\n"),
