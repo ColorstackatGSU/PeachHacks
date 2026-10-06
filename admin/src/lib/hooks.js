@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api } from "../api/client.js";
+import { api, onAcceptanceChange } from "../api/client.js";
 
 // Refetches when `fn` changes identity, so wrap it in useCallback. Stale data stays
 // visible during a refresh; aborted or superseded requests never touch state.
@@ -51,6 +51,29 @@ const loadStats = (signal) => api.stats(signal);
 
 export function useStats() {
   return useAsync(loadStats);
+}
+
+const loadAcceptanceSummary = (signal) => api.acceptanceSummary(signal);
+
+// Refetches after every change made from this browser, every few seconds while a send
+// is running, and slowly otherwise so another organizer's changes show up too.
+export function useAcceptanceSummary() {
+  const result = useAsync(loadAcceptanceSummary);
+  const reload = result.reload;
+  const sending = result.data?.send?.state === "SENDING";
+
+  useEffect(() => onAcceptanceChange(reload), [reload]);
+  useEffect(() => {
+    const timer = window.setInterval(
+      () => {
+        if (!document.hidden) reload();
+      },
+      sending ? 2000 : 15000,
+    );
+    return () => window.clearInterval(timer);
+  }, [sending, reload]);
+
+  return result;
 }
 
 // School names for filter dropdowns, taken from the stats breakdown so the

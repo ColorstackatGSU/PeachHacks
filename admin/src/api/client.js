@@ -167,6 +167,21 @@ function stamp() {
   return new Date().toISOString().slice(0, 10);
 }
 
+// Screens that show acceptance numbers subscribe here, and every call that can move
+// those numbers reports through `changing`, so they refresh wherever the change was made.
+const acceptanceListeners = new Set();
+
+export function onAcceptanceChange(listener) {
+  acceptanceListeners.add(listener);
+  return () => acceptanceListeners.delete(listener);
+}
+
+async function changing(request) {
+  const result = await request;
+  acceptanceListeners.forEach((listener) => listener());
+  return result;
+}
+
 export const ticketQrUrl = (token) => `${API_BASE}/public/tickets/${encodeURIComponent(token)}/qr.png`;
 
 export const api = {
@@ -187,11 +202,18 @@ export const api = {
   registrations: (query, signal) => json("GET", "/admin/registrations", { query, signal }),
   registration: (id, signal) => json("GET", `/admin/registrations/${encodeURIComponent(id)}`, { signal }),
   setRegistrationStatus: (id, status) =>
-    json("PATCH", `/admin/registrations/${encodeURIComponent(id)}`, { body: { status } }),
+    changing(json("PATCH", `/admin/registrations/${encodeURIComponent(id)}`, { body: { status } })),
+  setRegistrationStatuses: (ids, status) =>
+    changing(json("POST", "/admin/registrations/status", { body: { ids, status } })),
   exportRegistrations: (query) =>
     download("/admin/registrations/export.csv", query, `peachhacks-registrations-${stamp()}.csv`),
-  deleteRegistration: (id) => json("DELETE", `/admin/registrations/${encodeURIComponent(id)}`),
-  resendTicketEmail: (id) => json("POST", `/admin/registrations/${encodeURIComponent(id)}/ticket-email`),
+  deleteRegistration: (id) => changing(json("DELETE", `/admin/registrations/${encodeURIComponent(id)}`)),
+  // Tells someone still in the acceptance bucket now; resends for someone already told.
+  sendTicketEmail: (id) => changing(json("POST", `/admin/registrations/${encodeURIComponent(id)}/ticket-email`)),
+
+  acceptanceSummary: (signal) => json("GET", "/admin/acceptances/summary", { signal }),
+  acceptancesWaiting: (signal) => json("GET", "/admin/acceptances/waiting", { signal }),
+  sendAcceptanceEmails: () => changing(json("POST", "/admin/acceptances/send")),
   resendSchoolEmail: (id) => json("POST", `/admin/registrations/${encodeURIComponent(id)}/school-email/resend`),
   downloadResume: (id) => download(`/admin/registrations/${encodeURIComponent(id)}/resume`, null, "resume.pdf"),
   deleteResume: (id) => json("DELETE", `/admin/registrations/${encodeURIComponent(id)}/resume`),
@@ -214,8 +236,9 @@ export const api = {
     download(`/admin/events/${encodeURIComponent(id)}/export.csv`, null, `peachhacks-attendees-${stamp()}.csv`),
 
   checkInList: (query, signal) => json("GET", "/admin/check-in", { query, signal }),
-  checkIn: (id, eventId) => json("POST", `/admin/check-in/${encodeURIComponent(id)}`, { query: { eventId } }),
-  undoCheckIn: (id, eventId) => json("DELETE", `/admin/check-in/${encodeURIComponent(id)}`, { query: { eventId } }),
+  checkIn: (id, eventId) => changing(json("POST", `/admin/check-in/${encodeURIComponent(id)}`, { query: { eventId } })),
+  undoCheckIn: (id, eventId) =>
+    changing(json("DELETE", `/admin/check-in/${encodeURIComponent(id)}`, { query: { eventId } })),
   scanTicket: ({ code, eventId, override = false }) =>
     json("POST", "/admin/check-in/scan", { body: { code, eventId: eventId || null, override } }),
 

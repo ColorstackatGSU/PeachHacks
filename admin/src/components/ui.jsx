@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
+import { isAccepted, isNotified } from "../lib/acceptance.js";
 import { errorText, formatNumber, statusLabel } from "../lib/format.js";
 
 export function Spinner({ label = "Loading" }) {
@@ -61,6 +62,17 @@ export function InlineError({ error, children }) {
 
 export function StatusBadge({ status }) {
   return <span className={`badge badge-${String(status).toLowerCase()}`}>{statusLabel(status)}</span>;
+}
+
+// Accepted people are either still in the acceptance bucket or already emailed.
+export function AcceptanceBadge({ item }) {
+  if (!isAccepted(item)) return <StatusBadge status={item.status} />;
+  return (
+    <span className="tag-row">
+      <StatusBadge status={item.status} />
+      {isNotified(item) ? <Tag tone="accepted">Told</Tag> : <Tag tone="waitlisted">Not told yet</Tag>}
+    </span>
+  );
 }
 
 export function Tag({ tone = "neutral", children }) {

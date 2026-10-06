@@ -9,6 +9,7 @@ export const NAV = [
   { path: "/", label: "Overview" },
   { path: "/pre-registrations", label: "Pre-registrations" },
   { path: "/registrations", label: "Registrations" },
+  { path: "/acceptances", label: "Acceptances" },
   { path: CHECK_IN_PATH, label: "Check-in", volunteer: true },
   { path: "/email", label: "Email" },
   { path: "/settings", label: "Settings" },

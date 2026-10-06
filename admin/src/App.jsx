@@ -4,6 +4,7 @@ import { CHECK_IN_PATH, Layout, NAV } from "./components/Layout.jsx";
 import { EmptyBlock, ErrorBlock, LoadingBlock, ToastProvider } from "./components/ui.jsx";
 import { isVolunteer } from "./lib/format.js";
 import { href, navigate, useRoute } from "./lib/router.js";
+import Acceptances from "./pages/Acceptances.jsx";
 import CheckIn from "./pages/CheckIn.jsx";
 import Email from "./pages/Email.jsx";
 import Overview from "./pages/Overview.jsx";
@@ -109,6 +110,9 @@ export default function App() {
       break;
     case "/registrations":
       page = <Registrations />;
+      break;
+    case "/acceptances":
+      page = <Acceptances />;
       break;
     case "/email":
       page = <Email admin={session.admin} query={route.query} />;

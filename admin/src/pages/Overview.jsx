@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { BarList, DayChart, dayRange } from "../components/Charts.jsx";
+import { ShareBar } from "../components/HostShare.jsx";
 import { ErrorBlock, LoadingBlock, PageHeader, Spinner } from "../components/ui.jsx";
+import { formatShare, formatTarget, gapText } from "../lib/acceptance.js";
 import { formatNumber, statusLabel } from "../lib/format.js";
-import { useStats } from "../lib/hooks.js";
+import { useAcceptanceSummary, useStats } from "../lib/hooks.js";
 import { href } from "../lib/router.js";
 
 function StatTile({ label, value, note, to }) {
@@ -20,8 +22,29 @@ function StatTile({ label, value, note, to }) {
   );
 }
 
+function HostShareTile({ summary }) {
+  const share = summary.shares.accepted;
+  const state = share.total === 0 ? "is-empty" : share.met ? "is-met" : "is-short";
+  return (
+    <div className={`tile share-tile ${state}`}>
+      <span className="tile-label">Host-school share</span>
+      <strong className="tile-value">{formatShare(share.share)}</strong>
+      <ShareBar share={share} target={summary.hostSchool.target} />
+      <span className="tile-note">
+        {share.total === 0
+          ? `Of accepted hackers. Target ${formatTarget(summary.hostSchool.target)}`
+          : `${gapText(share, summary.hostSchool.name)}. Target ${formatTarget(summary.hostSchool.target)} of accepted hackers`}
+      </span>
+      <a className="tile-link" href={href("/acceptances")}>
+        Open acceptances
+      </a>
+    </div>
+  );
+}
+
 export default function Overview() {
   const stats = useStats();
+  const acceptance = useAcceptanceSummary();
   const [mode, setMode] = useState("daily");
   const data = stats.data;
 
@@ -78,6 +101,7 @@ export default function Overview() {
       <section className="tiles" aria-label="Headline numbers">
         <StatTile label="Pre-registrations" value={preTotal} note={confirmedNote(pre, preTotal)} to="/pre-registrations" />
         <StatTile label="Registrations" value={regTotal} note={confirmedNote(reg, regTotal)} to="/registrations" />
+        {acceptance.data && <HostShareTile summary={acceptance.data} />}
         <StatTile
           label="Pre-registered, not registered"
           value={notRegistered}

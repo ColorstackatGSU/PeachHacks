@@ -1,6 +1,8 @@
 // Loaded only by the dev server when VITE_MOCK_API=1 (see client.js); never part
 // of a production build. Data resets on every page reload.
 
+import { hostShare, isHostSchool } from "../lib/acceptance.js";
+
 const DAY = 86400000;
 const now = Date.now();
 
@@ -21,8 +23,10 @@ const uuid = () => {
   return `00000000-0000-4000-8000-${String(idCounter).padStart(12, "0")}`;
 };
 
+const HOST_SCHOOL = { name: "Georgia State University", target: 0.7 };
 const SCHOOLS = [
   "Georgia State University",
+  "Georgia State University Perimeter College",
   "Georgia Institute of Technology",
   "Kennesaw State University",
   "University of Georgia",
@@ -83,9 +87,17 @@ function confirmation(base, createdAt) {
   };
 }
 
+// Most accepted people have been told; the rest are waiting in the acceptance bucket.
+function acceptance(status, createdAt) {
+  if (status !== "ACCEPTED") return { acceptedAt: null, acceptanceNotifiedAt: null };
+  const acceptedAt = new Date(Math.min(now, Date.parse(createdAt) + DAY)).toISOString();
+  return { acceptedAt, acceptanceNotifiedAt: rand() > 0.35 ? acceptedAt : null };
+}
+
 function makeRegistration(base, createdAt) {
   const veg = rand();
   const resumeRoll = rand();
+  const status = pick(STATUSES);
   return {
     id: uuid(),
     firstName: base.firstName,
@@ -122,7 +134,8 @@ function makeRegistration(base, createdAt) {
     majorFieldOfStudy: pickSkewed(MAJORS),
     majorOther: null,
     linkedinUrl: rand() > 0.5 ? `https://www.linkedin.com/in/${base.email.split("@")[0].replace(/\./g, "-")}` : null,
-    status: pick(STATUSES),
+    status,
+    ...acceptance(status, createdAt),
     ticketToken: `mockticket${String(idCounter).padStart(12, "0")}`,
     resume: resumeRoll > 0.45
       ? { fileName: `${base.firstName}_${base.lastName}_Resume.pdf`, size: 60000 + Math.floor(rand() * 900000), uploadedAt: createdAt }
@@ -304,10 +317,10 @@ function withRegistered(list) {
 }
 
 function summary(r) {
-  const { id, firstName, lastName, email, schoolEmail, schoolEmailConfirmed, schoolEmailConfirmedAt, school, levelOfStudy, countryOfResidence, age, status, createdAt } = r;
+  const { id, firstName, lastName, email, schoolEmail, schoolEmailConfirmed, schoolEmailConfirmedAt, school, levelOfStudy, countryOfResidence, age, status, acceptedAt, acceptanceNotifiedAt, createdAt } = r;
   const checkedInAt = findCheckIn(id, generalEvent.id)?.checkedInAt || null;
   return {
-    id, firstName, lastName, email, schoolEmail, schoolEmailConfirmed, schoolEmailConfirmedAt, school, levelOfStudy, countryOfResidence, age, status, createdAt, checkedInAt,
+    id, firstName, lastName, email, schoolEmail, schoolEmailConfirmed, schoolEmailConfirmedAt, school, levelOfStudy, countryOfResidence, age, status, acceptedAt, acceptanceNotifiedAt, createdAt, checkedInAt,
     hasResume: Boolean(r.resume),
     resumeOptIn: Boolean(r.resume && r.resumeOptIn),
   };
@@ -354,6 +367,75 @@ function tickCampaigns() {
       c.completedAt = new Date().toISOString();
     }
   });
+}
+
+const VALID_STATUSES = ["PENDING", "ACCEPTED", "WAITLISTED", "REJECTED"];
+
+// Same rule as the API: a change of status starts the acceptance over.
+function changeStatus(r, status) {
+  if (r.status === status) return false;
+  r.status = status;
+  r.acceptedAt = status === "ACCEPTED" ? new Date().toISOString() : null;
+  r.acceptanceNotifiedAt = null;
+  return true;
+}
+
+const isWaiting = (r) => r.status === "ACCEPTED" && !r.acceptanceNotifiedAt;
+const isHost = (r) => isHostSchool(r.school, HOST_SCHOOL.name);
+const shareOf = (list) => hostShare(list.filter(isHost).length, list.length, HOST_SCHOOL.target);
+
+let acceptanceSend = { state: "IDLE", queued: 0, sent: 0, failed: 0, skipped: 0, startedAt: null, finishedAt: null, startedBy: null };
+let sendQueue = [];
+
+// A send advances on a clock, about three people a second, so progress can be watched.
+function tickAcceptanceSend() {
+  if (acceptanceSend.state !== "SENDING") return;
+  const due = Math.min(sendQueue.length, Math.floor((Date.now() - Date.parse(acceptanceSend.startedAt)) / 350));
+  let { sent, skipped } = acceptanceSend;
+  for (let i = sent + skipped; i < due; i += 1) {
+    const r = registrations.find((reg) => reg.id === sendQueue[i]);
+    if (r && isWaiting(r)) {
+      r.acceptanceNotifiedAt = new Date().toISOString();
+      sent += 1;
+    } else {
+      skipped += 1;
+    }
+  }
+  const finished = sent + skipped >= sendQueue.length;
+  acceptanceSend = {
+    ...acceptanceSend,
+    sent,
+    skipped,
+    state: finished ? "IDLE" : "SENDING",
+    finishedAt: finished ? new Date().toISOString() : null,
+  };
+}
+
+function acceptanceSummary() {
+  const accepted = registrations.filter((r) => r.status === "ACCEPTED");
+  const count = (status) => registrations.filter((r) => r.status === status).length;
+  const waiting = accepted.filter(isWaiting).length;
+  return {
+    totals: {
+      registrations: registrations.length,
+      accepted: accepted.length,
+      acceptedNotified: accepted.length - waiting,
+      acceptedWaiting: waiting,
+      pending: count("PENDING"),
+      waitlisted: count("WAITLISTED"),
+      rejected: count("REJECTED"),
+      acceptanceRate: registrations.length > 0 ? accepted.length / registrations.length : null,
+    },
+    hostSchool: HOST_SCHOOL,
+    shares: {
+      accepted: shareOf(accepted),
+      registrations: shareOf(registrations),
+      pending: shareOf(registrations.filter((r) => r.status === "PENDING")),
+      checkedIn: shareOf(registrations.filter((r) => findCheckIn(r.id, generalEvent.id))),
+    },
+    acceptedBySchool: bySchool(accepted).map((row) => ({ ...row, host: isHostSchool(row.school, HOST_SCHOOL.name) })),
+    send: acceptanceSend,
+  };
 }
 
 function handle(method, path, params, body, token) {
@@ -549,7 +631,45 @@ function handle(method, path, params, body, token) {
     const r = registrations.find((reg) => reg.id === ticketEmail[1]);
     if (!r) return fail(404, "NOT_FOUND", "Registration not found.");
     if (r.status !== "ACCEPTED") return fail(400, "VALIDATION_ERROR", "Only accepted registrations have a ticket to send.");
+    if (!r.acceptanceNotifiedAt) r.acceptanceNotifiedAt = new Date().toISOString();
     return respond(204);
+  }
+
+  if (path === "/admin/registrations/status" && method === "POST") {
+    const ids = [...new Set(Array.isArray(body.ids) ? body.ids : [])];
+    if (ids.length === 0) return fail(400, "VALIDATION_ERROR", "Please check the highlighted fields.", { ids: "Choose at least one registration" });
+    if (ids.length > 500) return fail(400, "VALIDATION_ERROR", "Please check the highlighted fields.", { ids: "At most 500 registrations at a time" });
+    if (!VALID_STATUSES.includes(body.status)) return fail(400, "VALIDATION_ERROR", "Invalid status.", { status: "Unknown status" });
+    const found = registrations.filter((r) => ids.includes(r.id));
+    const changed = found.filter((r) => changeStatus(r, body.status)).length;
+    return respond(200, { changed, unchanged: found.length - changed, notFound: ids.length - found.length });
+  }
+
+  if (path === "/admin/acceptances/summary") {
+    tickAcceptanceSend();
+    return respond(200, acceptanceSummary());
+  }
+  if (path === "/admin/acceptances/waiting") {
+    tickAcceptanceSend();
+    return respond(
+      200,
+      registrations
+        .filter(isWaiting)
+        .sort((a, b) => (a.acceptedAt < b.acceptedAt ? -1 : 1))
+        .map((r) => ({ id: r.id, firstName: r.firstName, lastName: r.lastName, email: r.email, school: r.school, host: isHost(r), acceptedAt: r.acceptedAt })),
+    );
+  }
+  if (path === "/admin/acceptances/send") {
+    tickAcceptanceSend();
+    if (method !== "POST") return respond(200, acceptanceSend);
+    if (acceptanceSend.state === "SENDING") {
+      return fail(409, "ACCEPTANCE_SEND_RUNNING", "Acceptance emails are already being sent. Wait for that to finish.");
+    }
+    const ids = registrations.filter(isWaiting).map((r) => r.id);
+    if (ids.length === 0) return respond(200, { queued: 0, send: acceptanceSend });
+    sendQueue = ids;
+    acceptanceSend = { state: "SENDING", queued: ids.length, sent: 0, failed: 0, skipped: 0, startedAt: new Date().toISOString(), finishedAt: null, startedBy: currentAdmin.email };
+    return respond(202, { queued: ids.length, send: acceptanceSend });
   }
 
   const resumeMatch = /^\/admin\/registrations\/([^/]+)\/resume$/.exec(path);
@@ -580,10 +700,10 @@ function handle(method, path, params, body, token) {
     if (index < 0) return fail(404, "NOT_FOUND", "Registration not found.");
     if (method === "GET") return respond(200, detail(registrations[index]));
     if (method === "PATCH") {
-      if (!["PENDING", "ACCEPTED", "WAITLISTED", "REJECTED"].includes(body.status)) {
+      if (!VALID_STATUSES.includes(body.status)) {
         return fail(400, "VALIDATION_ERROR", "Invalid status.", { status: "Unknown status" });
       }
-      registrations[index] = { ...registrations[index], status: body.status };
+      changeStatus(registrations[index], body.status);
       return respond(200, detail(registrations[index]));
     }
     if (method === "DELETE") {

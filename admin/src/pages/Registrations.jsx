@@ -1,17 +1,19 @@
-import { useCallback, useId, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { MOCK_MODE, api, ticketQrUrl } from "../api/client.js";
+import { ShareStrip } from "../components/HostShare.jsx";
 import { ConfirmDialog, Modal } from "../components/Modal.jsx";
 import {
+  AcceptanceBadge,
   EmptyBlock,
   ErrorBlock,
   InlineError,
   LoadingBlock,
   PageHeader,
   Pagination,
-  StatusBadge,
   Tag,
   useToast,
 } from "../components/ui.jsx";
+import { formatShare, formatTarget, gapText, isNotified, projectAcceptedShare } from "../lib/acceptance.js";
 import {
   STATUSES,
   errorText,
@@ -22,22 +24,23 @@ import {
   plural,
   statusLabel,
 } from "../lib/format.js";
-import { schoolOptions, useAsync, useDebounced, useStats } from "../lib/hooks.js";
+import { schoolOptions, useAcceptanceSummary, useAsync, useDebounced, useStats } from "../lib/hooks.js";
 
 const PAGE_SIZE = 25;
+// The bulk endpoint takes at most this many ids in one call.
+const BULK_LIMIT = 500;
+const BULK_ACTIONS = [
+  { status: "ACCEPTED", label: "Accept" },
+  { status: "WAITLISTED", label: "Waitlist" },
+  { status: "REJECTED", label: "Reject" },
+  { status: "PENDING", label: "Move to pending" },
+];
 
 const present = (value) => value !== null && value !== undefined && String(value).trim() !== "";
 const yesNo = (value) => (value === true ? "Yes" : value === false ? "No" : null);
 const list = (value) => (Array.isArray(value) && value.length > 0 ? value.join(", ") : null);
 // Choice fields can carry a free-text companion ("Prefer to self-describe" + text).
 const withOther = (value, other) => [value, other].filter(present).join(": ") || null;
-
-function addressLines(address) {
-  if (!address) return null;
-  const cityLine = [address.city, address.state, address.postalCode].filter(present).join(", ");
-  const lines = [address.line1, address.line2, cityLine, address.country].filter(present);
-  return lines.length > 0 ? lines : null;
-}
 
 function safeUrl(value) {
   if (!present(value)) return null;
@@ -69,7 +72,6 @@ function Group({ title, children }) {
 }
 
 function RegistrationDetail({ reg }) {
-  const address = addressLines(reg.shippingAddress);
   const linkedin = safeUrl(reg.linkedinUrl);
   return (
     <>
@@ -108,15 +110,6 @@ function RegistrationDetail({ reg }) {
         <Row label="Dietary restrictions">{list(reg.dietaryRestrictions)}</Row>
         <Row label="Dietary details">{reg.dietaryDetails}</Row>
         <Row label="T-shirt size">{reg.tshirtSize}</Row>
-        <Row label="Shipping address">
-          {address
-            ? address.map((line, index) => (
-                <span key={index} className="line">
-                  {line}
-                </span>
-              ))
-            : null}
-        </Row>
       </Group>
       <Group title="Demographics (optional)">
         <Row label="Underrepresented group">{reg.underrepresentedGroup}</Row>
@@ -150,7 +143,7 @@ function RegistrationDetail({ reg }) {
   );
 }
 
-function TicketPanel({ reg }) {
+function TicketPanel({ reg, onSent }) {
   const notify = useToast();
   const [sending, setSending] = useState(false);
   const [error, setError] = useState(null);
@@ -160,18 +153,21 @@ function TicketPanel({ reg }) {
       <section className="ticket-panel" aria-label="Ticket">
         <span className="tile-label">Ticket</span>
         <p className="muted small">
-          No ticket yet. Marking this registration Accepted creates the ticket and emails it to the applicant.
+          No ticket yet. Marking this registration Accepted creates the ticket; it is emailed when the acceptance
+          emails are sent.
         </p>
       </section>
     );
   }
 
-  const resend = async () => {
+  const told = isNotified(reg);
+  const send = async () => {
     setSending(true);
     setError(null);
     try {
-      await api.resendTicketEmail(reg.id);
-      notify(`Ticket email sent to ${reg.email}.`);
+      await api.sendTicketEmail(reg.id);
+      notify(told ? `Ticket email sent to ${reg.email}.` : `Acceptance email sent to ${reg.email}.`);
+      if (!told) onSent();
     } catch (err) {
       setError(err);
     } finally {
@@ -181,7 +177,15 @@ function TicketPanel({ reg }) {
 
   return (
     <section className="ticket-panel" aria-label="Ticket">
-      <span className="tile-label">Ticket</span>
+      <div className="status-panel-head">
+        <span className="tile-label">Ticket</span>
+        {told ? <Tag tone="accepted">Told</Tag> : <Tag tone="waitlisted">Not told yet</Tag>}
+      </div>
+      <p className="muted small">
+        {told
+          ? `Acceptance email sent ${formatDateTime(reg.acceptanceNotifiedAt)}.`
+          : "Accepted and waiting in the acceptance bucket. They have not been emailed; the ticket already works."}
+      </p>
       <div className="ticket-body">
         {MOCK_MODE ? (
           <p className="ticket-qr ticket-qr-mock">QR preview needs the real API</p>
@@ -200,9 +204,10 @@ function TicketPanel({ reg }) {
           <p className="muted small">
             Google Wallet: {reg.googleWalletUrl ? "the ticket page and email offer “Add to Google Wallet”." : "not set up, so no wallet link is offered."}
           </p>
-          <button type="button" className="btn btn-small" disabled={sending} onClick={resend}>
-            {sending ? "Sending…" : "Resend ticket email"}
+          <button type="button" className="btn btn-small" disabled={sending} onClick={send}>
+            {sending ? "Sending…" : told ? "Resend ticket email" : "Send acceptance email now"}
           </button>
+          {!told && <p className="muted small">Sends only to this person, ahead of everyone else in the bucket.</p>}
           <InlineError error={error} />
         </div>
       </div>
@@ -434,7 +439,8 @@ function RegistrationDrawer({ id, fallbackName, onClose, onChanged, onDeleted })
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState(null);
-  const [accepting, setAccepting] = useState(false);
+  // A status that needs a confirmation before it is saved.
+  const [pendingStatus, setPendingStatus] = useState(null);
 
   // The PATCH response is the freshest copy of the record.
   const reg = updated || detail.data;
@@ -495,7 +501,7 @@ function RegistrationDrawer({ id, fallbackName, onClose, onChanged, onDeleted })
           <section className="status-panel" aria-label="Application status">
             <div className="status-panel-head">
               <span className="tile-label">Status</span>
-              <StatusBadge status={reg.status} />
+              <AcceptanceBadge item={reg} />
             </div>
             <div className="status-buttons" role="group" aria-label="Change status">
               {STATUSES.map((status) => (
@@ -505,15 +511,19 @@ function RegistrationDrawer({ id, fallbackName, onClose, onChanged, onDeleted })
                   className={`btn btn-small status-choice status-${status.toLowerCase()}`}
                   aria-pressed={reg.status === status}
                   disabled={Boolean(savingStatus)}
-                  onClick={() => (status === "ACCEPTED" && reg.status !== "ACCEPTED" ? setAccepting(true) : changeStatus(status))}
+                  onClick={() => {
+                    if (status === reg.status) return;
+                    if (status === "ACCEPTED" || isNotified(reg)) setPendingStatus(status);
+                    else changeStatus(status);
+                  }}
                 >
                   {savingStatus === status ? "Saving…" : statusLabel(status)}
                 </button>
               ))}
             </div>
             <p className="muted small">
-              Changing the status saves immediately. Accepting someone emails them their ticket; other changes send
-              nothing.
+              Changing the status saves immediately and sends nothing. An accepted person goes to the acceptance
+              bucket and is emailed when the acceptance emails are sent from the Acceptances screen.
             </p>
             {!reg.schoolEmailConfirmed && (
               <p className="notice notice-warn" role="note">
@@ -527,7 +537,13 @@ function RegistrationDrawer({ id, fallbackName, onClose, onChanged, onDeleted })
             <InlineError error={statusError} />
           </section>
           <SchoolEmailPanel reg={reg} />
-          <TicketPanel reg={reg} />
+          <TicketPanel
+            reg={reg}
+            onSent={() => {
+              setUpdated({ ...reg, acceptanceNotifiedAt: new Date().toISOString() });
+              onChanged();
+            }}
+          />
           <ResumePanel
             reg={reg}
             onRemoved={() => {
@@ -538,23 +554,42 @@ function RegistrationDrawer({ id, fallbackName, onClose, onChanged, onDeleted })
           <RegistrationDetail reg={reg} />
         </>
       )}
-      {accepting && reg && (
+      {pendingStatus === "ACCEPTED" && reg && (
         <ConfirmDialog
-          title="Accept and send the ticket?"
-          confirmLabel="Accept and email ticket"
+          title="Accept this person?"
+          confirmLabel="Accept"
           onConfirm={() => {
-            setAccepting(false);
+            setPendingStatus(null);
             changeStatus("ACCEPTED");
           }}
-          onCancel={() => setAccepting(false)}
+          onCancel={() => setPendingStatus(null)}
         >
           <p>
-            <strong>{fullName(reg)}</strong> will be marked accepted and emailed a “You’re in” message at {reg.email} with
-            their ticket QR code right away.
+            <strong>{fullName(reg)}</strong> will be marked accepted and added to the acceptance bucket. No email is sent
+            now: they hear when the acceptance emails are sent from the Acceptances screen.
           </p>
           {!reg.schoolEmailConfirmed && (
             <p className="notice notice-warn">Their school email is not confirmed. Accept only if you are satisfied they are a current student.</p>
           )}
+        </ConfirmDialog>
+      )}
+      {pendingStatus && pendingStatus !== "ACCEPTED" && reg && (
+        <ConfirmDialog
+          title="They have already been told"
+          confirmLabel={`Mark ${statusLabel(pendingStatus).toLowerCase()} anyway`}
+          danger
+          onConfirm={() => {
+            const status = pendingStatus;
+            setPendingStatus(null);
+            changeStatus(status);
+          }}
+          onCancel={() => setPendingStatus(null)}
+        >
+          <p>
+            <strong>{fullName(reg)}</strong> was emailed their acceptance and ticket on{" "}
+            {formatDateTime(reg.acceptanceNotifiedAt)}. Marking them {statusLabel(pendingStatus).toLowerCase()} stops the
+            ticket working, and nothing tells them: no email is sent.
+          </p>
         </ConfirmDialog>
       )}
       {confirming && reg && (
@@ -590,6 +625,12 @@ export default function Registrations() {
   const [exporting, setExporting] = useState(false);
   const [resumeBook, setResumeBook] = useState(false);
   const [open, setOpen] = useState(null);
+  // Selected rows by id, kept across pages and filters; each value is the row as last seen.
+  const [selected, setSelected] = useState(() => new Map());
+  const [bulkStatus, setBulkStatus] = useState(null);
+  const [bulkSaving, setBulkSaving] = useState(false);
+  const [bulkError, setBulkError] = useState(null);
+  const selectAllRef = useRef(null);
 
   const q = useDebounced(search.trim(), 300);
   const filters = useMemo(
@@ -599,10 +640,56 @@ export default function Registrations() {
   const load = useCallback((signal) => api.registrations({ page, size: PAGE_SIZE, ...filters }, signal), [page, filters]);
   const result = useAsync(load);
   const stats = useStats();
+  const acceptance = useAcceptanceSummary();
   const schools = schoolOptions(stats.data, "registrations");
 
-  const items = result.data?.items || [];
+  const items = useMemo(() => result.data?.items || [], [result.data]);
   const total = result.data?.total || 0;
+  const chosen = useMemo(() => [...selected.values()], [selected]);
+  const pageSelected = items.filter((item) => selected.has(item.id)).length;
+  const allOnPage = items.length > 0 && pageSelected === items.length;
+
+  useEffect(() => {
+    if (selectAllRef.current) selectAllRef.current.indeterminate = pageSelected > 0 && !allOnPage;
+  }, [pageSelected, allOnPage]);
+
+  const toggle = (item) =>
+    setSelected((current) => {
+      const next = new Map(current);
+      if (next.has(item.id)) next.delete(item.id);
+      else next.set(item.id, item);
+      return next;
+    });
+  const togglePage = () =>
+    setSelected((current) => {
+      const next = new Map(current);
+      items.forEach((item) => (allOnPage ? next.delete(item.id) : next.set(item.id, item)));
+      return next;
+    });
+
+  // What accepting the selection would do to the host-school share, before anything is saved.
+  const ifAccepted = acceptance.data && chosen.length > 0 ? projectAcceptedShare(acceptance.data, chosen, "ACCEPTED") : null;
+  const bulkChanging = bulkStatus ? chosen.filter((item) => item.status !== bulkStatus) : [];
+  const bulkProjected = acceptance.data && bulkStatus ? projectAcceptedShare(acceptance.data, chosen, bulkStatus) : null;
+  const bulkAlreadyTold = bulkStatus && bulkStatus !== "ACCEPTED" ? chosen.filter(isNotified).length : 0;
+
+  const applyBulk = async () => {
+    setBulkSaving(true);
+    setBulkError(null);
+    try {
+      const outcome = await api.setRegistrationStatuses(chosen.map((item) => item.id), bulkStatus);
+      const gone = outcome.notFound > 0 ? ` ${plural(outcome.notFound, "registration")} no longer existed.` : "";
+      notify(`${plural(outcome.changed, "registration")} marked ${statusLabel(bulkStatus).toLowerCase()}.${gone}`);
+      setBulkStatus(null);
+      setSelected(new Map());
+      result.reload();
+      stats.reload();
+    } catch (error) {
+      setBulkError(error);
+    } finally {
+      setBulkSaving(false);
+    }
+  };
   const filtered = Boolean(q || school || status || checkedIn || resume || schoolEmailConfirmed);
 
   const exportCsv = async () => {
@@ -703,6 +790,38 @@ export default function Registrations() {
         )}
       </form>
 
+      {acceptance.data && (
+        <ShareStrip summary={acceptance.data} projected={ifAccepted} projectedLabel={`If you accept the ${plural(chosen.length, "selected registration")}`} />
+      )}
+
+      {chosen.length > 0 && (
+        <section className="bulk-bar" aria-label="Selected registrations">
+          <strong aria-live="polite">{plural(chosen.length, "registration")} selected</strong>
+          <div className="row-actions">
+            {BULK_ACTIONS.map((action) => (
+              <button
+                key={action.status}
+                type="button"
+                className={`btn btn-small${action.status === "ACCEPTED" ? " btn-primary" : ""}`}
+                disabled={chosen.length > BULK_LIMIT}
+                onClick={() => {
+                  setBulkError(null);
+                  setBulkStatus(action.status);
+                }}
+              >
+                {action.label}
+              </button>
+            ))}
+            <button type="button" className="btn btn-small" onClick={() => setSelected(new Map())}>
+              Clear selection
+            </button>
+          </div>
+          {chosen.length > BULK_LIMIT && (
+            <InlineError>At most {BULK_LIMIT} registrations can be changed at once. Clear some of the selection.</InlineError>
+          )}
+        </section>
+      )}
+
       {result.error && <ErrorBlock error={result.error} onRetry={result.reload} />}
       {!result.error && !result.data && <LoadingBlock label="Loading registrations…" />}
       {!result.error && result.data && items.length === 0 && (
@@ -719,6 +838,15 @@ export default function Registrations() {
             <caption className="sr-only">Registrations, newest first</caption>
             <thead>
               <tr>
+                <th scope="col" className="cell-select">
+                  <input
+                    ref={selectAllRef}
+                    type="checkbox"
+                    aria-label="Select every registration on this page"
+                    checked={allOnPage}
+                    onChange={togglePage}
+                  />
+                </th>
                 <th scope="col">Name</th>
                 <th scope="col">Email</th>
                 <th scope="col">School</th>
@@ -733,7 +861,15 @@ export default function Registrations() {
             </thead>
             <tbody>
               {items.map((item) => (
-                <tr key={item.id}>
+                <tr key={item.id} className={selected.has(item.id) ? "is-selected" : undefined}>
+                  <td className="cell-select">
+                    <input
+                      type="checkbox"
+                      aria-label={`Select ${fullName(item)}`}
+                      checked={selected.has(item.id)}
+                      onChange={() => toggle(item)}
+                    />
+                  </td>
                   <th scope="row" data-label="Name">
                     <button type="button" className="link-btn row-link" onClick={() => setOpen(item)}>
                       {fullName(item)}
@@ -751,7 +887,7 @@ export default function Registrations() {
                   <td data-label="Country">{item.countryOfResidence}</td>
                   <td data-label="Age">{item.age}</td>
                   <td data-label="Status">
-                    <StatusBadge status={item.status} />
+                    <AcceptanceBadge item={item} />
                   </td>
                   <td data-label="Resume">
                     {!item.hasResume && <span className="muted">None</span>}
@@ -781,6 +917,42 @@ export default function Registrations() {
 
       {resumeBook && <ResumeBookDialog onClose={() => setResumeBook(false)} />}
 
+      {bulkStatus && (
+        <ConfirmDialog
+          title={`Mark ${plural(chosen.length, "registration")} ${statusLabel(bulkStatus).toLowerCase()}?`}
+          confirmLabel={`Mark ${statusLabel(bulkStatus).toLowerCase()}`}
+          danger={bulkAlreadyTold > 0}
+          busy={bulkSaving}
+          error={bulkError}
+          onConfirm={applyBulk}
+          onCancel={() => setBulkStatus(null)}
+        >
+          <p>
+            {bulkChanging.length === chosen.length
+              ? `All ${plural(chosen.length, "selected registration")} will change.`
+              : `${plural(bulkChanging.length, "registration")} will change; the other ${String(chosen.length - bulkChanging.length)} already ${chosen.length - bulkChanging.length === 1 ? "has" : "have"} this status.`}{" "}
+            {bulkStatus === "ACCEPTED"
+              ? "They go to the acceptance bucket. No email is sent until the acceptance emails are sent from the Acceptances screen."
+              : "No email is sent."}
+          </p>
+          {bulkProjected && acceptance.data && (
+            <p className={`notice${bulkProjected.met ? "" : " notice-warn"}`}>
+              <strong>
+                {acceptance.data.hostSchool.name} share of accepted: {formatShare(acceptance.data.shares.accepted.share)} now,{" "}
+                {formatShare(bulkProjected.share)} after this.
+              </strong>{" "}
+              Target {formatTarget(acceptance.data.hostSchool.target)}: {gapText(bulkProjected, acceptance.data.hostSchool.name).toLowerCase()}.
+            </p>
+          )}
+          {bulkAlreadyTold > 0 && (
+            <p className="notice notice-warn">
+              <strong>{plural(bulkAlreadyTold, "person", "people")} here {bulkAlreadyTold === 1 ? "has" : "have"} already been told they are accepted.</strong>{" "}
+              Their tickets stop working and nothing tells them.
+            </p>
+          )}
+        </ConfirmDialog>
+      )}
+
       {open && (
         <RegistrationDrawer
           key={open.id}
@@ -788,6 +960,13 @@ export default function Registrations() {
           fallbackName={fullName(open)}
           onClose={() => setOpen(null)}
           onChanged={() => {
+            // The row may be selected with its old status; drop it so projections stay right.
+            setSelected((current) => {
+              if (!current.has(open.id)) return current;
+              const next = new Map(current);
+              next.delete(open.id);
+              return next;
+            });
             result.reload();
             stats.reload();
           }}

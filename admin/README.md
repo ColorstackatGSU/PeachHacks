@@ -4,8 +4,11 @@ Organizer site for PeachHacks, served at `admin.peachhacks.com`. A Vite + React
 single-page app that talks to the Spring Boot API in `../backend`.
 
 Screens: sign in, overview (headline numbers, sign-ups over time, by-school
-breakdowns, check-ins by event, resume counts), pre-registrations, registrations
-(with a detail drawer, status changes, the ticket and the resume), check-in (scan a ticket QR code or
+breakdowns, check-ins by event, resume counts, the host-school share),
+pre-registrations, registrations (with a detail drawer, status changes for one
+person or a selection, the ticket and the resume), acceptances (the host-school
+share, the bucket of accepted people not yet told, and the button that emails
+them all), check-in (scan a ticket QR code or
 search by name, per event), email (composer, test send, campaign history) and
 settings (the registration gate, check-in events and accounts).
 
@@ -67,6 +70,10 @@ a text field instead: paste a ticket token (shown in an accepted registration's
 detail drawer under Ticket) or a ticket URL to get each scan result. Data is generated in the browser, shaped like the real API, and resets
 on reload. A peach banner marks every screen while it is on.
 
+In mock mode about a third of the accepted registrations start in the acceptance
+bucket, and "Send acceptance emails" works through it at roughly three people a
+second so the progress can be watched; nothing fails.
+
 Mock mode stores no files: "Download resume" saves a placeholder PDF and the resume
 book is an empty ZIP.
 
@@ -95,6 +102,42 @@ Mock mode cannot be turned on in production: it is gated on Vite's
   list with `resume=opted-in&status=ACCEPTED`) and offers "Attended only", which
   limits it to people with a general check-in. Resumes of people who did not opt in,
   or are not accepted, are never in it.
+- **Acceptances**: accepting someone sends no email. They join the acceptance
+  bucket and are told when an organizer presses "Send acceptance emails" on the
+  Acceptances screen, which emails everyone waiting once. Its confirmation states
+  exactly how many people will be emailed and warns, without blocking, when the
+  host-school target is not met. While a send runs the screen shows progress and
+  afterwards how many were sent and how many failed; failures stay in the bucket
+  and are retried by sending again. The bucket table lists who is waiting, with
+  "Move back to pending".
+- **Host-school share**: the Acceptances screen leads with the percentage of
+  accepted hackers from the host school on a bar with the target marked: green at
+  or above the target, amber below, with the gap in words ("12 more Georgia State
+  University acceptances needed, or 5 fewer acceptances from other schools"). The
+  same share is shown for people checked in (the real attendance figure during
+  the event), for pending registrations and for all registrations. The host
+  school and target come from the API (`HOST_SCHOOL_NAME`, `HOST_SCHOOL_TARGET`
+  in `backend/`). The Overview has a compact tile and the Registrations screen a
+  one-line strip. All three read `GET /admin/acceptances/summary` through
+  `useAcceptanceSummary` (`src/lib/hooks.js`), which refetches after every
+  status change, delete, check-in or send made from this browser (those calls
+  report through `changing` in `src/api/client.js`), every 2 seconds while a
+  send is running and every 15 seconds otherwise, so another organizer's work
+  shows up without a reload.
+- **Accepted, told or not**: the Registrations table and the drawer show "Told"
+  or "Not told yet" beside the Accepted badge. In the drawer the ticket panel
+  offers "Send acceptance email now" for someone still waiting (it tells only
+  that person) and "Resend ticket email" once they know. Moving someone who was
+  already told out of Accepted asks for confirmation first, because their ticket
+  stops working and nothing tells them.
+- **Bulk status changes**: tick rows in the Registrations table (the header box
+  selects the page; the selection survives paging and filtering) and use Accept,
+  Waitlist, Reject or Move to pending. While rows are selected the strip shows
+  what the host-school share would become if they were accepted, computed in the
+  browser from the summary and the selection (`src/lib/acceptance.js`, the same
+  arithmetic as the API), and the confirmation shows the share before and after
+  the chosen change and how many of the selection were already told. At most 500
+  at a time, the API's limit.
 - **School email** is shown in the registration drawer and the pre-registrations
   table; the Registrations search matches it as well as the personal email.
 - **School email confirmation**: the API mails a link to the school address and
