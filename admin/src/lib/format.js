@@ -6,6 +6,7 @@ const dateTimeFormat = new Intl.DateTimeFormat("en-US", {
   hour: "numeric",
   minute: "2-digit",
 });
+const timeFormat = new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit" });
 const dateFormat = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" });
 const dayFormat = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
 
@@ -21,6 +22,18 @@ function toDate(value) {
 export function formatDateTime(value) {
   const date = toDate(value);
   return date ? dateTimeFormat.format(date) : "";
+}
+
+export function formatTime(value) {
+  const date = toDate(value);
+  return date ? timeFormat.format(date) : "";
+}
+
+// Check-in times: just the clock time on the day itself, the full date afterwards.
+export function formatWhen(value) {
+  const date = toDate(value);
+  if (!date) return "";
+  return date.toDateString() === new Date().toDateString() ? timeFormat.format(date) : dateTimeFormat.format(date);
 }
 
 export function formatDate(value) {
@@ -62,6 +75,15 @@ export const AUDIENCES = [
 ];
 
 export const audienceLabel = (value) => AUDIENCES.find((a) => a.value === value)?.label || value;
+
+export const ROLES = [
+  { value: "ADMIN", label: "Admin", option: "Admin (full access)", hint: "Can see and change everything on this site, including registrations, email and accounts." },
+  { value: "VOLUNTEER", label: "Volunteer", option: "Volunteer (check-in only)", hint: "Can only open the Check-in screen to scan tickets and check people in." },
+];
+
+export const roleLabel = (value) => ROLES.find((role) => role.value === value)?.label || "Admin";
+
+export const isVolunteer = (account) => account?.role === "VOLUNTEER";
 
 export const STATUSES = ["PENDING", "ACCEPTED", "WAITLISTED", "REJECTED"];
 

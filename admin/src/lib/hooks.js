@@ -41,6 +41,12 @@ export function useDebounced(value, delay = 300) {
   return debounced;
 }
 
+const loadEvents = (signal) => api.events(signal);
+
+export function useEvents() {
+  return useAsync(loadEvents);
+}
+
 const loadStats = (signal) => api.stats(signal);
 
 export function useStats() {

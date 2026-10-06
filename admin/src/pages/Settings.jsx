@@ -1,8 +1,9 @@
 import { useId, useState } from "react";
 import { api } from "../api/client.js";
+import { EventsCard } from "../components/EventsCard.jsx";
 import { ConfirmDialog } from "../components/Modal.jsx";
 import { EmptyBlock, ErrorBlock, InlineError, LoadingBlock, PageHeader, Tag, useToast } from "../components/ui.jsx";
-import { errorText, formatDate } from "../lib/format.js";
+import { ROLES, errorText, formatDate, roleLabel } from "../lib/format.js";
 import { useAsync } from "../lib/hooks.js";
 import { href } from "../lib/router.js";
 
@@ -139,7 +140,7 @@ function RegistrationGate() {
 }
 
 const loadAdmins = (signal) => api.admins(signal);
-const EMPTY_FORM = { name: "", email: "", password: "" };
+const EMPTY_FORM = { name: "", email: "", password: "", role: "ADMIN" };
 
 function AdminAccounts({ admin }) {
   const notify = useToast();
@@ -169,8 +170,13 @@ function AdminAccounts({ admin }) {
 
     setAdding(true);
     try {
-      await api.createAdmin({ name: form.name.trim(), email: form.email.trim(), password: form.password });
-      notify(`Added ${form.name.trim()} as an admin.`);
+      await api.createAdmin({
+        name: form.name.trim(),
+        email: form.email.trim(),
+        password: form.password,
+        role: form.role,
+      });
+      notify(`Added ${form.name.trim()} as ${form.role === "VOLUNTEER" ? "a volunteer" : "an admin"}.`);
       setForm(EMPTY_FORM);
       setShowPassword(false);
       admins.reload();
@@ -208,28 +214,29 @@ function AdminAccounts({ admin }) {
   return (
     <section className="card" aria-labelledby={`${ids}-title`}>
       <div className="card-head">
-        <h2 id={`${ids}-title`}>Admin accounts</h2>
-        <span className="muted">Everyone listed can sign in here and do everything on this site.</span>
+        <h2 id={`${ids}-title`}>Accounts</h2>
+        <span className="muted">Admins can do everything on this site. Volunteers can only check people in.</span>
       </div>
 
       {admins.error && (
         <ErrorBlock
-          title={admins.data ? "Could not refresh the list" : "Could not load admin accounts"}
+          title={admins.data ? "Could not refresh the list" : "Could not load accounts"}
           error={admins.error}
           onRetry={admins.reload}
         />
       )}
-      {!admins.data && !admins.error && <LoadingBlock label="Loading admin accounts…" />}
-      {admins.data && rows.length === 0 && <EmptyBlock title="No admin accounts found" />}
+      {!admins.data && !admins.error && <LoadingBlock label="Loading accounts…" />}
+      {admins.data && rows.length === 0 && <EmptyBlock title="No accounts found" />}
 
       {rows.length > 0 && (
         <div className="table-wrap">
           <table className="data-table">
-            <caption className="sr-only">Admin accounts</caption>
+            <caption className="sr-only">Accounts</caption>
             <thead>
               <tr>
                 <th scope="col">Name</th>
                 <th scope="col">Email</th>
+                <th scope="col">Type</th>
                 <th scope="col">Added</th>
                 <th scope="col">
                   <span className="sr-only">Actions</span>
@@ -247,6 +254,9 @@ function AdminAccounts({ admin }) {
                     <td data-label="Email" className="cell-break">
                       {row.email}
                     </td>
+                    <td data-label="Type">
+                      <Tag tone={row.role === "VOLUNTEER" ? "waitlisted" : "accepted"}>{roleLabel(row.role)}</Tag>
+                    </td>
                     <td data-label="Added" className="cell-nowrap">
                       {formatDate(row.createdAt)}
                     </td>
@@ -257,7 +267,7 @@ function AdminAccounts({ admin }) {
                         <button
                           type="button"
                           className="btn btn-small btn-danger-quiet"
-                          aria-label={`Remove admin ${row.name || row.email}`}
+                          aria-label={`Remove ${roleLabel(row.role).toLowerCase()} ${row.name || row.email}`}
                           onClick={() => {
                             setRemoveError(null);
                             setPendingRemove(row);
@@ -276,7 +286,21 @@ function AdminAccounts({ admin }) {
       )}
 
       <form className="admin-form" onSubmit={add} noValidate aria-labelledby={`${ids}-add`}>
-        <h3 id={`${ids}-add`}>Add an admin</h3>
+        <h3 id={`${ids}-add`}>Add an account</h3>
+        <div className="field account-type">
+          <label htmlFor={`${ids}-role`}>Account type</label>
+          <select id={`${ids}-role`} value={form.role} onChange={set("role")} aria-describedby={`${ids}-role-hint`}>
+            {ROLES.map((role) => (
+              <option key={role.value} value={role.value}>
+                {role.option}
+              </option>
+            ))}
+          </select>
+          <p id={`${ids}-role-hint`} className="hint">
+            {ROLES.find((role) => role.value === form.role)?.hint}
+          </p>
+          {fieldError("role")}
+        </div>
         <div className="admin-form-grid">
           <div className="field">
             <label htmlFor={`${ids}-name`}>Name</label>
@@ -313,14 +337,14 @@ function AdminAccounts({ admin }) {
         </div>
         <InlineError>{formError ? errorText(formError) : null}</InlineError>
         <button type="submit" className="btn btn-primary" disabled={adding}>
-          {adding ? "Adding…" : "Add admin"}
+          {adding ? "Adding…" : form.role === "VOLUNTEER" ? "Add volunteer" : "Add admin"}
         </button>
       </form>
 
       {pendingRemove && (
         <ConfirmDialog
-          title="Remove this admin?"
-          confirmLabel="Remove admin"
+          title="Remove this account?"
+          confirmLabel="Remove account"
           danger
           busy={removing}
           error={removeError}
@@ -340,8 +364,9 @@ function AdminAccounts({ admin }) {
 export default function Settings({ admin }) {
   return (
     <>
-      <PageHeader title="Settings" description="Open or close registration and manage who can sign in." />
+      <PageHeader title="Settings" description="Open or close registration, set up check-in events and manage who can sign in." />
       <RegistrationGate />
+      <EventsCard />
       <AdminAccounts admin={admin} />
     </>
   );

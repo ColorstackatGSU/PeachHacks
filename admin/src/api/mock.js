@@ -104,6 +104,7 @@ function makeRegistration(base, createdAt) {
     majorOther: null,
     linkedinUrl: rand() > 0.5 ? `https://www.linkedin.com/in/${base.email.split("@")[0].replace(/\./g, "-")}` : null,
     status: pick(STATUSES),
+    ticketToken: `mockticket${String(idCounter).padStart(12, "0")}`,
     createdAt,
   };
 }
@@ -125,12 +126,79 @@ for (let i = 0; i < 14; i += 1) {
 }
 
 const admins = [
-  { id: uuid(), email: "admin@peachhacks.local", name: "Local Admin", createdAt: new Date(now - 60 * DAY).toISOString() },
-  { id: uuid(), email: "logistics@peachhacks.local", name: "Logistics Lead", createdAt: new Date(now - 21 * DAY).toISOString() },
+  { id: uuid(), email: "admin@peachhacks.local", name: "Local Admin", role: "ADMIN", createdAt: new Date(now - 60 * DAY).toISOString() },
+  { id: uuid(), email: "logistics@peachhacks.local", name: "Logistics Lead", role: "ADMIN", createdAt: new Date(now - 21 * DAY).toISOString() },
+  { id: uuid(), email: "volunteer@peachhacks.local", name: "Door Volunteer", role: "VOLUNTEER", createdAt: new Date(now - 2 * DAY).toISOString() },
 ];
-const currentAdmin = admins[0];
 const settings = { registrationOpen: false };
-const sessions = new Set(["mock-token"]);
+// One token per role so a reload keeps whichever account was signed in.
+const TOKENS = { "mock-token": admins[0], "mock-volunteer-token": admins[2] };
+const sessions = new Set(Object.keys(TOKENS));
+
+const events = [
+  { id: uuid(), name: "General check-in", startsAt: null, general: true },
+  { id: uuid(), name: "Intro to React workshop", startsAt: new Date(now + 3 * 3600000).toISOString(), general: false },
+];
+const generalEvent = events[0];
+const checkIns = [];
+registrations
+  .filter((r) => r.status === "ACCEPTED")
+  .forEach((r, index) => {
+    if (index % 3 === 0) {
+      checkIns.push({ registrationId: r.id, eventId: generalEvent.id, checkedInAt: new Date(now - index * 60000).toISOString(), checkedInBy: "Door Volunteer" });
+    }
+    if (index % 6 === 0) {
+      checkIns.push({ registrationId: r.id, eventId: events[1].id, checkedInAt: new Date(now - index * 30000).toISOString(), checkedInBy: "Logistics Lead" });
+    }
+  });
+
+const findCheckIn = (registrationId, eventId) =>
+  checkIns.find((c) => c.registrationId === registrationId && c.eventId === eventId) || null;
+const eventCount = (eventId) => checkIns.filter((c) => c.eventId === eventId).length;
+const eventView = (event) => ({ ...event, checkedIn: eventCount(event.id) });
+const sortedEvents = () =>
+  [...events].sort((a, b) => Number(b.general) - Number(a.general) || (a.startsAt || "9").localeCompare(b.startsAt || "9") || a.name.localeCompare(b.name));
+
+function checkInItem(r, event) {
+  const checkIn = findCheckIn(r.id, event.id);
+  return {
+    id: r.id,
+    firstName: r.firstName,
+    lastName: r.lastName,
+    email: r.email,
+    school: r.school,
+    status: r.status,
+    checkedInAt: checkIn?.checkedInAt || null,
+    checkedInBy: checkIn?.checkedInBy || null,
+    generalCheckedIn: Boolean(findCheckIn(r.id, generalEvent.id)),
+  };
+}
+
+function detail(r) {
+  const { ticketToken, ...fields } = r;
+  const general = findCheckIn(r.id, generalEvent.id);
+  const accepted = r.status === "ACCEPTED";
+  return {
+    ...fields,
+    checkedInAt: general?.checkedInAt || null,
+    checkedInBy: general?.checkedInBy || null,
+    checkIns: checkIns
+      .filter((c) => c.registrationId === r.id)
+      .map((c) => {
+        const event = events.find((e) => e.id === c.eventId);
+        return { eventId: c.eventId, name: event?.name, general: Boolean(event?.general), checkedInAt: c.checkedInAt, checkedInBy: c.checkedInBy };
+      }),
+    ticketToken: accepted ? ticketToken : null,
+    ticketUrl: accepted ? `https://www.peachhacks.com/ticket?t=${ticketToken}` : null,
+    googleWalletUrl: null,
+  };
+}
+
+function tokenFrom(code) {
+  const text = String(code || "").trim();
+  const match = /[?&]t=([^&#\s]+)/.exec(text);
+  return match ? decodeURIComponent(match[1]) : text;
+}
 
 const campaigns = [
   {
@@ -178,10 +246,12 @@ function filterPeople(list, params) {
   const q = (params.get("q") || "").trim().toLowerCase();
   const school = params.get("school") || "";
   const status = params.get("status") || "";
+  const checkedIn = params.get("checkedIn") || "";
   return list
     .filter((item) => {
       if (school && item.school !== school) return false;
       if (status && item.status !== status) return false;
+      if (checkedIn && String(Boolean(findCheckIn(item.id, generalEvent.id))) !== checkedIn) return false;
       if (!q) return true;
       return `${item.firstName} ${item.lastName} ${item.email}`.toLowerCase().includes(q);
     })
@@ -201,7 +271,8 @@ function withRegistered(list) {
 
 function summary(r) {
   const { id, firstName, lastName, email, school, levelOfStudy, countryOfResidence, age, status, createdAt } = r;
-  return { id, firstName, lastName, email, school, levelOfStudy, countryOfResidence, age, status, createdAt };
+  const checkedInAt = findCheckIn(id, generalEvent.id)?.checkedInAt || null;
+  return { id, firstName, lastName, email, school, levelOfStudy, countryOfResidence, age, status, createdAt, checkedInAt };
 }
 
 function csv(rows) {
@@ -252,18 +323,108 @@ function handle(method, path, params, body, token) {
     if (!body.email || !body.password || body.password === "wrong") {
       return fail(401, "INVALID_CREDENTIALS", "Incorrect email or password.");
     }
-    sessions.add("mock-token");
-    return respond(200, { token: "mock-token", expiresAt: new Date(Date.now() + 8 * 3600000).toISOString(), admin: currentAdmin });
+    const mockToken = /^volunteer/i.test(body.email) ? "mock-volunteer-token" : "mock-token";
+    sessions.add(mockToken);
+    return respond(200, { token: mockToken, expiresAt: new Date(Date.now() + 8 * 3600000).toISOString(), admin: TOKENS[mockToken] });
   }
 
   if (!token || !sessions.has(token)) return fail(401, "UNAUTHORIZED", "Sign in to continue.");
+  const currentAdmin = TOKENS[token];
+
+  const open = path.startsWith("/admin/auth/") || path === "/admin/check-in" || path.startsWith("/admin/check-in/") || (path === "/admin/events" && method === "GET");
+  if (currentAdmin.role === "VOLUNTEER" && !open) return fail(403, "FORBIDDEN", "You do not have access to this resource.");
 
   if (path === "/admin/auth/logout" && method === "POST") {
     sessions.delete(token);
     return respond(204);
   }
   if (path === "/admin/auth/me") {
-    return respond(200, { id: currentAdmin.id, email: currentAdmin.email, name: currentAdmin.name });
+    return respond(200, { id: currentAdmin.id, email: currentAdmin.email, name: currentAdmin.name, role: currentAdmin.role });
+  }
+
+  if (path === "/admin/events") {
+    if (method === "POST") {
+      const name = (body.name || "").trim();
+      if (!name) return fail(400, "VALIDATION_ERROR", "Name is required", { name: "Name is required" });
+      if (events.some((e) => e.name.toLowerCase() === name.toLowerCase())) {
+        return fail(400, "VALIDATION_ERROR", "An event with this name already exists", { name: "An event with this name already exists" });
+      }
+      const event = { id: uuid(), name, startsAt: body.startsAt || null, general: false };
+      events.push(event);
+      return respond(201, eventView(event));
+    }
+    return respond(200, sortedEvents().map(eventView));
+  }
+  const eventExport = /^\/admin\/events\/([^/]+)\/export\.csv$/.exec(path);
+  if (eventExport) {
+    const event = events.find((e) => e.id === eventExport[1]);
+    if (!event) return fail(404, "NOT_FOUND", "Event not found.");
+    const rows = checkIns
+      .filter((c) => c.eventId === event.id)
+      .map((c) => {
+        const r = registrations.find((reg) => reg.id === c.registrationId);
+        return { event: event.name, registrationId: c.registrationId, firstName: r?.firstName, lastName: r?.lastName, email: r?.email, school: r?.school, status: r?.status, checked_in_at: c.checkedInAt, checked_in_by: c.checkedInBy };
+      });
+    return csvResponse(rows, "attendees.csv");
+  }
+  const eventMatch = /^\/admin\/events\/([^/]+)$/.exec(path);
+  if (eventMatch) {
+    const index = events.findIndex((e) => e.id === eventMatch[1]);
+    if (index < 0) return fail(404, "NOT_FOUND", "Event not found.");
+    if (method === "PATCH") {
+      if ("name" in body) {
+        const name = (body.name || "").trim();
+        if (!name) return fail(400, "VALIDATION_ERROR", "Name is required", { name: "Name is required" });
+        events[index].name = name;
+      }
+      if ("startsAt" in body) events[index].startsAt = body.startsAt || null;
+      return respond(200, eventView(events[index]));
+    }
+    if (method === "DELETE") {
+      if (events[index].general) return fail(400, "VALIDATION_ERROR", "The general check-in event cannot be deleted.");
+      const [removed] = events.splice(index, 1);
+      for (let i = checkIns.length - 1; i >= 0; i -= 1) {
+        if (checkIns[i].eventId === removed.id) checkIns.splice(i, 1);
+      }
+      return respond(204);
+    }
+  }
+
+  if (path === "/admin/check-in" || path.startsWith("/admin/check-in/")) {
+    const requested = params.get("eventId") || body.eventId;
+    const event = requested ? events.find((e) => e.id === requested) : generalEvent;
+    if (!event) return fail(404, "NOT_FOUND", "Event not found.");
+    const eventRef = { id: event.id, name: event.name, general: event.general };
+    const record = (r) => {
+      if (!findCheckIn(r.id, event.id)) {
+        checkIns.push({ registrationId: r.id, eventId: event.id, checkedInAt: new Date().toISOString(), checkedInBy: currentAdmin.name });
+      }
+    };
+
+    if (path === "/admin/check-in") {
+      const q = (params.get("q") || "").trim().toLowerCase();
+      const matches = registrations
+        .filter((r) => !q || `${r.firstName} ${r.lastName} ${r.email}`.toLowerCase().includes(q))
+        .map((r) => checkInItem(r, event))
+        .sort((a, b) => Number(Boolean(a.checkedInAt)) - Number(Boolean(b.checkedInAt)) || a.lastName.localeCompare(b.lastName) || a.firstName.localeCompare(b.firstName));
+      return respond(200, { event: eventRef, ...paginate(matches, params), checkedInTotal: eventCount(event.id), registrationTotal: registrations.length });
+    }
+    if (path === "/admin/check-in/scan" && method === "POST") {
+      const r = registrations.find((reg) => reg.ticketToken === tokenFrom(body.code));
+      if (!r) return respond(200, { result: "NOT_RECOGNISED", event: eventRef, item: null });
+      if (findCheckIn(r.id, event.id)) return respond(200, { result: "ALREADY_CHECKED_IN", event: eventRef, item: checkInItem(r, event) });
+      if (r.status !== "ACCEPTED" && !body.override) return respond(200, { result: "NOT_ACCEPTED", event: eventRef, item: checkInItem(r, event) });
+      record(r);
+      return respond(200, { result: "CHECKED_IN", event: eventRef, item: checkInItem(r, event) });
+    }
+    const r = registrations.find((reg) => reg.id === path.split("/").pop());
+    if (!r) return fail(404, "NOT_FOUND", "Registration not found.");
+    if (method === "POST") record(r);
+    if (method === "DELETE") {
+      const index = checkIns.findIndex((c) => c.registrationId === r.id && c.eventId === event.id);
+      if (index >= 0) checkIns.splice(index, 1);
+    }
+    return respond(200, checkInItem(r, event));
   }
 
   if (path === "/admin/stats") {
@@ -278,12 +439,14 @@ function handle(method, path, params, body, token) {
       },
       registrations: {
         total: registrations.length,
+        checkedIn: eventCount(generalEvent.id),
         bySchool: bySchool(registrations),
         byDay: byDay(registrations),
         byLevelOfStudy: groupCount(registrations, (r) => r.levelOfStudy, "label").sort((a, b) => b.count - a.count),
         byStatus: groupCount(registrations, (r) => r.status, "label"),
       },
       preRegisteredNotRegistered: preRegistrations.filter((p) => !registered.has(p.email.toLowerCase())).length,
+      events: sortedEvents().map((e) => ({ eventId: e.id, name: e.name, checkedIn: eventCount(e.id) })),
     });
   }
 
@@ -297,10 +460,17 @@ function handle(method, path, params, body, token) {
     return respond(200, paginate(filterPeople(registrations, params).map(summary), params));
   }
   if (path === "/admin/registrations/export.csv") {
-    return csvResponse(filterPeople(registrations, params), "registrations.csv");
+    return csvResponse(
+      filterPeople(registrations, params).map((r) => {
+        const row = { ...r, checked_in_at: findCheckIn(r.id, generalEvent.id)?.checkedInAt || null };
+        delete row.ticketToken;
+        return row;
+      }),
+      "registrations.csv",
+    );
   }
 
-  const preMatch = /^\/api\/admin\/pre-registrations\/([^/]+)$/.exec(path);
+  const preMatch = /^\/admin\/pre-registrations\/([^/]+)$/.exec(path);
   if (preMatch && method === "DELETE") {
     const index = preRegistrations.findIndex((p) => p.id === preMatch[1]);
     if (index < 0) return fail(404, "NOT_FOUND", "Pre-registration not found.");
@@ -308,20 +478,31 @@ function handle(method, path, params, body, token) {
     return respond(204);
   }
 
-  const regMatch = /^\/api\/admin\/registrations\/([^/]+)$/.exec(path);
+  const ticketEmail = /^\/admin\/registrations\/([^/]+)\/ticket-email$/.exec(path);
+  if (ticketEmail && method === "POST") {
+    const r = registrations.find((reg) => reg.id === ticketEmail[1]);
+    if (!r) return fail(404, "NOT_FOUND", "Registration not found.");
+    if (r.status !== "ACCEPTED") return fail(400, "VALIDATION_ERROR", "Only accepted registrations have a ticket to send.");
+    return respond(204);
+  }
+
+  const regMatch = /^\/admin\/registrations\/([^/]+)$/.exec(path);
   if (regMatch) {
     const index = registrations.findIndex((r) => r.id === regMatch[1]);
     if (index < 0) return fail(404, "NOT_FOUND", "Registration not found.");
-    if (method === "GET") return respond(200, registrations[index]);
+    if (method === "GET") return respond(200, detail(registrations[index]));
     if (method === "PATCH") {
       if (!["PENDING", "ACCEPTED", "WAITLISTED", "REJECTED"].includes(body.status)) {
         return fail(400, "VALIDATION_ERROR", "Invalid status.", { status: "Unknown status" });
       }
       registrations[index] = { ...registrations[index], status: body.status };
-      return respond(200, registrations[index]);
+      return respond(200, detail(registrations[index]));
     }
     if (method === "DELETE") {
-      registrations.splice(index, 1);
+      const [removed] = registrations.splice(index, 1);
+      for (let i = checkIns.length - 1; i >= 0; i -= 1) {
+        if (checkIns[i].registrationId === removed.id) checkIns.splice(i, 1);
+      }
       return respond(204);
     }
   }
@@ -370,21 +551,24 @@ function handle(method, path, params, body, token) {
       const fieldErrors = {};
       if (!body.name?.trim()) fieldErrors.name = "Name is required";
       if (!/^\S+@\S+\.\S+$/.test(body.email || "")) fieldErrors.email = "Must be a valid email";
-      else if (admins.some((a) => a.email.toLowerCase() === body.email.toLowerCase())) fieldErrors.email = "An admin with this email already exists";
+      else if (admins.some((a) => a.email.toLowerCase() === body.email.toLowerCase())) fieldErrors.email = "An account with this email already exists";
       if ((body.password || "").length < 10) fieldErrors.password = "Must be at least 10 characters";
+      if (body.role && !["ADMIN", "VOLUNTEER"].includes(body.role)) fieldErrors.role = "Role must be ADMIN or VOLUNTEER";
       if (Object.keys(fieldErrors).length) return fail(400, "VALIDATION_ERROR", "Check the highlighted fields.", fieldErrors);
-      const admin = { id: uuid(), email: body.email, name: body.name, createdAt: new Date().toISOString() };
+      const admin = { id: uuid(), email: body.email, name: body.name, role: body.role || "ADMIN", createdAt: new Date().toISOString() };
       admins.push(admin);
       return respond(201, admin);
     }
     return respond(200, admins);
   }
-  const adminMatch = /^\/api\/admin\/admins\/([^/]+)$/.exec(path);
+  const adminMatch = /^\/admin\/admins\/([^/]+)$/.exec(path);
   if (adminMatch && method === "DELETE") {
     const index = admins.findIndex((a) => a.id === adminMatch[1]);
     if (index < 0) return fail(404, "NOT_FOUND", "Admin not found.");
     if (admins[index].id === currentAdmin.id) return fail(400, "VALIDATION_ERROR", "You cannot remove your own account.");
-    if (admins.length === 1) return fail(400, "VALIDATION_ERROR", "You cannot remove the last admin.");
+    if (admins[index].role === "ADMIN" && admins.filter((a) => a.role === "ADMIN").length === 1) {
+      return fail(400, "VALIDATION_ERROR", "You cannot remove the last admin.");
+    }
     admins.splice(index, 1);
     return respond(204);
   }

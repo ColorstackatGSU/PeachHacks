@@ -41,6 +41,8 @@ export default function Overview() {
   const notRegistered = data.preRegisteredNotRegistered || 0;
   const range = dayRange(pre.byDay || [], reg.byDay || []);
   const converted = preTotal > 0 ? Math.round(((preTotal - notRegistered) / preTotal) * 100) : null;
+  const checkedIn = reg.checkedIn || 0;
+  const eventRows = (data.events || []).map((row) => ({ label: row.name, count: row.checkedIn }));
   const statusRows = (reg.byStatus || [])
     .map((row) => ({ ...row, label: statusLabel(row.label) }))
     .sort((a, b) => b.count - a.count);
@@ -79,6 +81,11 @@ export default function Overview() {
           value={notRegistered}
           note={converted === null ? "No pre-registrations yet" : `${converted}% of pre-registrants have registered`}
         />
+        <StatTile
+          label="Checked in"
+          value={checkedIn}
+          note={regTotal > 0 ? `${Math.round((checkedIn / regTotal) * 100)}% of registrations, general check-in` : "General check-in"}
+        />
         <StatTile label="Unsubscribed" value={pre.unsubscribed || 0} note="Pre-registrants skipped by bulk email" />
       </section>
 
@@ -116,6 +123,16 @@ export default function Overview() {
           <BarList rows={reg.bySchool} labelKey="school" total={regTotal} tone="sky" emptyText="No registrations yet." />
         </section>
       </div>
+
+      <section className="card" aria-labelledby="events-heading">
+        <div className="card-head">
+          <h2 id="events-heading">Check-ins by event</h2>
+          <a className="tile-link" href={href("/check-in")}>
+            Open check-in
+          </a>
+        </div>
+        <BarList rows={eventRows} labelKey="label" total={regTotal} tone="peach" emptyText="No events yet." />
+      </section>
 
       <div className="two-col">
         <section className="card" aria-labelledby="status-heading">

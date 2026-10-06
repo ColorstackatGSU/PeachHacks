@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, getToken, onUnauthorized, setToken } from "./api/client.js";
-import { Layout, NAV } from "./components/Layout.jsx";
+import { CHECK_IN_PATH, Layout, NAV } from "./components/Layout.jsx";
 import { EmptyBlock, ErrorBlock, LoadingBlock, ToastProvider } from "./components/ui.jsx";
-import { href, useRoute } from "./lib/router.js";
+import { isVolunteer } from "./lib/format.js";
+import { href, navigate, useRoute } from "./lib/router.js";
+import CheckIn from "./pages/CheckIn.jsx";
 import Email from "./pages/Email.jsx";
 import Overview from "./pages/Overview.jsx";
 import PreRegistrations from "./pages/PreRegistrations.jsx";
@@ -41,6 +43,14 @@ export default function App() {
     const section = NAV.find((item) => item.path === route.path)?.label;
     document.title = session.status === "signedIn" && section ? `${section} · PeachHacks Admin` : "PeachHacks Admin";
   }, [route.path, session.status]);
+
+  const volunteer = session.status === "signedIn" && isVolunteer(session.admin);
+
+  // Volunteers have one screen; any other address (typed, bookmarked or left over from an
+  // admin who used this browser) goes there. The API enforces the same limit.
+  useEffect(() => {
+    if (volunteer && route.path !== CHECK_IN_PATH) navigate(CHECK_IN_PATH);
+  }, [volunteer, route.path]);
 
   const handleSignedIn = useCallback((result) => {
     setToken(result.token);
@@ -87,7 +97,10 @@ export default function App() {
   }
 
   let page;
-  switch (route.path) {
+  switch (volunteer ? CHECK_IN_PATH : route.path) {
+    case CHECK_IN_PATH:
+      page = <CheckIn admin={session.admin} />;
+      break;
     case "/":
       page = <Overview />;
       break;
@@ -113,7 +126,12 @@ export default function App() {
 
   return (
     <ToastProvider>
-      <Layout admin={session.admin} path={route.path} onSignOut={handleSignOut} signingOut={signingOut}>
+      <Layout
+        admin={session.admin}
+        path={volunteer ? CHECK_IN_PATH : route.path}
+        onSignOut={handleSignOut}
+        signingOut={signingOut}
+      >
         {page}
       </Layout>
     </ToastProvider>

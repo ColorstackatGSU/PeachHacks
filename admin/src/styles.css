@@ -184,7 +184,7 @@ main:focus { outline: none; }
 .gate-dot { width: 12px; height: 12px; border: 2px solid var(--mist); border-radius: 50%; }
 .is-open .gate-dot { border-color: var(--good); background: var(--good); }
 
-.tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; }
 .tile { display: grid; align-content: start; gap: 4px; padding: 16px 18px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); }
 .tile-label { color: var(--peach); font-size: 11px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
 .tile-value { font-size: clamp(30px, 4vw, 40px); font-weight: 800; line-height: 1.1; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
@@ -336,8 +336,62 @@ main:focus { outline: none; }
 .admin-form { display: grid; justify-items: start; gap: 14px; padding-top: 18px; border-top: 1px solid var(--line); }
 .admin-form-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; width: 100%; align-items: start; }
 
+.btn-big { min-height: 52px; padding: 12px 22px; font-size: 16px; }
+.stack { display: grid; gap: 14px; }
+.row-actions { display: inline-flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.account-type { width: min(100%, 520px); }
+.checked-in-cell { color: var(--good); font-weight: 700; }
+
+.checkin-bar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 20px; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); }
+.checkin-bar .field { flex: 1 1 220px; }
+.checkin-count { flex: 1 1 auto; color: var(--text-2); font-size: 15px; font-variant-numeric: tabular-nums; }
+.checkin-count strong { color: var(--good); font-size: 26px; font-weight: 800; line-height: 1; }
+.checkin-modes button { min-height: 44px; padding: 8px 22px; font-size: 14.5px; }
+.checkin-search input { width: 100%; min-height: 60px; padding: 12px 18px; border: 2px solid var(--line-strong); border-radius: var(--radius); background: var(--field); color: var(--cream); font-size: 20px; font-weight: 600; }
+.checkin-search input::placeholder { color: rgba(185, 211, 220, .7); font-weight: 400; }
+.checkin-search input:focus-visible { border-color: var(--peach); outline: 2px solid var(--peach); outline-offset: 1px; }
+.checkin-warning { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-top: 4px; color: var(--peach); font-size: 13.5px; font-weight: 700; }
+.checkin-note { margin-top: 4px; color: var(--peach); font-size: 13.5px; font-weight: 600; }
+
+.people { display: grid; gap: 10px; transition: opacity .15s; }
+.people.is-loading { opacity: .55; }
+.person { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 16px; padding: 14px 16px; border: 1px solid var(--line); border-left: 5px solid var(--mist); border-radius: var(--radius); background: var(--panel); }
+.person.is-in { border-left-color: var(--good); background: rgba(127, 220, 160, .07); }
+.person-main { display: grid; flex: 1 1 220px; gap: 2px; min-width: 0; }
+.person-name { font-size: 19px; font-weight: 800; line-height: 1.25; overflow-wrap: anywhere; }
+.person-school { font-size: 14.5px; overflow-wrap: anywhere; }
+.person-email { color: var(--text-2); font-size: 13px; overflow-wrap: anywhere; }
+.person-action { display: flex; flex: 0 1 auto; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px 12px; }
+.person-action .btn-big { min-width: 150px; }
+.person-done { color: var(--good); font-size: 14.5px; font-weight: 800; }
+
+.scan-mode { display: grid; gap: 14px; justify-items: stretch; width: min(100%, 640px); margin: 0 auto; }
+.scanner { position: relative; overflow: hidden; border: 1px solid var(--line-strong); border-radius: var(--radius); background: #000; aspect-ratio: 4 / 3; }
+.scanner video { display: block; width: 100%; height: 100%; object-fit: cover; }
+.scanner.is-paused video { opacity: .45; }
+.scanner-frame { position: absolute; top: 50%; left: 50%; width: min(62%, 300px); aspect-ratio: 1; border: 3px solid var(--peach); border-radius: 14px; box-shadow: 0 0 0 100vmax rgba(0, 8, 18, .35); transform: translate(-50%, -50%); }
+.scanner-status { position: absolute; right: 0; bottom: 0; left: 0; padding: 8px 12px; background: rgba(0, 12, 24, .7); font-size: 13.5px; font-weight: 700; text-align: center; }
+.scanner-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+.scan-idle { padding: 18px; border: 1px dashed var(--line-strong); border-radius: var(--radius); text-align: center; }
+.scan-result { display: grid; gap: 6px; padding: 20px; border: 2px solid; border-radius: var(--radius); font-size: 16px; text-align: center; }
+.scan-title { font-size: clamp(24px, 6vw, 32px); font-weight: 800; line-height: 1.15; }
+.scan-name { font-size: clamp(20px, 5vw, 26px); font-weight: 800; overflow-wrap: anywhere; }
+.scan-result .checkin-warning, .scan-result .checkin-note { justify-content: center; color: inherit; }
+.scan-good { border-color: var(--good); background: var(--good); color: #00240f; }
+.scan-warn { border-color: var(--peach); background: var(--peach); color: var(--navy); }
+.scan-bad { border-color: var(--bad-strong); background: var(--bad-strong); color: #fff; }
+.scan-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 10px; }
+.scan-result .btn { border-color: currentcolor; background: rgba(255, 255, 255, .14); color: inherit; }
+.scan-result .btn-primary { border-color: #fff; background: #fff; color: var(--navy); }
+.scan-result .badge { border-color: currentcolor; color: inherit; }
+
+.ticket-panel { display: grid; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel-raised); }
+.ticket-body { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 14px; }
+.ticket-qr { flex: none; width: 160px; height: 160px; border-radius: 4px; background: #fff; }
+.ticket-qr-mock { display: grid; place-items: center; padding: 12px; color: var(--navy); font-size: 12.5px; font-weight: 700; text-align: center; }
+.ticket-info { display: grid; flex: 1 1 200px; gap: 8px; justify-items: start; min-width: 0; }
+
 @media (max-width: 1100px) {
-  .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .composer { grid-template-columns: minmax(0, 1fr); }
   .preview { position: static; }
   .admin-form-grid { grid-template-columns: minmax(0, 1fr); max-width: 520px; }
@@ -381,6 +435,13 @@ main:focus { outline: none; }
 }
 
 @media (max-width: 480px) {
+  .checkin-bar { padding: 12px; }
+  .checkin-modes { display: flex; flex: 1 1 100%; }
+  .checkin-modes button { flex: 1; }
+  .person { padding: 12px; }
+  .person-action, .person-action .btn-big { flex: 1 1 100%; width: 100%; }
+  .person-action { justify-content: space-between; }
+  .scan-actions .btn { flex: 1 1 100%; }
   .tiles { gap: 10px; }
   .tile { padding: 12px 14px; }
   .pagination-page { display: none; }

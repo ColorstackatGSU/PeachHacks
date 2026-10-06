@@ -20,6 +20,14 @@ export function LoadingBlock({ label = "Loading…" }) {
 }
 
 export function ErrorBlock({ error, onRetry, title = "Could not load this" }) {
+  if (error?.code === "FORBIDDEN") {
+    return (
+      <div className="state-block state-error" role="alert">
+        <strong>You don’t have access to this</strong>
+        <p>Your account cannot open this part of the admin site. Ask an organizer if you think it should.</p>
+      </div>
+    );
+  }
   return (
     <div className="state-block state-error" role="alert">
       <strong>{title}</strong>

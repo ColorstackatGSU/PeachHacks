@@ -18,7 +18,7 @@ export default function SignIn({ notice, onSignedIn }) {
       onSignedIn(result);
     } catch (err) {
       setBusy(false);
-      if (err?.code === "INVALID_CREDENTIALS") setError("That email and password do not match an admin account.");
+      if (err?.code === "INVALID_CREDENTIALS") setError("That email and password do not match an account.");
       else if (err?.code === "RATE_LIMITED") setError("Too many sign-in attempts. Wait a minute and try again.");
       else if (err?.code === "VALIDATION_ERROR") setError("Enter your email and password.");
       else setError(err?.message || "Could not sign in. Try again.");
@@ -32,7 +32,10 @@ export default function SignIn({ notice, onSignedIn }) {
         <p className="eyebrow">Organizer admin</p>
         <h1>Sign in</h1>
         {MOCK_MODE && (
-          <p className="notice">Mock mode: any email and password work. Use the password “wrong” to see the error.</p>
+          <p className="notice">
+            Mock mode: any email and password work. An email starting with “volunteer” signs in as a check-in
+            volunteer. Use the password “wrong” to see the error.
+          </p>
         )}
         {notice && !error && (
           <p className="notice" role="status">
@@ -74,7 +77,7 @@ export default function SignIn({ notice, onSignedIn }) {
             {busy ? "Signing in…" : "Sign in"}
           </button>
         </form>
-        <p className="signin-foot">For PeachHacks organizers only. Ask an existing admin for an account.</p>
+        <p className="signin-foot">For PeachHacks organizers and volunteers. Ask an admin for an account.</p>
       </main>
     </div>
   );

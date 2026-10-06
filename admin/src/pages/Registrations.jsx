@@ -1,5 +1,5 @@
 import { useCallback, useId, useMemo, useState } from "react";
-import { api } from "../api/client.js";
+import { MOCK_MODE, api, ticketQrUrl } from "../api/client.js";
 import { ConfirmDialog, Modal } from "../components/Modal.jsx";
 import {
   EmptyBlock,
@@ -11,7 +11,7 @@ import {
   StatusBadge,
   useToast,
 } from "../components/ui.jsx";
-import { STATUSES, errorText, formatDateTime, fullName, statusLabel } from "../lib/format.js";
+import { STATUSES, errorText, formatDateTime, formatWhen, fullName, statusLabel } from "../lib/format.js";
 import { schoolOptions, useAsync, useDebounced, useStats } from "../lib/hooks.js";
 
 const PAGE_SIZE = 25;
@@ -112,6 +112,21 @@ function RegistrationDetail({ reg }) {
         <Row label="Race / ethnicity">{withOther(list(reg.raceEthnicity), reg.raceEthnicityOther)}</Row>
         <Row label="Sexual orientation">{withOther(reg.sexualOrientation, reg.sexualOrientationOther)}</Row>
       </Group>
+      <Group title="Check-in">
+        <Row label="General check-in">
+          {reg.checkedInAt ? `${formatDateTime(reg.checkedInAt)}${reg.checkedInBy ? ` by ${reg.checkedInBy}` : ""}` : "Not checked in"}
+        </Row>
+        <Row label="Events attended">
+          {(reg.checkIns || []).length > 0
+            ? reg.checkIns.map((checkIn) => (
+                <span key={checkIn.eventId} className="line">
+                  {checkIn.name}: {formatDateTime(checkIn.checkedInAt)}
+                  {checkIn.checkedInBy ? ` by ${checkIn.checkedInBy}` : ""}
+                </span>
+              ))
+            : "None yet"}
+        </Row>
+      </Group>
       <Group title="Record">
         <Row label="Registered">{formatDateTime(reg.createdAt)}</Row>
         <Row label="ID">
@@ -119,6 +134,66 @@ function RegistrationDetail({ reg }) {
         </Row>
       </Group>
     </>
+  );
+}
+
+function TicketPanel({ reg }) {
+  const notify = useToast();
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState(null);
+
+  if (reg.status !== "ACCEPTED" || !reg.ticketToken) {
+    return (
+      <section className="ticket-panel" aria-label="Ticket">
+        <span className="tile-label">Ticket</span>
+        <p className="muted small">
+          No ticket yet. Marking this registration Accepted creates the ticket and emails it to the applicant.
+        </p>
+      </section>
+    );
+  }
+
+  const resend = async () => {
+    setSending(true);
+    setError(null);
+    try {
+      await api.resendTicketEmail(reg.id);
+      notify(`Ticket email sent to ${reg.email}.`);
+    } catch (err) {
+      setError(err);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <section className="ticket-panel" aria-label="Ticket">
+      <span className="tile-label">Ticket</span>
+      <div className="ticket-body">
+        {MOCK_MODE ? (
+          <p className="ticket-qr ticket-qr-mock">QR preview needs the real API</p>
+        ) : (
+          <img className="ticket-qr" src={ticketQrUrl(reg.ticketToken)} alt={`Ticket QR code for ${fullName(reg)}`} width="160" height="160" />
+        )}
+        <div className="ticket-info">
+          <p>
+            <a href={reg.ticketUrl} target="_blank" rel="noreferrer noopener">
+              Open ticket page
+            </a>
+          </p>
+          <p className="muted small">
+            Token: <code>{reg.ticketToken}</code>
+          </p>
+          <p className="muted small">
+            Google Wallet: {reg.googleWalletUrl ? "the ticket page and email offer “Add to Google Wallet”." : "not set up, so no wallet link is offered."}
+          </p>
+          <button type="button" className="btn btn-small" disabled={sending} onClick={resend}>
+            {sending ? "Sending…" : "Resend ticket email"}
+          </button>
+          <InlineError error={error} />
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -132,6 +207,7 @@ function RegistrationDrawer({ id, fallbackName, onClose, onChanged, onDeleted })
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState(null);
+  const [accepting, setAccepting] = useState(false);
 
   // The PATCH response is the freshest copy of the record.
   const reg = updated || detail.data;
@@ -202,17 +278,37 @@ function RegistrationDrawer({ id, fallbackName, onClose, onChanged, onDeleted })
                   className={`btn btn-small status-choice status-${status.toLowerCase()}`}
                   aria-pressed={reg.status === status}
                   disabled={Boolean(savingStatus)}
-                  onClick={() => changeStatus(status)}
+                  onClick={() => (status === "ACCEPTED" && reg.status !== "ACCEPTED" ? setAccepting(true) : changeStatus(status))}
                 >
                   {savingStatus === status ? "Saving…" : statusLabel(status)}
                 </button>
               ))}
             </div>
-            <p className="muted small">Changing the status saves immediately. It does not email the applicant.</p>
+            <p className="muted small">
+              Changing the status saves immediately. Accepting someone emails them their ticket; other changes send
+              nothing.
+            </p>
             <InlineError error={statusError} />
           </section>
+          <TicketPanel reg={reg} />
           <RegistrationDetail reg={reg} />
         </>
+      )}
+      {accepting && reg && (
+        <ConfirmDialog
+          title="Accept and send the ticket?"
+          confirmLabel="Accept and email ticket"
+          onConfirm={() => {
+            setAccepting(false);
+            changeStatus("ACCEPTED");
+          }}
+          onCancel={() => setAccepting(false)}
+        >
+          <p>
+            <strong>{fullName(reg)}</strong> will be marked accepted and emailed a “You’re in” message at {reg.email} with
+            their ticket QR code right away.
+          </p>
+        </ConfirmDialog>
       )}
       {confirming && reg && (
         <ConfirmDialog
@@ -240,12 +336,13 @@ export default function Registrations() {
   const [search, setSearch] = useState("");
   const [school, setSchool] = useState("");
   const [status, setStatus] = useState("");
+  const [checkedIn, setCheckedIn] = useState("");
   const [page, setPage] = useState(0);
   const [exporting, setExporting] = useState(false);
   const [open, setOpen] = useState(null);
 
   const q = useDebounced(search.trim(), 300);
-  const filters = useMemo(() => ({ q, school, status }), [q, school, status]);
+  const filters = useMemo(() => ({ q, school, status, checkedIn }), [q, school, status, checkedIn]);
   const load = useCallback((signal) => api.registrations({ page, size: PAGE_SIZE, ...filters }, signal), [page, filters]);
   const result = useAsync(load);
   const stats = useStats();
@@ -253,7 +350,7 @@ export default function Registrations() {
 
   const items = result.data?.items || [];
   const total = result.data?.total || 0;
-  const filtered = Boolean(q || school || status);
+  const filtered = Boolean(q || school || status || checkedIn);
 
   const exportCsv = async () => {
     setExporting(true);
@@ -306,6 +403,14 @@ export default function Registrations() {
             ))}
           </select>
         </div>
+        <div className="field">
+          <label htmlFor={`${ids}-checked-in`}>Attendance</label>
+          <select id={`${ids}-checked-in`} value={checkedIn} onChange={resetTo(setCheckedIn)}>
+            <option value="">Everyone</option>
+            <option value="true">Checked in</option>
+            <option value="false">Not checked in</option>
+          </select>
+        </div>
         {filtered && (
           <button
             type="button"
@@ -314,6 +419,7 @@ export default function Registrations() {
               setSearch("");
               setSchool("");
               setStatus("");
+              setCheckedIn("");
               setPage(0);
             }}
           >
@@ -345,6 +451,7 @@ export default function Registrations() {
                 <th scope="col">Country</th>
                 <th scope="col">Age</th>
                 <th scope="col">Status</th>
+                <th scope="col">Checked in</th>
                 <th scope="col">Registered</th>
               </tr>
             </thead>
@@ -366,6 +473,13 @@ export default function Registrations() {
                   <td data-label="Age">{item.age}</td>
                   <td data-label="Status">
                     <StatusBadge status={item.status} />
+                  </td>
+                  <td data-label="Checked in" className="cell-nowrap">
+                    {item.checkedInAt ? (
+                      <span className="checked-in-cell">✓ {formatWhen(item.checkedInAt)}</span>
+                    ) : (
+                      <span className="muted">No</span>
+                    )}
                   </td>
                   <td data-label="Registered" className="cell-nowrap">
                     {formatDateTime(item.createdAt)}

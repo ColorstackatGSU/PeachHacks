@@ -4,9 +4,15 @@ Organizer site for PeachHacks, served at `admin.peachhacks.com`. A Vite + React
 single-page app that talks to the Spring Boot API in `../backend`.
 
 Screens: sign in, overview (headline numbers, sign-ups over time, by-school
-breakdowns), pre-registrations, registrations (with a detail drawer and status
-changes), email (composer, test send, campaign history) and settings (the
-registration gate and admin accounts).
+breakdowns, check-ins by event), pre-registrations, registrations (with a detail
+drawer, status changes and the ticket), check-in (scan a ticket QR code or
+search by name, per event), email (composer, test send, campaign history) and
+settings (the registration gate, check-in events and accounts).
+
+Accounts are admins (everything) or volunteers (the Check-in screen only). A
+volunteer sees only Check-in in the navigation and is sent there from any other
+address; the API enforces the same limit, and a `403 FORBIDDEN` shows a "you
+don't have access" message instead of signing the user out.
 
 ## Run
 
@@ -54,7 +60,11 @@ VITE_MOCK_API=1 npm run dev
 ```
 
 Any email and password sign in (use the password `wrong` to see the error
-state). Data is generated in the browser, shaped like the real API, and resets
+state). An email starting with `volunteer`, for example
+`volunteer@peachhacks.local`, signs in as a check-in volunteer; anything else
+is a full admin. Mock mode has no camera, so the Check-in screen's Scan tab shows
+a text field instead: paste a ticket token (shown in an accepted registration's
+detail drawer under Ticket) or a ticket URL to get each scan result. Data is generated in the browser, shaped like the real API, and resets
 on reload. A peach banner marks every screen while it is on.
 
 Mock mode cannot be turned on in production: it is gated on Vite's
@@ -70,6 +80,14 @@ Mock mode cannot be turned on in production: it is gated on Vite's
 - **Routing**: hash based (`/#/registrations`), so the host needs no rewrite
   rules and a refresh on any screen works.
 - **CSV exports** are fetched with the bearer header and saved from a blob.
+- **Scanning** uses the camera through `getUserMedia`, which browsers only allow
+  on https (or localhost). QR codes are read with the browser's own
+  `BarcodeDetector` where it supports them (Android, macOS); elsewhere (iOS
+  Safari, Chrome on Windows) the `barcode-detector` package provides the same
+  API from a WebAssembly build of ZXing. That code and its `.wasm` file are
+  separate chunks, downloaded only on browsers that need them and served from
+  this site rather than the package's default CDN. The camera stops when the
+  volunteer switches to Search or leaves the screen.
 - All API calls live in `src/api/client.js`.
 
 ## Deploy (Vercel)

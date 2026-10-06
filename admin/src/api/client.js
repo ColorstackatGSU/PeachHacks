@@ -166,6 +166,8 @@ function stamp() {
   return new Date().toISOString().slice(0, 10);
 }
 
+export const ticketQrUrl = (token) => `${API_BASE}/public/tickets/${encodeURIComponent(token)}/qr.png`;
+
 export const api = {
   login: (email, password) =>
     json("POST", "/admin/auth/login", { body: { email, password }, auth: false }),
@@ -186,6 +188,21 @@ export const api = {
   exportRegistrations: (query) =>
     download("/admin/registrations/export.csv", query, `peachhacks-registrations-${stamp()}.csv`),
   deleteRegistration: (id) => json("DELETE", `/admin/registrations/${encodeURIComponent(id)}`),
+  resendTicketEmail: (id) => json("POST", `/admin/registrations/${encodeURIComponent(id)}/ticket-email`),
+
+  events: (signal) => json("GET", "/admin/events", { signal }),
+  createEvent: ({ name, startsAt }) => json("POST", "/admin/events", { body: { name, startsAt: startsAt || null } }),
+  updateEvent: (id, { name, startsAt }) =>
+    json("PATCH", `/admin/events/${encodeURIComponent(id)}`, { body: { name, startsAt: startsAt || null } }),
+  deleteEvent: (id) => json("DELETE", `/admin/events/${encodeURIComponent(id)}`),
+  exportEventAttendees: (id) =>
+    download(`/admin/events/${encodeURIComponent(id)}/export.csv`, null, `peachhacks-attendees-${stamp()}.csv`),
+
+  checkInList: (query, signal) => json("GET", "/admin/check-in", { query, signal }),
+  checkIn: (id, eventId) => json("POST", `/admin/check-in/${encodeURIComponent(id)}`, { query: { eventId } }),
+  undoCheckIn: (id, eventId) => json("DELETE", `/admin/check-in/${encodeURIComponent(id)}`, { query: { eventId } }),
+  scanTicket: ({ code, eventId, override = false }) =>
+    json("POST", "/admin/check-in/scan", { body: { code, eventId: eventId || null, override } }),
 
   settings: (signal) => json("GET", "/admin/settings", { signal }),
   saveSettings: (registrationOpen) => json("PUT", "/admin/settings", { body: { registrationOpen } }),
@@ -198,6 +215,7 @@ export const api = {
   campaigns: (signal) => json("GET", "/admin/emails", { signal }),
 
   admins: (signal) => json("GET", "/admin/admins", { signal }),
-  createAdmin: ({ name, email, password }) => json("POST", "/admin/admins", { body: { name, email, password } }),
+  createAdmin: ({ name, email, password, role }) =>
+    json("POST", "/admin/admins", { body: { name, email, password, role } }),
   deleteAdmin: (id) => json("DELETE", `/admin/admins/${encodeURIComponent(id)}`),
 };
