@@ -28,6 +28,9 @@ public record RegistrationRequest(
 		@NotBlank(message = "Email is required") @Email(regexp = "[^@\\s]+@[^@\\s]+\\.[^@\\s]+",
 				message = "Must be a valid email") @Size(max = 255,
 						message = "Email must be at most 255 characters") String email,
+		@NotBlank(message = "School email is required") @Email(regexp = "[^@\\s]+@[^@\\s]+\\.[^@\\s]+",
+				message = "Must be a valid email") @Size(max = 255,
+						message = "School email must be at most 255 characters") String schoolEmail,
 		@NotBlank(message = "School is required") @Size(max = 255,
 				message = "School must be at most 255 characters") String school,
 		@NotBlank(message = "Level of study is required") @Size(max = 255,
@@ -60,6 +63,10 @@ public record RegistrationRequest(
 		@Size(max = 255, message = "Must be at most 255 characters") String majorFieldOfStudy,
 		@Size(max = 255, message = "Must be at most 255 characters") String majorOther,
 		@Size(max = 255, message = "Must be at most 255 characters") String linkedinUrl,
+		/* Checked by ResumeUpload.toFile, not by bean validation. */
+		ResumeUpload resume,
+		/* Consent to pass the resume to sponsors; ignored without a resume. */
+		Boolean resumeOptIn,
 		/* Honeypot: real visitors never see or fill this field. */
 		String website) {
 }

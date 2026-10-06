@@ -81,7 +81,7 @@ class GoogleWalletApiTests {
 			.andExpect(status().isOk());
 		String created = mockMvc
 			.perform(post("/public/registrations").contentType(MediaType.APPLICATION_JSON).content("""
-					{"firstName":"Ada","lastName":"Lovelace","age":19,"phone":"404 555 0100","email":"%s",
+					{"firstName":"Ada","lastName":"Lovelace","age":19,"phone":"404 555 0100","email":"%s","schoolEmail":"ada@school.edu",
 					 "school":"Georgia State University","levelOfStudy":"Undergraduate University (3+ year)",
 					 "countryOfResidence":"US","mlhCodeOfConduct":true,"mlhDataSharing":true,"mlhEmailOptIn":false}
 					""".formatted(email)))

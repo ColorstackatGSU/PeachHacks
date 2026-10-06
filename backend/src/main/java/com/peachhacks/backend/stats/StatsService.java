@@ -28,8 +28,10 @@ public class StatsService {
 			List<DayCount> byDay) {
 	}
 
-	public record RegistrationStats(long total, long checkedIn, List<SchoolCount> bySchool, List<DayCount> byDay,
-			List<LabelCount> byLevelOfStudy, List<LabelCount> byStatus) {
+	/** resumeOptIn counts the uploaded resumes whose owner agreed to share them with sponsors. */
+	public record RegistrationStats(long total, long checkedIn, long withResume, long resumeOptIn,
+			List<SchoolCount> bySchool, List<DayCount> byDay, List<LabelCount> byLevelOfStudy,
+			List<LabelCount> byStatus) {
 	}
 
 	public record EventCount(UUID eventId, String name, long checkedIn) {
@@ -65,6 +67,8 @@ public class StatsService {
 		}
 		RegistrationStats registrations = new RegistrationStats(count("select count(*) from registrations"),
 				count("select count(*) from check_ins c join events e on e.id = c.event_id where e.general"),
+				count("select count(*) from registration_resumes"),
+				count("select count(*) from registration_resumes where sponsor_opt_in"),
 				bySchool("registrations"), byDay("registrations"), byLabel("level_of_study"), byStatus);
 
 		long preRegisteredNotRegistered = count("""

@@ -49,7 +49,7 @@ Without `RESEND_API_KEY` no email leaves the machine: every message (confirmatio
 ./mvnw test
 ```
 
-The integration tests run the real application against Testcontainers (`postgres:16-alpine`) and are skipped automatically when Docker is not available. They cover pre-registration, the registration gate, validation, admin authentication and roles, events and check-in, tickets and scanning, the acceptance email, Google Wallet links, CSV export and campaign audiences.
+The integration tests run the real application against Testcontainers (`postgres:16-alpine`) and are skipped automatically when Docker is not available. They cover pre-registration, the registration gate, validation, admin authentication and roles, events and check-in, tickets and scanning, the acceptance email, Google Wallet links, CSV export, campaign audiences, and resume upload, download, removal and the sponsor resume book.
 
 ## Container image
 
@@ -102,11 +102,13 @@ Codes: `VALIDATION_ERROR` (400), `INVALID_CREDENTIALS` and `UNAUTHORIZED` (401),
 | Endpoint | Purpose |
 | --- | --- |
 | `GET /public/status` | `{ "registrationOpen": false }` |
-| `POST /public/pre-registrations` | Pre-register. Idempotent on email (case-insensitive): a repeat updates the row and returns the same `id` with 201 |
-| `POST /public/registrations` | Full MLH registration. 403 while the gate is closed, 409 if the email is already registered |
+| `POST /public/pre-registrations` | Pre-register. `schoolEmail` is required. Idempotent on `email` (case-insensitive): a repeat updates the row and returns the same `id` with 201 |
+| `POST /public/registrations` | Full MLH registration. `schoolEmail` is required. Optional `resume` and `resumeOptIn`, see [Resumes](#resumes). 403 while the gate is closed, 409 if the `email` is already registered |
 | `POST /public/unsubscribe` | `{ "token": "..." }` from an email link; 204, or 404 for an unknown token |
 | `GET /public/tickets/{token}` | The ticket behind a QR code: `{ "firstName", "lastName", "school", "checkedIn", "googleWalletUrl" }`. `checkedIn` is the general check-in; `googleWalletUrl` is null unless Google Wallet is configured. 404 `NOT_FOUND` unless the registration is `ACCEPTED` |
 | `GET /public/tickets/{token}/qr.png` | The QR code as a PNG (1-bit, about 640 px, four-module quiet zone, `Cache-Control: public, max-age=86400`). Same 404 rule |
+
+Both forms take two addresses: `email` is the personal one that identifies the person (uniqueness, confirmation and ticket emails), `schoolEmail` is the school-issued one. `schoolEmail` must be a well-formed address of at most 255 characters; it does not have to end in `.edu`, may equal `email`, is stored trimmed and lower-cased, and is not unique. Registrations made before it was collected have `schoolEmail: null`.
 
 Both forms accept a hidden `website` honeypot field: when it is filled in, the request gets a normal 201 and nothing is stored. Public POSTs are limited to 60 per minute per client address, login to 10 per minute and the ticket endpoints to 300 per minute (a whole door queue can share one venue address); all in memory, per instance, see `app.rate-limit.*`.
 
@@ -121,13 +123,16 @@ Every account is an `ADMIN` (full access) or a `VOLUNTEER` (check-in only); the 
 | Endpoint | Purpose |
 | --- | --- |
 | `POST /admin/auth/login`, `POST /admin/auth/logout`, `GET /admin/auth/me` | Sign in, invalidate the token, current account (`{ id, email, name, role }`) |
-| `GET /admin/stats` | Totals, per school, per day, per level of study and per status; `registrations.checkedIn` (general check-in) and `events`, a list of `{ eventId, name, checkedIn }` |
+| `GET /admin/stats` | Totals, per school, per day, per level of study and per status; `registrations.checkedIn` (general check-in), `registrations.withResume` and `registrations.resumeOptIn` (resumes uploaded, and how many of those may be shared with sponsors) and `events`, a list of `{ eventId, name, checkedIn }` |
 | `GET /admin/pre-registrations?page=&size=&q=&school=` | Paged list, newest first (`size` is capped at 200) |
 | `GET /admin/pre-registrations/export.csv`, `DELETE /admin/pre-registrations/{id}` | CSV export with the same filters; delete |
-| `GET /admin/registrations?page=&size=&q=&school=&status=&checkedIn=` | Paged summaries with `checkedInAt` (general check-in). `checkedIn=true` or `false` filters on it |
-| `GET`, `PATCH`, `DELETE /admin/registrations/{id}` | Detail, set `status` (`PENDING`, `ACCEPTED`, `WAITLISTED`, `REJECTED`), delete. The detail adds `checkedInAt`, `checkedInBy`, `checkIns` (every event: `{ eventId, name, general, checkedInAt, checkedInBy }`) and, only while `ACCEPTED`, `ticketToken`, `ticketUrl` and `googleWalletUrl`. Changing the status to `ACCEPTED` from anything else emails the ticket |
+| `GET /admin/registrations?page=&size=&q=&school=&status=&checkedIn=&resume=` | Paged summaries with `schoolEmail`, `checkedInAt` (general check-in), `hasResume` and `resumeOptIn`. `q` matches the name, `email` or `schoolEmail`. `checkedIn=true` or `false` filters on the check-in; `resume=any` (uploaded one), `none`, or `opted-in` (uploaded one and agreed to share it) filters on the resume |
+| `GET`, `PATCH`, `DELETE /admin/registrations/{id}` | Detail, set `status` (`PENDING`, `ACCEPTED`, `WAITLISTED`, `REJECTED`), delete. The detail adds `checkedInAt`, `checkedInBy`, `checkIns` (every event: `{ eventId, name, general, checkedInAt, checkedInBy }`) and, only while `ACCEPTED`, `ticketToken`, `ticketUrl` and `googleWalletUrl`; also `resume` (`null` or `{ fileName, size, uploadedAt }`, never the file itself) and `resumeOptIn`. Deleting a registration deletes its resume. Changing the status to `ACCEPTED` from anything else emails the ticket |
 | `POST /admin/registrations/{id}/ticket-email` | Send the ticket email again; 204, or 400 if the registration is not `ACCEPTED` |
-| `GET /admin/registrations/export.csv` | Every column plus `checked_in_at` (general check-in), same filters. This is the check-in data MLH asks for |
+| `GET /admin/registrations/export.csv` | Every column plus, appended last, `checked_in_at` (general check-in), `has_resume`, `resume_opt_in` and `school_email`; same filters. This is the check-in data MLH asks for |
+| `GET /admin/registrations/{id}/resume` | The uploaded PDF as an attachment, whether or not the person opted in to sponsor sharing. 404 if there is none |
+| `DELETE /admin/registrations/{id}/resume` | Deletes the file and the opt-in, for a removal request; 204, or 404 if there is none. The registration stays |
+| `GET /admin/resumes/export.zip?checkedIn=` | The sponsor resume book, see [Resumes](#resumes) |
 | `GET`, `PUT /admin/settings` | The registration gate, `{ "registrationOpen": true }` |
 | `POST /admin/emails/recipient-count` | How many people an audience (and optional school) reaches |
 | `POST /admin/emails/test` | Send one copy to the signed-in admin |
@@ -159,6 +164,24 @@ Items returned by the check-in endpoints carry only what someone at the door nee
 #### Tickets
 
 Every registration has a random `ticket_token` that carries no personal data. The QR code encodes `$WEB_BASE_URL/ticket?t=<token>`, so a phone camera opens the hacker's ticket page on the public site and the admin scanner reads the same code. A ticket only exists while the registration is `ACCEPTED`: the public ticket endpoints answer 404 for every other status exactly as they do for an unknown token.
+
+#### Resumes
+
+A hacker may attach one resume when registering. The registration body stays JSON:
+
+```json
+{ "...": "...", "resume": { "fileName": "ada-lovelace.pdf", "contentBase64": "JVBERi0xLjcK..." }, "resumeOptIn": true }
+```
+
+- `resume` is optional (`null` or absent for none). The file must be a PDF of at most 2 MB once decoded, and is recognised by its first bytes (`%PDF-`), not by its name. Anything else is a 400 `VALIDATION_ERROR` with `fieldErrors.resume`, and no registration is created. It is checked with the rest of the validation: after the gate and the honeypot, before the duplicate-email check.
+- `resumeOptIn` (default `false`) is the hacker's consent to pass the resume to sponsors. It is stored with the file, so `true` without a file is stored as `false`, and removing the file removes the consent.
+- A 2 MB file is about 2.8 MB of base64. A registration whose `Content-Length` is over 3 MB is refused with the same 400 before the body is read (`RegistrationBodyLimitInterceptor`), and `server.tomcat.max-swallow-size` is raised to 16 MB so that the refused upload is drained and the client receives the error rather than a reset connection. Tomcat applies no size limit of its own to JSON bodies and Jackson's default limit on one string (20 million characters) is above the 2.8 MB needed, so nothing else has to be configured. A proxy in front of the service must allow 3 MB request bodies.
+- The stored file name is the client's with any directory, control and invisible characters and `<>:"|?*` removed, cut to 120 characters, always ending in `.pdf`.
+- Files live in Postgres, in `registration_resumes` (one row per registration, deleted with it); there is no object storage. Registration queries never read that table's `content` column: the JPA entity does not map it, and only the download and the resume book select it, one file at a time. Neither file contents nor base64 are logged; the request record's `toString()` prints only the length.
+
+Organizers (admins) can download any resume, for running the event. Sponsors only ever get the resume book, `GET /admin/resumes/export.zip`: a ZIP, streamed as it is built, with one PDF per registrant who uploaded a resume **and** opted in **and** is `ACCEPTED`, named `LastName_FirstName_<first 8 characters of the registration id>.pdf` (ASCII only, accents folded), plus `index.csv` with `first_name, last_name, email, school_email, school, level_of_study, major, linkedin_url, file_name`. `checkedIn=true` narrows it to people with a general check-in. The public form's consent text lists exactly these fields; keep the two in step. Each export and each resume removal is logged with the admin's email.
+
+Storage: resumes are stored uncompressed, so the table grows by the size of each file. The worst case is 2 MB per registrant (about 1 GB for 500 registrants who all upload the maximum); typical resumes are 100 to 300 KB, about 50 to 150 MB for 500. Check that against the database plan before the form opens; lowering `ResumeUpload.MAX_BYTES` (and the matching limit in `web/src/forms/validation.js`) is the lever.
 
 CSV cells that a spreadsheet would treat as a formula (starting with `=`, `+`, `-` or `@`) are prefixed with a single quote.
 
@@ -192,6 +215,8 @@ One-time setup in Google's consoles:
 4. Point `api.peachhacks.com` at the service under Settings > Networking > Custom Domain.
 
 Run a single instance: rate limiting and campaign sending are kept in memory.
+
+Registrations with a resume are JSON bodies of up to 3 MB, and each one is held in memory a few times over while it is parsed and decoded (roughly 10 MB for a moment), so leave the instance some headroom.
 
 **Railway Postgres:** add a Postgres service and reference its variables on the backend service:
 

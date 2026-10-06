@@ -41,7 +41,8 @@ public class AdminRegistrationController {
 			"genderSelfDescribe", "pronouns", "pronounsOther", "raceEthnicity", "raceEthnicityOther",
 			"sexualOrientation", "sexualOrientationOther", "highestEducation", "highestEducationOther", "tshirtSize",
 			"shippingLine1", "shippingLine2", "shippingCity", "shippingState", "shippingCountry",
-			"shippingPostalCode", "majorFieldOfStudy", "majorOther", "linkedinUrl", "checked_in_at");
+			"shippingPostalCode", "majorFieldOfStudy", "majorOther", "linkedinUrl", "checked_in_at",
+			"has_resume", "resume_opt_in", "school_email");
 
 	private final RegistrationService service;
 
@@ -51,32 +52,40 @@ public class AdminRegistrationController {
 
 	private final GoogleWallet googleWallet;
 
+	private final ResumeService resumes;
+
 	public AdminRegistrationController(RegistrationService service, CheckInService checkIns, Tickets tickets,
-			GoogleWallet googleWallet) {
+			GoogleWallet googleWallet, ResumeService resumes) {
 		this.service = service;
 		this.checkIns = checkIns;
 		this.tickets = tickets;
 		this.googleWallet = googleWallet;
+		this.resumes = resumes;
 	}
 
 	@GetMapping
 	PageResponse<RegistrationSummary> list(@RequestParam(defaultValue = "0") int page,
 			@RequestParam(defaultValue = "25") int size, @RequestParam(required = false) String q,
 			@RequestParam(required = false) String school, @RequestParam(required = false) String status,
-			@RequestParam(required = false) Boolean checkedIn) {
+			@RequestParam(required = false) Boolean checkedIn, @RequestParam(required = false) String resume) {
 		Pageable pageable = PageResponse.pageable(page, size);
-		Page<Registration> result = service.search(q, school, status, checkedIn, pageable);
-		Map<UUID, CheckIn> general = checkIns.general(result.getContent().stream().map(Registration::getId).toList());
-		return PageResponse.of(result, pageable, r -> RegistrationSummary.from(r, checkedInAt(general, r)));
+		Page<Registration> result = service.search(q, school, status, checkedIn, resume, pageable);
+		List<UUID> ids = result.getContent().stream().map(Registration::getId).toList();
+		Map<UUID, CheckIn> general = checkIns.general(ids);
+		Map<UUID, RegistrationResume> uploaded = resumes.byRegistration(ids);
+		return PageResponse.of(result, pageable,
+				r -> RegistrationSummary.from(r, checkedInAt(general, r), uploaded.get(r.getId())));
 	}
 
 	@GetMapping("/export.csv")
 	ResponseEntity<byte[]> export(@RequestParam(required = false) String q,
 			@RequestParam(required = false) String school, @RequestParam(required = false) String status,
-			@RequestParam(required = false) Boolean checkedIn) {
+			@RequestParam(required = false) Boolean checkedIn, @RequestParam(required = false) String resume) {
 		Map<UUID, CheckIn> general = checkIns.general();
+		Map<UUID, RegistrationResume> uploaded = resumes.byRegistration();
 		Csv csv = new Csv(CSV_HEADER);
-		for (Registration r : service.search(q, school, status, checkedIn, Pageable.unpaged())) {
+		for (Registration r : service.search(q, school, status, checkedIn, resume, Pageable.unpaged())) {
+			RegistrationResume file = uploaded.get(r.getId());
 			ShippingAddress address = (r.getShippingAddress() != null) ? r.getShippingAddress()
 					: new ShippingAddress(null, null, null, null, null, null);
 			csv.row(Arrays.asList(r.getId(), r.getStatus(), r.getCreatedAt(), r.getFirstName(), r.getLastName(),
@@ -88,7 +97,8 @@ public class AdminRegistrationController {
 					r.getSexualOrientation(), r.getSexualOrientationOther(), r.getHighestEducation(),
 					r.getHighestEducationOther(), r.getTshirtSize(), address.line1(), address.line2(), address.city(),
 					address.state(), address.country(), address.postalCode(), r.getMajorFieldOfStudy(),
-					r.getMajorOther(), r.getLinkedinUrl(), checkedInAt(general, r)));
+					r.getMajorOther(), r.getLinkedinUrl(), checkedInAt(general, r), file != null,
+					file != null && file.isSponsorOptIn(), r.getSchoolEmail()));
 		}
 		return csv.toResponse("peachhacks-registrations");
 	}
@@ -123,9 +133,11 @@ public class AdminRegistrationController {
 			.orElse(null);
 		boolean hasTicket = r.getStatus() == RegistrationStatus.ACCEPTED;
 		String ticketUrl = hasTicket ? tickets.url(r.getTicketToken()) : null;
+		RegistrationResume resume = resumes.find(r.getId()).orElse(null);
 		return new RegistrationDetail(r, (general != null) ? general.checkedInAt() : null,
 				(general != null) ? general.checkedInBy() : null, all, hasTicket ? r.getTicketToken() : null,
-				ticketUrl, hasTicket ? googleWallet.saveUrl(r, ticketUrl).orElse(null) : null);
+				ticketUrl, hasTicket ? googleWallet.saveUrl(r, ticketUrl).orElse(null) : null,
+				(resume != null) ? ResumeInfo.from(resume) : null, resume != null && resume.isSponsorOptIn());
 	}
 
 	private static Instant checkedInAt(Map<UUID, CheckIn> general, Registration r) {

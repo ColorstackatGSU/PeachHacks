@@ -18,6 +18,10 @@ spring:
 server:
   port: ${PORT:8080}
   shutdown: graceful
+  tomcat:
+    # A request refused before its body is read (an oversized resume) is still drained up
+    # to this size, so the client receives the error instead of a reset connection.
+    max-swallow-size: 16MB
 
 management:
   endpoints:

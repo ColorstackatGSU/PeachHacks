@@ -8,6 +8,7 @@ import com.peachhacks.backend.common.ApiException;
 import com.peachhacks.backend.common.RequestValidator;
 import com.peachhacks.backend.common.Texts;
 import com.peachhacks.backend.email.MailService;
+import com.peachhacks.backend.registration.ResumeUpload.ResumeFile;
 import com.peachhacks.backend.stats.SettingsService;
 import com.peachhacks.backend.ticket.GoogleWallet;
 import com.peachhacks.backend.ticket.Tickets;
@@ -17,11 +18,15 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 public class RegistrationService {
 
 	private static final Set<String> ISO_COUNTRIES = Set.of(Locale.getISOCountries());
+
+	private static final Set<String> RESUME_FILTERS = Set.of("opted-in", "any", "none");
 
 	private final RegistrationRepository repository;
 
@@ -35,14 +40,21 @@ public class RegistrationService {
 
 	private final GoogleWallet googleWallet;
 
+	private final ResumeService resumes;
+
+	private final TransactionTemplate transaction;
+
 	public RegistrationService(RegistrationRepository repository, SettingsService settings,
-			RequestValidator validator, MailService mailService, Tickets tickets, GoogleWallet googleWallet) {
+			RequestValidator validator, MailService mailService, Tickets tickets, GoogleWallet googleWallet,
+			ResumeService resumes, PlatformTransactionManager transactionManager) {
 		this.repository = repository;
 		this.settings = settings;
 		this.validator = validator;
 		this.mailService = mailService;
 		this.tickets = tickets;
 		this.googleWallet = googleWallet;
+		this.resumes = resumes;
+		this.transaction = new TransactionTemplate(transactionManager);
 	}
 
 	public UUID submit(RegistrationRequest request) {
@@ -57,12 +69,19 @@ public class RegistrationService {
 		if (!ISO_COUNTRIES.contains(request.countryOfResidence())) {
 			throw ApiException.invalidField("countryOfResidence", "Choose a country from the list");
 		}
+		ResumeFile resume = (request.resume() != null) ? request.resume().toFile() : null;
+		boolean resumeOptIn = resume != null && Boolean.TRUE.equals(request.resumeOptIn());
 		Registration registration = Registration.from(request);
 		if (repository.existsByEmail(registration.getEmail())) {
 			throw alreadyRegistered();
 		}
 		try {
-			repository.saveAndFlush(registration);
+			transaction.executeWithoutResult(status -> {
+				repository.saveAndFlush(registration);
+				if (resume != null) {
+					resumes.store(registration.getId(), resume, resumeOptIn);
+				}
+			});
 		}
 		catch (DataIntegrityViolationException ex) {
 			// Two submissions for one email at the same moment: the unique index decides.
@@ -73,11 +92,12 @@ public class RegistrationService {
 		return registration.getId();
 	}
 
-	public Page<Registration> search(String q, String school, String status, Boolean checkedIn, Pageable pageable) {
+	public Page<Registration> search(String q, String school, String status, Boolean checkedIn, String resume,
+			Pageable pageable) {
 		RegistrationStatus parsed = parseStatus(status);
 		return repository.search(Texts.containsPattern(q), Texts.orEmpty(school), parsed == null,
 				(parsed != null) ? parsed : RegistrationStatus.PENDING, checkedIn == null,
-				Boolean.TRUE.equals(checkedIn), pageable);
+				Boolean.TRUE.equals(checkedIn), parseResumeFilter(resume), pageable);
 	}
 
 	public Registration get(UUID id) {
@@ -129,6 +149,18 @@ public class RegistrationService {
 		catch (IllegalArgumentException ex) {
 			throw ApiException.invalidField("status", "Status must be PENDING, ACCEPTED, WAITLISTED or REJECTED");
 		}
+	}
+
+	private static String parseResumeFilter(String resume) {
+		String cleaned = Texts.clean(resume);
+		if (cleaned == null) {
+			return "";
+		}
+		String filter = cleaned.toLowerCase(Locale.ROOT);
+		if (!RESUME_FILTERS.contains(filter)) {
+			throw ApiException.invalidField("resume", "Resume filter must be opted-in, any or none");
+		}
+		return filter;
 	}
 
 	private static ApiException alreadyRegistered() {

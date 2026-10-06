@@ -3,14 +3,14 @@ package com.peachhacks.backend.registration;
 import java.time.Instant;
 import java.util.UUID;
 
-public record RegistrationSummary(UUID id, String firstName, String lastName, String email, String school,
-		String levelOfStudy, String countryOfResidence, Integer age, RegistrationStatus status, Instant createdAt,
-		Instant checkedInAt) {
+public record RegistrationSummary(UUID id, String firstName, String lastName, String email,
+		String schoolEmail, String school, String levelOfStudy, String countryOfResidence, Integer age,
+		RegistrationStatus status, Instant createdAt, Instant checkedInAt, boolean hasResume, boolean resumeOptIn) {
 
-	static RegistrationSummary from(Registration r, Instant checkedInAt) {
-		return new RegistrationSummary(r.getId(), r.getFirstName(), r.getLastName(), r.getEmail(), r.getSchool(),
-				r.getLevelOfStudy(), r.getCountryOfResidence(), r.getAge(), r.getStatus(), r.getCreatedAt(),
-				checkedInAt);
+	static RegistrationSummary from(Registration r, Instant checkedInAt, RegistrationResume resume) {
+		return new RegistrationSummary(r.getId(), r.getFirstName(), r.getLastName(), r.getEmail(),
+				r.getSchoolEmail(), r.getSchool(), r.getLevelOfStudy(), r.getCountryOfResidence(), r.getAge(),
+				r.getStatus(), r.getCreatedAt(), checkedInAt, resume != null, resume != null && resume.isSponsorOptIn());
 	}
 
 }

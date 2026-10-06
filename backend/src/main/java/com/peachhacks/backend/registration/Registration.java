@@ -36,6 +36,8 @@ public class Registration {
 
 	private String email;
 
+	private String schoolEmail;
+
 	private String school;
 
 	private String levelOfStudy;
@@ -112,6 +114,7 @@ public class Registration {
 		r.age = request.age();
 		r.phone = request.phone().strip();
 		r.email = Texts.email(request.email());
+		r.schoolEmail = Texts.email(request.schoolEmail());
 		r.school = request.school().strip();
 		r.levelOfStudy = request.levelOfStudy().strip();
 		r.countryOfResidence = request.countryOfResidence();
@@ -173,6 +176,11 @@ public class Registration {
 
 	public String getEmail() {
 		return email;
+	}
+
+	/** Null for registrations made before the form asked for it. */
+	public String getSchoolEmail() {
+		return schoolEmail;
 	}
 
 	public String getSchool() {
