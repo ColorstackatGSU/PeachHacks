@@ -181,6 +181,8 @@ export const api = {
   exportPreRegistrations: (query) =>
     download("/admin/pre-registrations/export.csv", query, `peachhacks-pre-registrations-${stamp()}.csv`),
   deletePreRegistration: (id) => json("DELETE", `/admin/pre-registrations/${encodeURIComponent(id)}`),
+  resendPreRegistrationSchoolEmail: (id) =>
+    json("POST", `/admin/pre-registrations/${encodeURIComponent(id)}/school-email/resend`),
 
   registrations: (query, signal) => json("GET", "/admin/registrations", { query, signal }),
   registration: (id, signal) => json("GET", `/admin/registrations/${encodeURIComponent(id)}`, { signal }),
@@ -190,6 +192,7 @@ export const api = {
     download("/admin/registrations/export.csv", query, `peachhacks-registrations-${stamp()}.csv`),
   deleteRegistration: (id) => json("DELETE", `/admin/registrations/${encodeURIComponent(id)}`),
   resendTicketEmail: (id) => json("POST", `/admin/registrations/${encodeURIComponent(id)}/ticket-email`),
+  resendSchoolEmail: (id) => json("POST", `/admin/registrations/${encodeURIComponent(id)}/school-email/resend`),
   downloadResume: (id) => download(`/admin/registrations/${encodeURIComponent(id)}/resume`, null, "resume.pdf"),
   deleteResume: (id) => json("DELETE", `/admin/registrations/${encodeURIComponent(id)}/resume`),
   // The resume book holds accepted registrants who opted in, so the same filters on the

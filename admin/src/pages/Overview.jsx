@@ -42,6 +42,8 @@ export default function Overview() {
   const range = dayRange(pre.byDay || [], reg.byDay || []);
   const converted = preTotal > 0 ? Math.round(((preTotal - notRegistered) / preTotal) * 100) : null;
   const checkedIn = reg.checkedIn || 0;
+  const confirmedNote = (group, total) =>
+    total > 0 ? `${formatNumber(group.schoolEmailConfirmed || 0)} with a confirmed school email` : null;
   const eventRows = (data.events || []).map((row) => ({ label: row.name, count: row.checkedIn }));
   const statusRows = (reg.byStatus || [])
     .map((row) => ({ ...row, label: statusLabel(row.label) }))
@@ -74,8 +76,8 @@ export default function Overview() {
       </section>
 
       <section className="tiles" aria-label="Headline numbers">
-        <StatTile label="Pre-registrations" value={preTotal} to="/pre-registrations" />
-        <StatTile label="Registrations" value={regTotal} to="/registrations" />
+        <StatTile label="Pre-registrations" value={preTotal} note={confirmedNote(pre, preTotal)} to="/pre-registrations" />
+        <StatTile label="Registrations" value={regTotal} note={confirmedNote(reg, regTotal)} to="/registrations" />
         <StatTile
           label="Pre-registered, not registered"
           value={notRegistered}

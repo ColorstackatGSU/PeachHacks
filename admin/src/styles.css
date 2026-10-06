@@ -245,6 +245,7 @@ main:focus { outline: none; }
 .data-table tbody tr:hover { background: rgba(244, 246, 237, .04); }
 .cell-break { overflow-wrap: anywhere; }
 .cell-nowrap { white-space: nowrap; }
+.cell-note { display: block; }
 .cell-actions { text-align: right !important; white-space: nowrap; }
 .row-link { color: var(--cream); font-weight: 700; }
 .row-link:hover { color: var(--peach); }

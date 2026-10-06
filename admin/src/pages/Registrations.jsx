@@ -210,6 +210,59 @@ function TicketPanel({ reg }) {
   );
 }
 
+function SchoolEmailPanel({ reg }) {
+  const notify = useToast();
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState(null);
+
+  if (!present(reg.schoolEmail)) {
+    return (
+      <section className="ticket-panel" aria-label="School email">
+        <span className="tile-label">School email</span>
+        <p className="muted small">This registration was made before the form asked for a school email, so there is nothing to confirm.</p>
+      </section>
+    );
+  }
+
+  const resend = async () => {
+    setSending(true);
+    setError(null);
+    try {
+      await api.resendSchoolEmail(reg.id);
+      notify(`Confirmation link sent to ${reg.schoolEmail}.`);
+    } catch (err) {
+      setError(err);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <section className="ticket-panel" aria-label="School email">
+      <div className="status-panel-head">
+        <span className="tile-label">School email</span>
+        {reg.schoolEmailConfirmed ? <Tag tone="accepted">Confirmed</Tag> : <Tag tone="waitlisted">Unconfirmed</Tag>}
+      </div>
+      <p className="resume-file">
+        <strong className="cell-break">{reg.schoolEmail}</strong>
+        <span className="muted small">
+          {reg.schoolEmailConfirmed
+            ? `Confirmed ${formatDateTime(reg.schoolEmailConfirmedAt)} from a link sent to this address.`
+            : "Nobody has opened the confirmation link sent to this address yet."}
+        </span>
+      </p>
+      {!reg.schoolEmailConfirmed && (
+        <div className="resume-actions">
+          <button type="button" className="btn btn-small" disabled={sending} onClick={resend}>
+            {sending ? "Sending…" : "Resend confirmation"}
+          </button>
+        </div>
+      )}
+      <InlineError error={error} />
+    </section>
+  );
+}
+
 function ResumePanel({ reg, onRemoved }) {
   const notify = useToast();
   const [downloading, setDownloading] = useState(false);
@@ -462,8 +515,18 @@ function RegistrationDrawer({ id, fallbackName, onClose, onChanged, onDeleted })
               Changing the status saves immediately. Accepting someone emails them their ticket; other changes send
               nothing.
             </p>
+            {!reg.schoolEmailConfirmed && (
+              <p className="notice notice-warn" role="note">
+                <strong>School email not confirmed.</strong>{" "}
+                {present(reg.schoolEmail)
+                  ? `Nobody has confirmed ${reg.schoolEmail}, so we cannot tell that this person is a current student.`
+                  : "This registration has no school email, so we cannot tell that this person is a current student."}{" "}
+                You can still change the status.
+              </p>
+            )}
             <InlineError error={statusError} />
           </section>
+          <SchoolEmailPanel reg={reg} />
           <TicketPanel reg={reg} />
           <ResumePanel
             reg={reg}
@@ -489,6 +552,9 @@ function RegistrationDrawer({ id, fallbackName, onClose, onChanged, onDeleted })
             <strong>{fullName(reg)}</strong> will be marked accepted and emailed a “You’re in” message at {reg.email} with
             their ticket QR code right away.
           </p>
+          {!reg.schoolEmailConfirmed && (
+            <p className="notice notice-warn">Their school email is not confirmed. Accept only if you are satisfied they are a current student.</p>
+          )}
         </ConfirmDialog>
       )}
       {confirming && reg && (
@@ -519,13 +585,17 @@ export default function Registrations() {
   const [status, setStatus] = useState("");
   const [checkedIn, setCheckedIn] = useState("");
   const [resume, setResume] = useState("");
+  const [schoolEmailConfirmed, setSchoolEmailConfirmed] = useState("");
   const [page, setPage] = useState(0);
   const [exporting, setExporting] = useState(false);
   const [resumeBook, setResumeBook] = useState(false);
   const [open, setOpen] = useState(null);
 
   const q = useDebounced(search.trim(), 300);
-  const filters = useMemo(() => ({ q, school, status, checkedIn, resume }), [q, school, status, checkedIn, resume]);
+  const filters = useMemo(
+    () => ({ q, school, status, checkedIn, resume, schoolEmailConfirmed }),
+    [q, school, status, checkedIn, resume, schoolEmailConfirmed],
+  );
   const load = useCallback((signal) => api.registrations({ page, size: PAGE_SIZE, ...filters }, signal), [page, filters]);
   const result = useAsync(load);
   const stats = useStats();
@@ -533,7 +603,7 @@ export default function Registrations() {
 
   const items = result.data?.items || [];
   const total = result.data?.total || 0;
-  const filtered = Boolean(q || school || status || checkedIn || resume);
+  const filtered = Boolean(q || school || status || checkedIn || resume || schoolEmailConfirmed);
 
   const exportCsv = async () => {
     setExporting(true);
@@ -606,6 +676,14 @@ export default function Registrations() {
             <option value="none">No resume</option>
           </select>
         </div>
+        <div className="field">
+          <label htmlFor={`${ids}-school-email`}>School email</label>
+          <select id={`${ids}-school-email`} value={schoolEmailConfirmed} onChange={resetTo(setSchoolEmailConfirmed)}>
+            <option value="">Everyone</option>
+            <option value="true">Confirmed</option>
+            <option value="false">Unconfirmed</option>
+          </select>
+        </div>
         {filtered && (
           <button
             type="button"
@@ -616,6 +694,7 @@ export default function Registrations() {
               setStatus("");
               setCheckedIn("");
               setResume("");
+              setSchoolEmailConfirmed("");
               setPage(0);
             }}
           >
@@ -663,6 +742,9 @@ export default function Registrations() {
                   </th>
                   <td data-label="Email" className="cell-break">
                     {item.email}
+                    {!item.schoolEmailConfirmed && (
+                      <span className="cell-note muted small">School email unconfirmed</span>
+                    )}
                   </td>
                   <td data-label="School">{item.school}</td>
                   <td data-label="Level of study">{item.levelOfStudy}</td>

@@ -97,6 +97,19 @@ Mock mode cannot be turned on in production: it is gated on Vite's
   or are not accepted, are never in it.
 - **School email** is shown in the registration drawer and the pre-registrations
   table; the Registrations search matches it as well as the personal email.
+- **School email confirmation**: the API mails a link to the school address and
+  records when it is opened. The pre-registrations table shows "Confirmed" or
+  "Unconfirmed" beside the address, with a "Resend link" action on unconfirmed
+  rows. The Registrations table is too wide for another column, so it only marks
+  the unconfirmed ones under the personal email; the drawer has a School email
+  panel with the state, the date it was confirmed and "Resend confirmation". Both
+  screens have a School email filter, which also applies to the CSV export, and
+  both exports end with a `school_email_confirmed` column. An unconfirmed school
+  email never blocks a status change: the drawer shows a warning on the status
+  control and in the accept confirmation, and the organizer decides. The Overview
+  tiles for pre-registrations and registrations say how many have a confirmed
+  school email. Registrations made before school emails were collected have none
+  and count as unconfirmed.
 - **Scanning** uses the camera through `getUserMedia`, which browsers only allow
   on https (or localhost). QR codes are read with the browser's own
   `BarcodeDetector` where it supports them (Android, macOS); elsewhere (iOS

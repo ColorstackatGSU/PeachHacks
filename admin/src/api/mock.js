@@ -67,6 +67,21 @@ for (let i = 0; i < 187; i += 1) {
     createdAt: new Date(now - Math.floor(Math.pow(rand(), 1.6) * 40 * DAY)).toISOString(),
   });
 }
+// A person usually confirms within minutes of signing up.
+preRegistrations.forEach((pre) => {
+  const confirmed = Boolean(pre.schoolEmail) && rand() > 0.35;
+  pre.schoolEmailConfirmed = confirmed;
+  pre.schoolEmailConfirmedAt = confirmed ? new Date(Date.parse(pre.createdAt) + 5 * 60000).toISOString() : null;
+});
+
+function confirmation(base, createdAt) {
+  if (base.schoolEmailConfirmed) return { schoolEmailConfirmed: true, schoolEmailConfirmedAt: base.schoolEmailConfirmedAt };
+  const confirmed = rand() > 0.4;
+  return {
+    schoolEmailConfirmed: confirmed,
+    schoolEmailConfirmedAt: confirmed ? new Date(Math.min(now, Date.parse(createdAt) + 5 * 60000)).toISOString() : null,
+  };
+}
 
 function makeRegistration(base, createdAt) {
   const veg = rand();
@@ -79,6 +94,8 @@ function makeRegistration(base, createdAt) {
     phone: `+1 404 555 ${String(1000 + Math.floor(rand() * 9000))}`,
     email: base.email,
     schoolEmail: base.schoolEmail || `${base.email.split("@")[0]}@student.example.edu`,
+    // Confirmed at pre-registration carries over; otherwise most people confirm soon after.
+    ...confirmation(base, createdAt),
     school: base.school,
     levelOfStudy: pickSkewed(LEVELS),
     countryOfResidence: rand() > 0.08 ? "US" : pick(["CA", "NG", "IN", "MX"]),
@@ -259,6 +276,7 @@ function filterPeople(list, params) {
   const status = params.get("status") || "";
   const checkedIn = params.get("checkedIn") || "";
   const resume = params.get("resume") || "";
+  const schoolEmailConfirmed = params.get("schoolEmailConfirmed") || "";
   return list
     .filter((item) => {
       if (school && item.school !== school) return false;
@@ -267,6 +285,7 @@ function filterPeople(list, params) {
       if (resume === "any" && !item.resume) return false;
       if (resume === "none" && item.resume) return false;
       if (resume === "opted-in" && !(item.resume && item.resumeOptIn)) return false;
+      if (schoolEmailConfirmed && String(Boolean(item.schoolEmailConfirmed)) !== schoolEmailConfirmed) return false;
       if (!q) return true;
       return `${item.firstName} ${item.lastName} ${item.email} ${item.schoolEmail || ""}`.toLowerCase().includes(q);
     })
@@ -285,10 +304,10 @@ function withRegistered(list) {
 }
 
 function summary(r) {
-  const { id, firstName, lastName, email, schoolEmail, school, levelOfStudy, countryOfResidence, age, status, createdAt } = r;
+  const { id, firstName, lastName, email, schoolEmail, schoolEmailConfirmed, schoolEmailConfirmedAt, school, levelOfStudy, countryOfResidence, age, status, createdAt } = r;
   const checkedInAt = findCheckIn(id, generalEvent.id)?.checkedInAt || null;
   return {
-    id, firstName, lastName, email, schoolEmail, school, levelOfStudy, countryOfResidence, age, status, createdAt, checkedInAt,
+    id, firstName, lastName, email, schoolEmail, schoolEmailConfirmed, schoolEmailConfirmedAt, school, levelOfStudy, countryOfResidence, age, status, createdAt, checkedInAt,
     hasResume: Boolean(r.resume),
     resumeOptIn: Boolean(r.resume && r.resumeOptIn),
   };
@@ -453,6 +472,7 @@ function handle(method, path, params, body, token) {
       preRegistrations: {
         total: preRegistrations.length,
         unsubscribed: preRegistrations.filter((p) => p.unsubscribed).length,
+        schoolEmailConfirmed: preRegistrations.filter((p) => p.schoolEmailConfirmed).length,
         bySchool: bySchool(preRegistrations),
         byDay: byDay(preRegistrations),
       },
@@ -461,6 +481,7 @@ function handle(method, path, params, body, token) {
         checkedIn: eventCount(generalEvent.id),
         withResume: registrations.filter((r) => r.resume).length,
         resumeOptIn: registrations.filter((r) => r.resume && r.resumeOptIn).length,
+        schoolEmailConfirmed: registrations.filter((r) => r.schoolEmailConfirmed).length,
         bySchool: bySchool(registrations),
         byDay: byDay(registrations),
         byLevelOfStudy: groupCount(registrations, (r) => r.levelOfStudy, "label").sort((a, b) => b.count - a.count),
@@ -475,7 +496,14 @@ function handle(method, path, params, body, token) {
     return respond(200, paginate(withRegistered(filterPeople(preRegistrations, params)), params));
   }
   if (path === "/admin/pre-registrations/export.csv") {
-    return csvResponse(withRegistered(filterPeople(preRegistrations, params)), "pre-registrations.csv");
+    return csvResponse(
+      withRegistered(filterPeople(preRegistrations, params)).map((item) => {
+        const row = { ...item, school_email_confirmed: item.schoolEmailConfirmed };
+        ["schoolEmailConfirmed", "schoolEmailConfirmedAt"].forEach((key) => delete row[key]);
+        return row;
+      }),
+      "pre-registrations.csv",
+    );
   }
   if (path === "/admin/registrations") {
     return respond(200, paginate(filterPeople(registrations, params).map(summary), params));
@@ -489,8 +517,9 @@ function handle(method, path, params, body, token) {
           has_resume: Boolean(r.resume),
           resume_opt_in: Boolean(r.resume && r.resumeOptIn),
           school_email: r.schoolEmail,
+          school_email_confirmed: r.schoolEmailConfirmed,
         };
-        ["ticketToken", "resume", "resumeOptIn", "schoolEmail"].forEach((key) => delete row[key]);
+        ["ticketToken", "resume", "resumeOptIn", "schoolEmail", "schoolEmailConfirmed", "schoolEmailConfirmedAt"].forEach((key) => delete row[key]);
         return row;
       }),
       "registrations.csv",
@@ -502,6 +531,16 @@ function handle(method, path, params, body, token) {
     const index = preRegistrations.findIndex((p) => p.id === preMatch[1]);
     if (index < 0) return fail(404, "NOT_FOUND", "Pre-registration not found.");
     preRegistrations.splice(index, 1);
+    return respond(204);
+  }
+
+  const schoolEmailResend = /^\/admin\/(pre-registrations|registrations)\/([^/]+)\/school-email\/resend$/.exec(path);
+  if (schoolEmailResend && method === "POST") {
+    const pool = schoolEmailResend[1] === "registrations" ? registrations : preRegistrations;
+    const item = pool.find((entry) => entry.id === schoolEmailResend[2]);
+    if (!item) return fail(404, "NOT_FOUND", "Not found.");
+    if (!item.schoolEmail) return fail(400, "VALIDATION_ERROR", "There is no school email to confirm.");
+    if (item.schoolEmailConfirmed) return fail(400, "VALIDATION_ERROR", "This school email is already confirmed.");
     return respond(204);
   }
 

@@ -12,14 +12,16 @@ export default function PreRegistrations() {
   const ids = useId();
   const [search, setSearch] = useState("");
   const [school, setSchool] = useState("");
+  const [schoolEmailConfirmed, setSchoolEmailConfirmed] = useState("");
   const [page, setPage] = useState(0);
   const [exporting, setExporting] = useState(false);
   const [pendingDelete, setPendingDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState(null);
+  const [resending, setResending] = useState(null);
 
   const q = useDebounced(search.trim(), 300);
-  const filters = useMemo(() => ({ q, school }), [q, school]);
+  const filters = useMemo(() => ({ q, school, schoolEmailConfirmed }), [q, school, schoolEmailConfirmed]);
   const load = useCallback((signal) => api.preRegistrations({ page, size: PAGE_SIZE, ...filters }, signal), [page, filters]);
   const list = useAsync(load);
   const stats = useStats();
@@ -27,7 +29,7 @@ export default function PreRegistrations() {
 
   const items = list.data?.items || [];
   const total = list.data?.total || 0;
-  const filtered = Boolean(q || school);
+  const filtered = Boolean(q || school || schoolEmailConfirmed);
 
   const exportCsv = async () => {
     setExporting(true);
@@ -37,6 +39,18 @@ export default function PreRegistrations() {
       notify(`Export failed: ${errorText(error)}`, "error");
     } finally {
       setExporting(false);
+    }
+  };
+
+  const resendSchoolEmail = async (item) => {
+    setResending(item.id);
+    try {
+      await api.resendPreRegistrationSchoolEmail(item.id);
+      notify(`Confirmation link sent to ${item.schoolEmail}.`);
+    } catch (error) {
+      notify(`Could not send the link: ${errorText(error)}`, "error");
+    } finally {
+      setResending(null);
     }
   };
 
@@ -97,6 +111,21 @@ export default function PreRegistrations() {
             ))}
           </select>
         </div>
+        <div className="field">
+          <label htmlFor={`${ids}-school-email`}>School email</label>
+          <select
+            id={`${ids}-school-email`}
+            value={schoolEmailConfirmed}
+            onChange={(e) => {
+              setSchoolEmailConfirmed(e.target.value);
+              setPage(0);
+            }}
+          >
+            <option value="">Everyone</option>
+            <option value="true">Confirmed</option>
+            <option value="false">Unconfirmed</option>
+          </select>
+        </div>
         {filtered && (
           <button
             type="button"
@@ -104,6 +133,7 @@ export default function PreRegistrations() {
             onClick={() => {
               setSearch("");
               setSchool("");
+              setSchoolEmailConfirmed("");
               setPage(0);
             }}
           >
@@ -148,7 +178,14 @@ export default function PreRegistrations() {
                   </td>
                   <td data-label="School">{item.school}</td>
                   <td data-label="School email" className="cell-break">
-                    {item.schoolEmail || <span className="muted">None</span>}
+                    {item.schoolEmail ? (
+                      <span className="tag-row">
+                        {item.schoolEmail}
+                        {item.schoolEmailConfirmed ? <Tag tone="accepted">Confirmed</Tag> : <Tag tone="waitlisted">Unconfirmed</Tag>}
+                      </span>
+                    ) : (
+                      <span className="muted">None</span>
+                    )}
                   </td>
                   <td data-label="Status">
                     <span className="tag-row">
@@ -160,6 +197,17 @@ export default function PreRegistrations() {
                     {formatDateTime(item.createdAt)}
                   </td>
                   <td className="cell-actions">
+                    {item.schoolEmail && !item.schoolEmailConfirmed && (
+                      <button
+                        type="button"
+                        className="btn btn-small"
+                        aria-label={`Resend the school email confirmation link to ${fullName(item)}`}
+                        disabled={resending === item.id}
+                        onClick={() => resendSchoolEmail(item)}
+                      >
+                        {resending === item.id ? "Sending…" : "Resend link"}
+                      </button>
+                    )}{" "}
                     <button
                       type="button"
                       className="btn btn-small btn-danger-quiet"
