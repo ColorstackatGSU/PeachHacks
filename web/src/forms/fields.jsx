@@ -1,4 +1,6 @@
 /* eslint-disable react/prop-types -- the project has no prop-types dependency and React 19 ignores propTypes */
+import { useRef } from 'react';
+import { formatFileSize } from './validation.js';
 
 export function fieldId(name) {
   return `pf-${name.replace(/\./g, '-')}`;
@@ -141,6 +143,55 @@ export function ConsentCheckbox({ name, checked, onChange, error, required = fal
         </label>
       </div>
       <FieldMessage id={`${id}-msg`} error={error} />
+    </div>
+  );
+}
+
+// `file` is the chosen File or null. onChoose(file) and onRemove() leave validation to the form.
+// The native input stays in the page (visually hidden inside its label) so it keeps
+// keyboard, screen reader and phone file-picker behaviour.
+export function ResumeField({ name, file, onChoose, onRemove, error, hint }) {
+  const id = fieldId(name);
+  const inputRef = useRef(null);
+  const handleChange = (event) => {
+    const chosen = event.target.files?.[0] ?? null;
+    // Cleared so that picking the same file again still fires a change event.
+    event.target.value = '';
+    if (chosen) onChoose(chosen);
+  };
+  const handleRemove = () => {
+    onRemove();
+    inputRef.current?.focus();
+  };
+  return (
+    <div className="pf-field pf-field-wide">
+      <FieldLabel htmlFor={id} optional>Resume</FieldLabel>
+      <div className="pf-file">
+        <label className="pf-file-button">
+          <input
+            ref={inputRef}
+            className="pf-file-input"
+            type="file"
+            id={id}
+            name={name}
+            accept="application/pdf,.pdf"
+            onChange={handleChange}
+            aria-invalid={error ? 'true' : undefined}
+            aria-describedby={`${id}-msg${file ? ` ${id}-chosen` : ''}`}
+          />
+          <span>{file ? 'Choose a different PDF' : 'Choose a PDF'}</span>
+        </label>
+        {file && (
+          <p className="pf-file-chosen" id={`${id}-chosen`}>
+            <span className="pf-file-name">{file.name}</span>
+            <span className="pf-file-size">{formatFileSize(file.size)}</span>
+            <button type="button" className="pf-link-button" onClick={handleRemove} aria-label={`Remove ${file.name}`}>
+              Remove
+            </button>
+          </p>
+        )}
+      </div>
+      <FieldMessage id={`${id}-msg`} error={error} hint={hint} />
     </div>
   );
 }

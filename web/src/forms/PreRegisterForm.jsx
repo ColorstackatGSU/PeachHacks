@@ -3,7 +3,7 @@ import { submitPreRegistration } from './api.js';
 import { Honeypot, SubmitButton, TextField } from './fields.jsx';
 import { Card, FormAlert, PageShell } from './PageShell.jsx';
 import SchoolPicker from './SchoolPicker.jsx';
-import { blankToNull, describeFailure, focusFirstInvalid, isEmail, splitFieldErrors } from './validation.js';
+import { describeFailure, focusFirstInvalid, isEmail, sameEmail, splitFieldErrors } from './validation.js';
 
 const INITIAL_VALUES = { firstName: '', lastName: '', email: '', school: '', schoolEmail: '', website: '' };
 const FIELD_NAMES = Object.keys(INITIAL_VALUES);
@@ -15,9 +15,8 @@ function validate(values) {
   if (!values.email.trim()) errors.email = 'Enter your email address.';
   else if (!isEmail(values.email)) errors.email = 'Enter a valid email, like name@example.com.';
   if (!values.school.trim()) errors.school = 'Pick your school from the list.';
-  if (values.schoolEmail.trim() && !isEmail(values.schoolEmail)) {
-    errors.schoolEmail = 'Enter a valid email, or leave this blank.';
-  }
+  if (!values.schoolEmail.trim()) errors.schoolEmail = 'Enter your school email address.';
+  else if (!isEmail(values.schoolEmail)) errors.schoolEmail = 'Enter a valid email, like name@school.edu.';
   return errors;
 }
 
@@ -75,7 +74,7 @@ export default function PreRegisterForm() {
         lastName: values.lastName.trim(),
         email: values.email.trim(),
         school: values.school.trim(),
-        schoolEmail: blankToNull(values.schoolEmail),
+        schoolEmail: values.schoolEmail.trim(),
         website: values.website,
       });
       setStatus('success');
@@ -130,7 +129,10 @@ export default function PreRegisterForm() {
             <SchoolPicker value={values.school} onChange={setValue} error={errors.school} />
             <TextField
               name="schoolEmail" label="School email" value={values.schoolEmail} onChange={setValue}
-              error={errors.schoolEmail} optional wide hint="Your .edu address, if you have one."
+              error={errors.schoolEmail} wide
+              hint={sameEmail(values.schoolEmail, values.email)
+                ? "Same as your personal email. That's fine if it's the only one you use."
+                : 'The address your school gave you.'}
               type="email" inputMode="email" autoComplete="off" autoCapitalize="none" spellCheck={false} maxLength={255}
             />
           </div>

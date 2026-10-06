@@ -2,7 +2,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { submitRegistration } from './api.js';
 import { COUNTRIES, PINNED_COUNTRY } from './countries.js';
-import { CheckboxGroup, ConsentCheckbox, Honeypot, SelectField, SubmitButton, TextField } from './fields.jsx';
+import {
+  CheckboxGroup, ConsentCheckbox, Honeypot, ResumeField, SelectField, SubmitButton, TextField,
+} from './fields.jsx';
 import {
   AGES, CONTACT_EMAIL, DIETARY_RESTRICTIONS, GENDERS, GENDER_SELF_DESCRIBE, HIGHEST_EDUCATION, HIGHEST_EDUCATION_OTHER,
   LEVELS_OF_STUDY, MAJORS, MAJOR_OTHER, MLH_DISCLAIMER, MLH_LINKS, PRONOUNS, PRONOUNS_OTHER, RACE_ETHNICITY,
@@ -11,13 +13,15 @@ import {
 import { FormAlert } from './PageShell.jsx';
 import SchoolPicker from './SchoolPicker.jsx';
 import {
-  blankToNull, describeFailure, focusFirstInvalid, isEmail, isPhone, normalizeLinkedinUrl, splitFieldErrors,
+  blankToNull, checkResume, describeFailure, focusFirstInvalid, isEmail, isPhone, normalizeLinkedinUrl,
+  readFileAsBase64, sameEmail, splitFieldErrors,
 } from './validation.js';
 
 const INITIAL_VALUES = {
   firstName: '',
   lastName: '',
   email: '',
+  schoolEmail: '',
   phone: '',
   age: '',
   countryOfResidence: '',
@@ -40,6 +44,8 @@ const INITIAL_VALUES = {
   majorFieldOfStudy: '',
   majorOther: '',
   linkedinUrl: '',
+  resume: null,
+  resumeOptIn: false,
   underrepresentedGroup: '',
   gender: '',
   genderSelfDescribe: '',
@@ -59,7 +65,7 @@ const ADDRESS_FIELDS = ['line1', 'line2', 'city', 'state', 'country', 'postalCod
 // opened when the API reports an error inside it.
 const SECTION_FIELDS = {
   logistics: ['dietaryRestrictions', 'dietaryDetails', 'tshirtSize', ...ADDRESS_FIELDS.map((key) => `shippingAddress.${key}`)],
-  studies: ['highestEducation', 'highestEducationOther', 'majorFieldOfStudy', 'majorOther', 'linkedinUrl'],
+  studies: ['highestEducation', 'highestEducationOther', 'majorFieldOfStudy', 'majorOther', 'linkedinUrl', 'resume', 'resumeOptIn'],
   demographics: [
     'underrepresentedGroup', 'gender', 'genderSelfDescribe', 'pronouns', 'pronounsOther', 'raceEthnicity',
     'raceEthnicityOther', 'sexualOrientation', 'sexualOrientationOther',
@@ -76,6 +82,8 @@ function validate(values) {
   if (!values.lastName.trim()) errors.lastName = 'Enter your last name.';
   if (!values.email.trim()) errors.email = 'Enter your email address.';
   else if (!isEmail(values.email)) errors.email = 'Enter a valid email, like name@example.com.';
+  if (!values.schoolEmail.trim()) errors.schoolEmail = 'Enter your school email address.';
+  else if (!isEmail(values.schoolEmail)) errors.schoolEmail = 'Enter a valid email, like name@school.edu.';
   if (!values.phone.trim()) errors.phone = 'Enter your phone number.';
   else if (!isPhone(values.phone)) errors.phone = 'Enter a valid phone number, with area code.';
   if (!AGES.includes(values.age)) errors.age = 'Select your age.';
@@ -90,7 +98,8 @@ function validate(values) {
   return errors;
 }
 
-function buildPayload(values) {
+// `resume` is null or { fileName, contentBase64 }, read from the chosen file at submit time.
+function buildPayload(values, resume) {
   const address = Object.fromEntries(ADDRESS_FIELDS.map((key) => [key, blankToNull(values[`shippingAddress.${key}`])]));
   const hasAddress = Object.values(address).some((part) => part !== null);
   const otherText = (selected, text) => (selected ? blankToNull(text) : null);
@@ -101,6 +110,7 @@ function buildPayload(values) {
     age: Number.parseInt(values.age, 10),
     phone: values.phone.trim(),
     email: values.email.trim(),
+    schoolEmail: values.schoolEmail.trim(),
     school: values.school.trim(),
     levelOfStudy: values.levelOfStudy,
     countryOfResidence: values.countryOfResidence,
@@ -126,6 +136,8 @@ function buildPayload(values) {
     majorFieldOfStudy: blankToNull(values.majorFieldOfStudy),
     majorOther: otherText(values.majorFieldOfStudy === MAJOR_OTHER, values.majorOther),
     linkedinUrl: blankToNull(normalizeLinkedinUrl(values.linkedinUrl) ?? ''),
+    resume,
+    resumeOptIn: resume !== null && values.resumeOptIn,
     website: values.website,
   };
 }
@@ -179,6 +191,26 @@ export default function RegisterForm({ titleId, onSuccess, onClosed }) {
     });
   };
 
+  const removeResume = () => {
+    setValues((current) => ({ ...current, resume: null, resumeOptIn: false }));
+    setErrors((current) => {
+      const next = { ...current };
+      delete next.resume;
+      delete next.resumeOptIn;
+      return next;
+    });
+  };
+
+  const chooseResume = async (file) => {
+    const problem = await checkResume(file);
+    if (problem) {
+      setValues((current) => ({ ...current, resume: null, resumeOptIn: false }));
+      setErrors((current) => ({ ...current, resume: problem }));
+      return;
+    }
+    setValue('resume', file);
+  };
+
   const toggleSection = (id) => setOpenSections((current) => ({ ...current, [id]: !current[id] }));
 
   const fail = (fieldErrors, message) => {
@@ -201,6 +233,9 @@ export default function RegisterForm({ titleId, onSuccess, onClosed }) {
     if (pending) return;
 
     const clientErrors = validate(values);
+    // Checked again here because the file can change on disk after it was chosen.
+    const resumeProblem = values.resume ? await checkResume(values.resume) : null;
+    if (resumeProblem) clientErrors.resume = resumeProblem;
     const errorCount = Object.keys(clientErrors).length;
     if (errorCount > 0) {
       fail(clientErrors, errorCount === 1 ? 'One field needs another look.' : `${errorCount} fields need another look.`);
@@ -210,8 +245,18 @@ export default function RegisterForm({ titleId, onSuccess, onClosed }) {
     setPending(true);
     setFormError(null);
 
+    let resume = null;
+    if (values.resume) {
+      try {
+        resume = { fileName: values.resume.name, contentBase64: await readFileAsBase64(values.resume) };
+      } catch {
+        fail({ resume: "We couldn't read that file. Choose it again." }, 'One field needs another look.');
+        return;
+      }
+    }
+
     try {
-      await submitRegistration(buildPayload(values));
+      await submitRegistration(buildPayload(values, resume));
       onSuccess(values.email.trim());
     } catch (error) {
       if (error?.code === 'REGISTRATION_CLOSED') {
@@ -243,8 +288,15 @@ export default function RegisterForm({ titleId, onSuccess, onClosed }) {
           <TextField {...field('firstName')} label="First Name" autoComplete="given-name" autoCapitalize="words" maxLength={255} />
           <TextField {...field('lastName')} label="Last Name" autoComplete="family-name" autoCapitalize="words" maxLength={255} />
           <TextField
-            {...field('email')} label="Email" wide hint="Your confirmation goes here."
+            {...field('email')} label="Personal email" wide hint="Where we'll contact you. Your confirmation goes here."
             type="email" inputMode="email" autoComplete="email" autoCapitalize="none" spellCheck={false} maxLength={255}
+          />
+          <TextField
+            {...field('schoolEmail')} label="School email" wide
+            hint={sameEmail(values.schoolEmail, values.email)
+              ? "Same as your personal email. That's fine if it's the only one you use."
+              : 'The address your school gave you.'}
+            type="email" inputMode="email" autoComplete="off" autoCapitalize="none" spellCheck={false} maxLength={255}
           />
           <TextField
             {...field('phone')} label="Phone Number"
@@ -358,7 +410,7 @@ export default function RegisterForm({ titleId, onSuccess, onClosed }) {
       </Section>
 
       <Section
-        id="studies" title="Studies and career" summary="Education, major and LinkedIn."
+        id="studies" title="Studies and career" summary="Education, major, LinkedIn and resume."
         open={openSections.studies} onToggle={toggleSection}
       >
         <div className="pf-grid">
@@ -377,6 +429,19 @@ export default function RegisterForm({ titleId, onSuccess, onClosed }) {
             {...field('linkedinUrl')} label="LinkedIn URL" optional wide placeholder="linkedin.com/in/yourname"
             type="url" inputMode="url" autoComplete="url" autoCapitalize="none" spellCheck={false} maxLength={255}
           />
+          <ResumeField
+            name="resume" file={values.resume} onChoose={chooseResume} onRemove={removeResume} error={errors.resume}
+            hint="Optional. PDF only, up to 2 MB."
+          />
+          {values.resume && (
+            <ConsentCheckbox
+              name="resumeOptIn" checked={values.resumeOptIn} onChange={setValue} error={errors.resumeOptIn}
+            >
+              Share my resume with PeachHacks sponsors for recruiting. If you tick this, sponsors receive your resume
+              together with your name, personal and school email, school, level of study, major and LinkedIn link.
+              Leave it unticked and your resume stays with the PeachHacks organizers, who can always see it.
+            </ConsentCheckbox>
+          )}
         </div>
       </Section>
 
