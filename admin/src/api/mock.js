@@ -70,6 +70,7 @@ for (let i = 0; i < 187; i += 1) {
 
 function makeRegistration(base, createdAt) {
   const veg = rand();
+  const resumeRoll = rand();
   return {
     id: uuid(),
     firstName: base.firstName,
@@ -77,6 +78,7 @@ function makeRegistration(base, createdAt) {
     age: 17 + Math.floor(rand() * 9),
     phone: `+1 404 555 ${String(1000 + Math.floor(rand() * 9000))}`,
     email: base.email,
+    schoolEmail: base.schoolEmail || `${base.email.split("@")[0]}@student.example.edu`,
     school: base.school,
     levelOfStudy: pickSkewed(LEVELS),
     countryOfResidence: rand() > 0.08 ? "US" : pick(["CA", "NG", "IN", "MX"]),
@@ -105,6 +107,10 @@ function makeRegistration(base, createdAt) {
     linkedinUrl: rand() > 0.5 ? `https://www.linkedin.com/in/${base.email.split("@")[0].replace(/\./g, "-")}` : null,
     status: pick(STATUSES),
     ticketToken: `mockticket${String(idCounter).padStart(12, "0")}`,
+    resume: resumeRoll > 0.45
+      ? { fileName: `${base.firstName}_${base.lastName}_Resume.pdf`, size: 60000 + Math.floor(rand() * 900000), uploadedAt: createdAt }
+      : null,
+    resumeOptIn: resumeRoll > 0.65,
     createdAt,
   };
 }
@@ -218,6 +224,11 @@ const campaigns = [
 ];
 
 const byNewest = (a, b) => (a.createdAt < b.createdAt ? 1 : -1);
+// Mock mode stores no files: every resume downloads as the same placeholder, and the
+// resume book is a valid but empty archive (just the end-of-central-directory record).
+const MOCK_PDF = "%PDF-1.4\n% Placeholder resume served by the admin mock API.\n%%EOF\n";
+const EMPTY_ZIP = new Uint8Array([0x50, 0x4b, 0x05, 0x06, ...new Array(18).fill(0)]);
+
 const registeredEmails = () => new Set(registrations.map((r) => r.email.toLowerCase()));
 
 function respond(status, payload, headers = {}) {
@@ -247,13 +258,17 @@ function filterPeople(list, params) {
   const school = params.get("school") || "";
   const status = params.get("status") || "";
   const checkedIn = params.get("checkedIn") || "";
+  const resume = params.get("resume") || "";
   return list
     .filter((item) => {
       if (school && item.school !== school) return false;
       if (status && item.status !== status) return false;
       if (checkedIn && String(Boolean(findCheckIn(item.id, generalEvent.id))) !== checkedIn) return false;
+      if (resume === "any" && !item.resume) return false;
+      if (resume === "none" && item.resume) return false;
+      if (resume === "opted-in" && !(item.resume && item.resumeOptIn)) return false;
       if (!q) return true;
-      return `${item.firstName} ${item.lastName} ${item.email}`.toLowerCase().includes(q);
+      return `${item.firstName} ${item.lastName} ${item.email} ${item.schoolEmail || ""}`.toLowerCase().includes(q);
     })
     .sort(byNewest);
 }
@@ -270,9 +285,13 @@ function withRegistered(list) {
 }
 
 function summary(r) {
-  const { id, firstName, lastName, email, school, levelOfStudy, countryOfResidence, age, status, createdAt } = r;
+  const { id, firstName, lastName, email, schoolEmail, school, levelOfStudy, countryOfResidence, age, status, createdAt } = r;
   const checkedInAt = findCheckIn(id, generalEvent.id)?.checkedInAt || null;
-  return { id, firstName, lastName, email, school, levelOfStudy, countryOfResidence, age, status, createdAt, checkedInAt };
+  return {
+    id, firstName, lastName, email, schoolEmail, school, levelOfStudy, countryOfResidence, age, status, createdAt, checkedInAt,
+    hasResume: Boolean(r.resume),
+    resumeOptIn: Boolean(r.resume && r.resumeOptIn),
+  };
 }
 
 function csv(rows) {
@@ -440,6 +459,8 @@ function handle(method, path, params, body, token) {
       registrations: {
         total: registrations.length,
         checkedIn: eventCount(generalEvent.id),
+        withResume: registrations.filter((r) => r.resume).length,
+        resumeOptIn: registrations.filter((r) => r.resume && r.resumeOptIn).length,
         bySchool: bySchool(registrations),
         byDay: byDay(registrations),
         byLevelOfStudy: groupCount(registrations, (r) => r.levelOfStudy, "label").sort((a, b) => b.count - a.count),
@@ -462,8 +483,14 @@ function handle(method, path, params, body, token) {
   if (path === "/admin/registrations/export.csv") {
     return csvResponse(
       filterPeople(registrations, params).map((r) => {
-        const row = { ...r, checked_in_at: findCheckIn(r.id, generalEvent.id)?.checkedInAt || null };
-        delete row.ticketToken;
+        const row = {
+          ...r,
+          checked_in_at: findCheckIn(r.id, generalEvent.id)?.checkedInAt || null,
+          has_resume: Boolean(r.resume),
+          resume_opt_in: Boolean(r.resume && r.resumeOptIn),
+          school_email: r.schoolEmail,
+        };
+        ["ticketToken", "resume", "resumeOptIn", "schoolEmail"].forEach((key) => delete row[key]);
         return row;
       }),
       "registrations.csv",
@@ -484,6 +511,28 @@ function handle(method, path, params, body, token) {
     if (!r) return fail(404, "NOT_FOUND", "Registration not found.");
     if (r.status !== "ACCEPTED") return fail(400, "VALIDATION_ERROR", "Only accepted registrations have a ticket to send.");
     return respond(204);
+  }
+
+  const resumeMatch = /^\/admin\/registrations\/([^/]+)\/resume$/.exec(path);
+  if (resumeMatch) {
+    const r = registrations.find((reg) => reg.id === resumeMatch[1]);
+    if (!r) return fail(404, "NOT_FOUND", "Registration not found.");
+    if (!r.resume) return fail(404, "NOT_FOUND", "This registration has no resume.");
+    if (method === "DELETE") {
+      r.resume = null;
+      r.resumeOptIn = false;
+      return respond(204);
+    }
+    return new Response(MOCK_PDF, {
+      status: 200,
+      headers: { "Content-Type": "application/pdf", "Content-Disposition": `attachment; filename="${r.resume.fileName}"` },
+    });
+  }
+  if (path === "/admin/resumes/export.zip") {
+    return new Response(EMPTY_ZIP, {
+      status: 200,
+      headers: { "Content-Type": "application/zip", "Content-Disposition": 'attachment; filename="peachhacks-resume-book-mock.zip"' },
+    });
   }
 
   const regMatch = /^\/admin\/registrations\/([^/]+)$/.exec(path);

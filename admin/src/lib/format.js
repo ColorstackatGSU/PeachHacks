@@ -47,6 +47,13 @@ export function formatDay(isoDay) {
   return date ? dayFormat.format(date) : isoDay;
 }
 
+export function formatBytes(bytes) {
+  if (typeof bytes !== "number") return "";
+  if (bytes < 1024) return `${bytes} bytes`;
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export const fullName = (person) => [person?.firstName, person?.lastName].filter(Boolean).join(" ") || "(no name)";
 
 export const plural = (count, one, many = `${one}s`) => `${formatNumber(count)} ${count === 1 ? one : many}`;

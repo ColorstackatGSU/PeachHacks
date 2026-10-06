@@ -9,9 +9,19 @@ import {
   PageHeader,
   Pagination,
   StatusBadge,
+  Tag,
   useToast,
 } from "../components/ui.jsx";
-import { STATUSES, errorText, formatDateTime, formatWhen, fullName, statusLabel } from "../lib/format.js";
+import {
+  STATUSES,
+  errorText,
+  formatBytes,
+  formatDateTime,
+  formatWhen,
+  fullName,
+  plural,
+  statusLabel,
+} from "../lib/format.js";
 import { schoolOptions, useAsync, useDebounced, useStats } from "../lib/hooks.js";
 
 const PAGE_SIZE = 25;
@@ -66,7 +76,10 @@ function RegistrationDetail({ reg }) {
       <Group title="Contact">
         <Row label="First name">{reg.firstName}</Row>
         <Row label="Last name">{reg.lastName}</Row>
-        <Row label="Email">{present(reg.email) ? <a href={`mailto:${reg.email}`}>{reg.email}</a> : null}</Row>
+        <Row label="Personal email">{present(reg.email) ? <a href={`mailto:${reg.email}`}>{reg.email}</a> : null}</Row>
+        <Row label="School email">
+          {present(reg.schoolEmail) ? <a href={`mailto:${reg.schoolEmail}`}>{reg.schoolEmail}</a> : null}
+        </Row>
         <Row label="Phone">{reg.phone}</Row>
         <Row label="Age">{reg.age}</Row>
         <Row label="Country of residence">{reg.countryOfResidence}</Row>
@@ -197,6 +210,167 @@ function TicketPanel({ reg }) {
   );
 }
 
+function ResumePanel({ reg, onRemoved }) {
+  const notify = useToast();
+  const [downloading, setDownloading] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [removing, setRemoving] = useState(false);
+  const [error, setError] = useState(null);
+  const [removeError, setRemoveError] = useState(null);
+
+  if (!reg.resume) {
+    return (
+      <section className="ticket-panel" aria-label="Resume">
+        <span className="tile-label">Resume</span>
+        <p className="muted small">No resume uploaded, so there is nothing to share with sponsors.</p>
+      </section>
+    );
+  }
+
+  const download = async () => {
+    setDownloading(true);
+    setError(null);
+    try {
+      await api.downloadResume(reg.id);
+    } catch (err) {
+      setError(err);
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const remove = async () => {
+    setRemoving(true);
+    setRemoveError(null);
+    try {
+      await api.deleteResume(reg.id);
+      notify(`Removed the resume for ${fullName(reg)}.`);
+      setConfirming(false);
+      onRemoved();
+    } catch (err) {
+      setRemoveError(err);
+    } finally {
+      setRemoving(false);
+    }
+  };
+
+  return (
+    <section className="ticket-panel" aria-label="Resume">
+      <div className="status-panel-head">
+        <span className="tile-label">Resume</span>
+        {reg.resumeOptIn ? <Tag tone="accepted">Sponsors: opted in</Tag> : <Tag tone="neutral">Sponsors: not opted in</Tag>}
+      </div>
+      <p className="resume-file">
+        <strong className="cell-break">{reg.resume.fileName}</strong>
+        <span className="muted small">
+          {formatBytes(reg.resume.size)}, uploaded {formatDateTime(reg.resume.uploadedAt)}
+        </span>
+      </p>
+      <p className="muted small">
+        {reg.resumeOptIn
+          ? "They agreed to share this resume with sponsors. It goes into the resume book once they are accepted."
+          : "They did not agree to share this resume with sponsors. It is for organizers only and is left out of the resume book."}
+      </p>
+      <div className="resume-actions">
+        <button type="button" className="btn btn-small" disabled={downloading} onClick={download}>
+          {downloading ? "Downloading…" : "Download resume"}
+        </button>
+        <button type="button" className="btn btn-small btn-danger-quiet" onClick={() => setConfirming(true)}>
+          Remove resume
+        </button>
+      </div>
+      <InlineError error={error} />
+      {confirming && (
+        <ConfirmDialog
+          title="Remove this resume?"
+          confirmLabel="Remove resume"
+          danger
+          busy={removing}
+          error={removeError}
+          onConfirm={remove}
+          onCancel={() => setConfirming(false)}
+        >
+          <p>
+            <strong>{reg.resume.fileName}</strong> from {fullName(reg)} will be permanently deleted, along with their
+            choice about sharing it with sponsors. The rest of the registration stays. This cannot be undone, and it does
+            not recall a resume book that was already downloaded.
+          </p>
+        </ConfirmDialog>
+      )}
+    </section>
+  );
+}
+
+function ResumeBookDialog({ onClose }) {
+  const notify = useToast();
+  const checkboxId = useId();
+  const [attendedOnly, setAttendedOnly] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [error, setError] = useState(null);
+  const load = useCallback((signal) => api.resumeBookCount(attendedOnly, signal), [attendedOnly]);
+  const count = useAsync(load);
+  const known = !count.loading && !count.error && typeof count.data === "number";
+
+  const download = async () => {
+    setDownloading(true);
+    setError(null);
+    try {
+      await api.exportResumeBook(attendedOnly);
+      notify("Resume book downloaded.");
+      onClose();
+    } catch (err) {
+      setError(err);
+      setDownloading(false);
+    }
+  };
+
+  return (
+    <Modal
+      title="Download the resume book?"
+      onDismiss={onClose}
+      busy={downloading}
+      footer={
+        <>
+          <button type="button" className="btn" data-autofocus disabled={downloading} onClick={onClose}>
+            Cancel
+          </button>
+          <button type="button" className="btn btn-primary" disabled={downloading || !known || count.data === 0} onClick={download}>
+            {downloading ? "Preparing…" : "Download ZIP"}
+          </button>
+        </>
+      }
+    >
+      <p aria-live="polite">
+        {count.error && "Could not count the resumes. "}
+        {!count.error && !known && "Counting resumes…"}
+        {known && count.data === 0 && "There are no resumes to include yet."}
+        {known && count.data > 0 && (
+          <>
+            The ZIP will contain <strong>{plural(count.data, "resume")}</strong> and an index.csv listing each person’s
+            name, personal and school email, school, level of study, major and LinkedIn.
+          </>
+        )}
+      </p>
+      <p>
+        It only includes registrants who are <strong>accepted</strong> and who <strong>opted in</strong> to sharing
+        their resume with sponsors. Everyone else’s resume is left out.
+      </p>
+      <p className="check-line">
+        <input
+          id={checkboxId}
+          type="checkbox"
+          checked={attendedOnly}
+          disabled={downloading}
+          onChange={(event) => setAttendedOnly(event.target.checked)}
+        />
+        <label htmlFor={checkboxId}>Attended only (people checked in at the general check-in)</label>
+      </p>
+      <p className="muted small">This file is for sponsors. Send it only to the sponsors it was promised to.</p>
+      <InlineError error={count.error || error} />
+    </Modal>
+  );
+}
+
 function RegistrationDrawer({ id, fallbackName, onClose, onChanged, onDeleted }) {
   const notify = useToast();
   const load = useCallback((signal) => api.registration(id, signal), [id]);
@@ -291,6 +465,13 @@ function RegistrationDrawer({ id, fallbackName, onClose, onChanged, onDeleted })
             <InlineError error={statusError} />
           </section>
           <TicketPanel reg={reg} />
+          <ResumePanel
+            reg={reg}
+            onRemoved={() => {
+              setUpdated({ ...reg, resume: null, resumeOptIn: false });
+              onChanged();
+            }}
+          />
           <RegistrationDetail reg={reg} />
         </>
       )}
@@ -337,12 +518,14 @@ export default function Registrations() {
   const [school, setSchool] = useState("");
   const [status, setStatus] = useState("");
   const [checkedIn, setCheckedIn] = useState("");
+  const [resume, setResume] = useState("");
   const [page, setPage] = useState(0);
   const [exporting, setExporting] = useState(false);
+  const [resumeBook, setResumeBook] = useState(false);
   const [open, setOpen] = useState(null);
 
   const q = useDebounced(search.trim(), 300);
-  const filters = useMemo(() => ({ q, school, status, checkedIn }), [q, school, status, checkedIn]);
+  const filters = useMemo(() => ({ q, school, status, checkedIn, resume }), [q, school, status, checkedIn, resume]);
   const load = useCallback((signal) => api.registrations({ page, size: PAGE_SIZE, ...filters }, signal), [page, filters]);
   const result = useAsync(load);
   const stats = useStats();
@@ -350,7 +533,7 @@ export default function Registrations() {
 
   const items = result.data?.items || [];
   const total = result.data?.total || 0;
-  const filtered = Boolean(q || school || status || checkedIn);
+  const filtered = Boolean(q || school || status || checkedIn || resume);
 
   const exportCsv = async () => {
     setExporting(true);
@@ -374,12 +557,15 @@ export default function Registrations() {
         <button type="button" className="btn" onClick={exportCsv} disabled={exporting}>
           {exporting ? "Preparing…" : filtered ? "Export filtered CSV" : "Export CSV"}
         </button>
+        <button type="button" className="btn" onClick={() => setResumeBook(true)}>
+          Download resume book (ZIP)
+        </button>
       </PageHeader>
 
       <form className="filters" role="search" onSubmit={(e) => e.preventDefault()}>
         <div className="field field-grow">
           <label htmlFor={`${ids}-q`}>Search</label>
-          <input id={`${ids}-q`} type="search" placeholder="Name or email" value={search} onChange={resetTo(setSearch)} />
+          <input id={`${ids}-q`} type="search" placeholder="Name, personal or school email" value={search} onChange={resetTo(setSearch)} />
         </div>
         <div className="field">
           <label htmlFor={`${ids}-school`}>School</label>
@@ -411,6 +597,15 @@ export default function Registrations() {
             <option value="false">Not checked in</option>
           </select>
         </div>
+        <div className="field">
+          <label htmlFor={`${ids}-resume`}>Resume</label>
+          <select id={`${ids}-resume`} value={resume} onChange={resetTo(setResume)}>
+            <option value="">Everyone</option>
+            <option value="opted-in">Opted in to sponsors</option>
+            <option value="any">Has a resume</option>
+            <option value="none">No resume</option>
+          </select>
+        </div>
         {filtered && (
           <button
             type="button"
@@ -420,6 +615,7 @@ export default function Registrations() {
               setSchool("");
               setStatus("");
               setCheckedIn("");
+              setResume("");
               setPage(0);
             }}
           >
@@ -451,6 +647,7 @@ export default function Registrations() {
                 <th scope="col">Country</th>
                 <th scope="col">Age</th>
                 <th scope="col">Status</th>
+                <th scope="col">Resume</th>
                 <th scope="col">Checked in</th>
                 <th scope="col">Registered</th>
               </tr>
@@ -474,6 +671,11 @@ export default function Registrations() {
                   <td data-label="Status">
                     <StatusBadge status={item.status} />
                   </td>
+                  <td data-label="Resume">
+                    {!item.hasResume && <span className="muted">None</span>}
+                    {item.hasResume && item.resumeOptIn && <Tag tone="accepted">Opted in</Tag>}
+                    {item.hasResume && !item.resumeOptIn && <Tag tone="neutral">Organizers only</Tag>}
+                  </td>
                   <td data-label="Checked in" className="cell-nowrap">
                     {item.checkedInAt ? (
                       <span className="checked-in-cell">✓ {formatWhen(item.checkedInAt)}</span>
@@ -494,6 +696,8 @@ export default function Registrations() {
       {result.data && total > 0 && (
         <Pagination page={page} size={result.data.size || PAGE_SIZE} total={total} onPage={setPage} disabled={result.loading} />
       )}
+
+      {resumeBook && <ResumeBookDialog onClose={() => setResumeBook(false)} />}
 
       {open && (
         <RegistrationDrawer

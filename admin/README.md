@@ -4,8 +4,8 @@ Organizer site for PeachHacks, served at `admin.peachhacks.com`. A Vite + React
 single-page app that talks to the Spring Boot API in `../backend`.
 
 Screens: sign in, overview (headline numbers, sign-ups over time, by-school
-breakdowns, check-ins by event), pre-registrations, registrations (with a detail
-drawer, status changes and the ticket), check-in (scan a ticket QR code or
+breakdowns, check-ins by event, resume counts), pre-registrations, registrations
+(with a detail drawer, status changes, the ticket and the resume), check-in (scan a ticket QR code or
 search by name, per event), email (composer, test send, campaign history) and
 settings (the registration gate, check-in events and accounts).
 
@@ -67,6 +67,9 @@ a text field instead: paste a ticket token (shown in an accepted registration's
 detail drawer under Ticket) or a ticket URL to get each scan result. Data is generated in the browser, shaped like the real API, and resets
 on reload. A peach banner marks every screen while it is on.
 
+Mock mode stores no files: "Download resume" saves a placeholder PDF and the resume
+book is an empty ZIP.
+
 Mock mode cannot be turned on in production: it is gated on Vite's
 `import.meta.env.DEV`, which is `false` in `npm run build`, so the mock module
 (`src/api/mock.js`) is dropped from the bundle regardless of `VITE_MOCK_API`.
@@ -79,7 +82,21 @@ Mock mode cannot be turned on in production: it is gated on Vite's
   and returns to the sign-in screen.
 - **Routing**: hash based (`/#/registrations`), so the host needs no rewrite
   rules and a refresh on any screen works.
-- **CSV exports** are fetched with the bearer header and saved from a blob.
+- **CSV exports** are fetched with the bearer header and saved from a blob. Resumes
+  and the resume book are downloaded the same way.
+- **Resumes**: the registration drawer shows whether a resume was uploaded (file
+  name and size), whether the person opted in to sharing it with sponsors, a
+  "Download resume" button and a "Remove resume" action (confirmed first; use it to
+  honour a removal request). The Registrations table has a Resume column
+  ("Opted in", "Organizers only" or "None") and a Resume filter.
+- **Resume book**: "Download resume book (ZIP)" on the Registrations screen is the
+  file promised to sponsors. Its confirmation states how many resumes the ZIP will
+  hold (the count of accepted registrants who opted in, read from the registrations
+  list with `resume=opted-in&status=ACCEPTED`) and offers "Attended only", which
+  limits it to people with a general check-in. Resumes of people who did not opt in,
+  or are not accepted, are never in it.
+- **School email** is shown in the registration drawer and the pre-registrations
+  table; the Registrations search matches it as well as the personal email.
 - **Scanning** uses the camera through `getUserMedia`, which browsers only allow
   on https (or localhost). QR codes are read with the browser's own
   `BarcodeDetector` where it supports them (Android, macOS); elsewhere (iOS

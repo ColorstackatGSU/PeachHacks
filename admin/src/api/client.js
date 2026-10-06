@@ -139,7 +139,8 @@ async function json(method, path, options) {
 
 function filenameFrom(response, fallback) {
   const header = response.headers.get("Content-Disposition") || "";
-  const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(header);
+  // The filename* form carries non-ASCII names (a resume's own file name) intact.
+  const match = /filename\*=UTF-8''([^";]+)/i.exec(header) || /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(header);
   if (!match) return fallback;
   try {
     return decodeURIComponent(match[1]);
@@ -148,7 +149,7 @@ function filenameFrom(response, fallback) {
   }
 }
 
-// CSV exports need the bearer header, so they are fetched and saved from a blob.
+// Exports and resumes need the bearer header, so they are fetched and saved from a blob.
 async function download(path, query, fallbackName) {
   const response = await send("GET", path, { query });
   const blob = await response.blob();
@@ -189,6 +190,17 @@ export const api = {
     download("/admin/registrations/export.csv", query, `peachhacks-registrations-${stamp()}.csv`),
   deleteRegistration: (id) => json("DELETE", `/admin/registrations/${encodeURIComponent(id)}`),
   resendTicketEmail: (id) => json("POST", `/admin/registrations/${encodeURIComponent(id)}/ticket-email`),
+  downloadResume: (id) => download(`/admin/registrations/${encodeURIComponent(id)}/resume`, null, "resume.pdf"),
+  deleteResume: (id) => json("DELETE", `/admin/registrations/${encodeURIComponent(id)}/resume`),
+  // The resume book holds accepted registrants who opted in, so the same filters on the
+  // list endpoint give the number of resumes it will contain.
+  resumeBookCount: async (attendedOnly, signal) => {
+    const query = { resume: "opted-in", status: "ACCEPTED", checkedIn: attendedOnly ? "true" : "", size: 1 };
+    const result = await json("GET", "/admin/registrations", { query, signal });
+    return result?.total ?? 0;
+  },
+  exportResumeBook: (attendedOnly) =>
+    download("/admin/resumes/export.zip", { checkedIn: attendedOnly ? "true" : "" }, `peachhacks-resume-book-${stamp()}.zip`),
 
   events: (signal) => json("GET", "/admin/events", { signal }),
   createEvent: ({ name, startsAt }) => json("POST", "/admin/events", { body: { name, startsAt: startsAt || null } }),
