@@ -1,24 +1,49 @@
 package com.peachhacks.backend;
 
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CopyOnWriteArrayList;
 
+import javax.imageio.ImageIO;
+
+import com.google.zxing.BinaryBitmap;
+import com.google.zxing.RGBLuminanceSource;
+import com.google.zxing.common.HybridBinarizer;
+import com.google.zxing.qrcode.QRCodeReader;
 import com.jayway.jsonpath.JsonPath;
+import com.peachhacks.backend.admin.AdminPrincipal;
+import com.peachhacks.backend.admin.AdminRole;
+import com.peachhacks.backend.admin.AuthService;
+import com.peachhacks.backend.common.ApiException;
+import com.peachhacks.backend.email.EmailMessage;
+import com.peachhacks.backend.email.EmailSender;
 import org.junit.jupiter.api.Test;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.Primary;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
@@ -46,8 +71,26 @@ class RegistrationApiTests {
 	@Autowired
 	private MockMvc mockMvc;
 
+	private static final String GENERAL_COUNT = "select count(*) from check_ins c join events e on e.id = c.event_id where e.general";
+
+	private static final List<EmailMessage> sentEmails = new CopyOnWriteArrayList<>();
+
+	@TestConfiguration(proxyBeanMethods = false)
+	static class RecordingEmail {
+
+		@Bean
+		@Primary
+		EmailSender recordingEmailSender() {
+			return sentEmails::add;
+		}
+
+	}
+
 	@Autowired
 	private JdbcClient jdbc;
+
+	@Autowired
+	private AuthService authService;
 
 	@Test
 	void preRegistrationIsIdempotentOnEmail() throws Exception {
@@ -212,6 +255,7 @@ class RegistrationApiTests {
 			.andExpect(jsonPath("$.expiresAt").isNotEmpty())
 			.andExpect(jsonPath("$.admin.email").value(ADMIN_EMAIL))
 			.andExpect(jsonPath("$.admin.name").value("Test Organizer"))
+			.andExpect(jsonPath("$.admin.role").value("ADMIN"))
 			.andReturn()
 			.getResponse()
 			.getContentAsString();
@@ -274,6 +318,7 @@ class RegistrationApiTests {
 					.formatted(email)))
 			.andExpect(status().isCreated())
 			.andExpect(jsonPath("$.email").value(email))
+			.andExpect(jsonPath("$.role").value("ADMIN"))
 			.andExpect(jsonPath("$.password").doesNotExist())
 			.andExpect(jsonPath("$.passwordHash").doesNotExist())
 			.andReturn()
@@ -292,6 +337,545 @@ class RegistrationApiTests {
 		mockMvc.perform(delete("/admin/admins/" + id).header("Authorization", token))
 			.andExpect(status().isNoContent());
 		login(email, "another-long-password").andExpect(status().isUnauthorized());
+	}
+
+	@Test
+	void volunteerCanSearchAndCheckInAndUndo() throws Exception {
+		String admin = bearer();
+		String prefix = unique();
+		String school = uniqueSchool();
+		String firstId = registerHacker(admin, prefix + "a@example.com", school);
+		String secondId = registerHacker(admin, prefix + "b@example.com", school);
+		Volunteer volunteer = createVolunteer(admin, "Door Volunteer");
+
+		mockMvc.perform(get("/admin/check-in"))
+			.andExpect(status().isUnauthorized())
+			.andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+		mockMvc.perform(get("/admin/auth/me").header("Authorization", volunteer.token()))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.role").value("VOLUNTEER"));
+		mockMvc.perform(get("/admin/events").header("Authorization", volunteer.token()))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$[0].general").value(true))
+			.andExpect(jsonPath("$[0].name").value("General check-in"))
+			.andExpect(jsonPath("$[0].checkedIn").isNumber());
+
+		String listed = mockMvc
+			.perform(get("/admin/check-in").param("q", prefix.toUpperCase() + "A@")
+				.header("Authorization", volunteer.token()))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.event.general").value(true))
+			.andExpect(jsonPath("$.total").value(1))
+			.andExpect(jsonPath("$.page").value(0))
+			.andExpect(jsonPath("$.size").value(25))
+			.andExpect(jsonPath("$.items[0].id").value(firstId))
+			.andExpect(jsonPath("$.items[0].firstName").value("Ada"))
+			.andExpect(jsonPath("$.items[0].lastName").value("Lovelace"))
+			.andExpect(jsonPath("$.items[0].email").value(prefix + "a@example.com"))
+			.andExpect(jsonPath("$.items[0].school").value(school))
+			.andExpect(jsonPath("$.items[0].status").value("PENDING"))
+			.andExpect(jsonPath("$.items[0].checkedInAt").value(nullValue()))
+			.andExpect(jsonPath("$.items[0].checkedInBy").value(nullValue()))
+			.andExpect(jsonPath("$.items[0].generalCheckedIn").value(false))
+			.andExpect(content().string(not(containsString("404 555"))))
+			.andExpect(content().string(not(containsString("Peachtree"))))
+			.andExpect(content().string(not(containsString("Vegetarian"))))
+			.andExpect(content().string(not(containsString(ticketToken(firstId)))))
+			.andReturn()
+			.getResponse()
+			.getContentAsString();
+		Map<String, Object> item = JsonPath.read(listed, "$.items[0]");
+		assertThat(item.keySet()).containsExactlyInAnyOrder("id", "firstName", "lastName", "email", "school", "status",
+				"checkedInAt", "checkedInBy", "generalCheckedIn");
+		assertThat(((Number) JsonPath.read(listed, "$.registrationTotal")).longValue())
+			.isEqualTo(count("select count(*) from registrations"));
+		mockMvc.perform(get("/admin/check-in").param("q", "no-such-" + prefix).header("Authorization", admin))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.total").value(0))
+			.andExpect(jsonPath("$.items", hasSize(0)));
+
+		long checkedInBefore = count(GENERAL_COUNT);
+		String first = mockMvc.perform(post("/admin/check-in/" + firstId).header("Authorization", volunteer.token()))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.id").value(firstId))
+			.andExpect(jsonPath("$.checkedInAt").isNotEmpty())
+			.andExpect(jsonPath("$.checkedInBy").value("Door Volunteer"))
+			.andExpect(jsonPath("$.generalCheckedIn").value(true))
+			.andExpect(jsonPath("$.phone").doesNotExist())
+			.andReturn()
+			.getResponse()
+			.getContentAsString();
+		String checkedInAt = JsonPath.read(first, "$.checkedInAt");
+		mockMvc.perform(post("/admin/check-in/" + firstId).header("Authorization", admin))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.checkedInAt").value(checkedInAt))
+			.andExpect(jsonPath("$.checkedInBy").value("Door Volunteer"));
+
+		mockMvc.perform(get("/admin/check-in").param("q", prefix).header("Authorization", volunteer.token()))
+			.andExpect(jsonPath("$.total").value(2))
+			.andExpect(jsonPath("$.checkedInTotal").value(checkedInBefore + 1))
+			.andExpect(jsonPath("$.items[0].id").value(secondId))
+			.andExpect(jsonPath("$.items[1].id").value(firstId))
+			.andExpect(jsonPath("$.items[1].checkedInAt").value(checkedInAt));
+
+		mockMvc
+			.perform(get("/admin/registrations").param("school", school)
+				.param("checkedIn", "true")
+				.header("Authorization", admin))
+			.andExpect(jsonPath("$.total").value(1))
+			.andExpect(jsonPath("$.items[0].id").value(firstId))
+			.andExpect(jsonPath("$.items[0].checkedInAt").value(checkedInAt));
+		mockMvc
+			.perform(get("/admin/registrations").param("school", school)
+				.param("checkedIn", "false")
+				.header("Authorization", admin))
+			.andExpect(jsonPath("$.total").value(1))
+			.andExpect(jsonPath("$.items[0].id").value(secondId))
+			.andExpect(jsonPath("$.items[0].checkedInAt").value(nullValue()));
+		mockMvc.perform(get("/admin/registrations").param("school", school).header("Authorization", admin))
+			.andExpect(jsonPath("$.total").value(2));
+		mockMvc.perform(get("/admin/registrations").param("checkedIn", "maybe").header("Authorization", admin))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+		mockMvc.perform(get("/admin/registrations/" + firstId).header("Authorization", admin))
+			.andExpect(jsonPath("$.email").value(prefix + "a@example.com"))
+			.andExpect(jsonPath("$.checkedInAt").value(checkedInAt))
+			.andExpect(jsonPath("$.checkedInBy").value("Door Volunteer"))
+			.andExpect(jsonPath("$.checkIns", hasSize(1)))
+			.andExpect(jsonPath("$.checkIns[0].general").value(true));
+		mockMvc.perform(get("/admin/stats").header("Authorization", admin))
+			.andExpect(jsonPath("$.registrations.checkedIn").value(checkedInBefore + 1))
+			.andExpect(jsonPath("$.events[0].name").value("General check-in"))
+			.andExpect(jsonPath("$.events[0].checkedIn").value(checkedInBefore + 1));
+		mockMvc
+			.perform(get("/admin/registrations/export.csv").param("school", school).header("Authorization", admin))
+			.andExpect(content().string(containsString(",linkedinUrl,checked_in_at\r\n")))
+			.andExpect(content().string(containsString(prefix + "a@example.com")))
+			.andExpect(content().string(containsString(prefix + "b@example.com")))
+			.andExpect(content().string(containsString("," + checkedInAt + "\r\n")));
+		mockMvc
+			.perform(get("/admin/registrations/export.csv").param("school", school)
+				.param("checkedIn", "true")
+				.header("Authorization", admin))
+			.andExpect(content().string(containsString(prefix + "a@example.com")))
+			.andExpect(content().string(not(containsString(prefix + "b@example.com"))));
+
+		mockMvc.perform(delete("/admin/check-in/" + firstId).header("Authorization", volunteer.token()))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.id").value(firstId))
+			.andExpect(jsonPath("$.checkedInAt").value(nullValue()))
+			.andExpect(jsonPath("$.checkedInBy").value(nullValue()))
+			.andExpect(jsonPath("$.generalCheckedIn").value(false));
+		mockMvc.perform(delete("/admin/check-in/" + firstId).header("Authorization", volunteer.token()))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.checkedInAt").value(nullValue()));
+		assertThat(count(GENERAL_COUNT)).isEqualTo(checkedInBefore);
+
+		for (MockHttpServletRequestBuilder request : new MockHttpServletRequestBuilder[] {
+				post("/admin/check-in/" + UUID.randomUUID()), delete("/admin/check-in/" + UUID.randomUUID()),
+				post("/admin/check-in/not-a-uuid"),
+				post("/admin/check-in/" + firstId).param("eventId", UUID.randomUUID().toString()),
+				get("/admin/check-in").param("eventId", UUID.randomUUID().toString()) }) {
+			mockMvc.perform(request.header("Authorization", volunteer.token()))
+				.andExpect(status().isNotFound())
+				.andExpect(jsonPath("$.code").value("NOT_FOUND"));
+		}
+
+		mockMvc.perform(delete("/admin/admins/" + volunteer.id()).header("Authorization", admin))
+			.andExpect(status().isNoContent());
+		mockMvc.perform(get("/admin/check-in").header("Authorization", volunteer.token()))
+			.andExpect(status().isUnauthorized());
+		deleteRegistrations(admin, firstId, secondId);
+	}
+
+	@Test
+	void workshopsHaveTheirOwnCheckInsAndReportMissingGeneralCheckIn() throws Exception {
+		String admin = bearer();
+		String prefix = unique();
+		String registrationId = registerHacker(admin, prefix + "@example.com", uniqueSchool());
+		String name = "Workshop " + unique();
+
+		String created = mockMvc.perform(eventRequest(post("/admin/events"), admin,
+				"{\"name\":\" %s \",\"startsAt\":\"2026-11-07T15:00:00Z\"}".formatted(name)))
+			.andExpect(status().isCreated())
+			.andExpect(jsonPath("$.name").value(name))
+			.andExpect(jsonPath("$.startsAt").value("2026-11-07T15:00:00Z"))
+			.andExpect(jsonPath("$.general").value(false))
+			.andExpect(jsonPath("$.checkedIn").value(0))
+			.andReturn()
+			.getResponse()
+			.getContentAsString();
+		String eventId = JsonPath.read(created, "$.id");
+		String generalId = jdbc.sql("select id from events where general").query(UUID.class).single().toString();
+
+		mockMvc.perform(eventRequest(post("/admin/events"), admin, "{\"name\":\"%s\"}".formatted(name.toUpperCase())))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.fieldErrors.name").isNotEmpty());
+		mockMvc.perform(eventRequest(post("/admin/events"), admin, "{\"name\":\"  \"}"))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.fieldErrors.name").isNotEmpty());
+		mockMvc
+			.perform(eventRequest(post("/admin/events"), admin,
+					"{\"name\":\"%s\",\"startsAt\":\"tomorrow\"}".formatted("Other " + unique())))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.fieldErrors.startsAt").isNotEmpty());
+		String renamed = name + " (room 2)";
+		mockMvc.perform(eventRequest(patch("/admin/events/" + eventId), admin, "{\"name\":\"%s\"}".formatted(renamed)))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.name").value(renamed))
+			.andExpect(jsonPath("$.startsAt").value("2026-11-07T15:00:00Z"));
+		mockMvc.perform(eventRequest(patch("/admin/events/" + eventId), admin, "{\"startsAt\":null}"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.name").value(renamed))
+			.andExpect(jsonPath("$.startsAt").value(nullValue()));
+		mockMvc.perform(delete("/admin/events/" + generalId).header("Authorization", admin))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+
+		String workshop = mockMvc
+			.perform(post("/admin/check-in/" + registrationId).param("eventId", eventId)
+				.header("Authorization", admin))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.checkedInAt").isNotEmpty())
+			.andExpect(jsonPath("$.checkedInBy").value("Test Organizer"))
+			.andExpect(jsonPath("$.generalCheckedIn").value(false))
+			.andReturn()
+			.getResponse()
+			.getContentAsString();
+		String workshopAt = JsonPath.read(workshop, "$.checkedInAt");
+		mockMvc.perform(get("/admin/check-in").param("q", prefix).header("Authorization", admin))
+			.andExpect(jsonPath("$.items[0].checkedInAt").value(nullValue()))
+			.andExpect(jsonPath("$.items[0].generalCheckedIn").value(false));
+		mockMvc
+			.perform(get("/admin/check-in").param("q", prefix).param("eventId", eventId).header("Authorization", admin))
+			.andExpect(jsonPath("$.event.id").value(eventId))
+			.andExpect(jsonPath("$.event.general").value(false))
+			.andExpect(jsonPath("$.checkedInTotal").value(1))
+			.andExpect(jsonPath("$.items[0].checkedInAt").value(workshopAt))
+			.andExpect(jsonPath("$.items[0].generalCheckedIn").value(false));
+
+		mockMvc.perform(post("/admin/check-in/" + registrationId).header("Authorization", admin))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.generalCheckedIn").value(true));
+		mockMvc
+			.perform(get("/admin/check-in").param("q", prefix).param("eventId", eventId).header("Authorization", admin))
+			.andExpect(jsonPath("$.items[0].checkedInAt").value(workshopAt))
+			.andExpect(jsonPath("$.items[0].generalCheckedIn").value(true));
+		mockMvc.perform(get("/admin/registrations/" + registrationId).header("Authorization", admin))
+			.andExpect(jsonPath("$.checkedInAt").isNotEmpty())
+			.andExpect(jsonPath("$.checkIns", hasSize(2)))
+			.andExpect(jsonPath("$.checkIns[?(@.eventId == '%s')].name".formatted(eventId)).value(renamed))
+			.andExpect(jsonPath("$.checkIns[?(@.eventId == '%s')].checkedInAt".formatted(eventId)).value(workshopAt));
+		mockMvc.perform(get("/admin/stats").header("Authorization", admin))
+			.andExpect(jsonPath("$.events[?(@.eventId == '%s')].checkedIn".formatted(eventId)).value(1))
+			.andExpect(jsonPath("$.events[?(@.eventId == '%s')].name".formatted(eventId)).value(renamed));
+		mockMvc.perform(get("/admin/events").header("Authorization", admin))
+			.andExpect(jsonPath("$[0].id").value(generalId))
+			.andExpect(jsonPath("$[?(@.id == '%s')].checkedIn".formatted(eventId)).value(1));
+		mockMvc.perform(get("/admin/events/" + eventId + "/export.csv").header("Authorization", admin))
+			.andExpect(status().isOk())
+			.andExpect(header().string(HttpHeaders.CONTENT_TYPE, containsString("text/csv")))
+			.andExpect(content().string(containsString("event,registrationId,firstName,lastName,email,school,status,"
+					+ "checked_in_at,checked_in_by\r\n")))
+			.andExpect(content().string(containsString(prefix + "@example.com")))
+			.andExpect(content().string(containsString(workshopAt + ",Test Organizer\r\n")));
+
+		mockMvc
+			.perform(delete("/admin/check-in/" + registrationId).param("eventId", eventId)
+				.header("Authorization", admin))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.checkedInAt").value(nullValue()))
+			.andExpect(jsonPath("$.generalCheckedIn").value(true));
+		mockMvc.perform(get("/admin/registrations/" + registrationId).header("Authorization", admin))
+			.andExpect(jsonPath("$.checkIns", hasSize(1)))
+			.andExpect(jsonPath("$.checkIns[0].general").value(true));
+
+		mockMvc
+			.perform(post("/admin/check-in/" + registrationId).param("eventId", eventId)
+				.header("Authorization", admin))
+			.andExpect(status().isOk());
+		mockMvc.perform(delete("/admin/events/" + eventId).header("Authorization", admin))
+			.andExpect(status().isNoContent());
+		mockMvc.perform(delete("/admin/events/" + eventId).header("Authorization", admin))
+			.andExpect(status().isNotFound());
+		assertThat(jdbc.sql("select count(*) from check_ins where registration_id = :id")
+			.param("id", UUID.fromString(registrationId))
+			.query(Long.class)
+			.single()).as("only the general check-in survives the workshop").isEqualTo(1);
+		deleteRegistrations(admin, registrationId);
+	}
+
+	@Test
+	void ticketsCanBeScannedByTokenOrUrlAndNonAcceptedTicketsNeedAnOverride() throws Exception {
+		String admin = bearer();
+		String acceptedId = registerHacker(admin, unique() + "@example.com", uniqueSchool());
+		String pendingId = registerHacker(admin, unique() + "@example.com", uniqueSchool());
+		setStatus(admin, acceptedId, "ACCEPTED");
+		Volunteer volunteer = createVolunteer(admin, "Scanner");
+		String token = ticketToken(acceptedId);
+
+		String first = scan(volunteer.token(), token, null, false).andExpect(jsonPath("$.result").value("CHECKED_IN"))
+			.andExpect(jsonPath("$.event.general").value(true))
+			.andExpect(jsonPath("$.item.id").value(acceptedId))
+			.andExpect(jsonPath("$.item.status").value("ACCEPTED"))
+			.andExpect(jsonPath("$.item.checkedInBy").value("Scanner"))
+			.andExpect(jsonPath("$.item.phone").doesNotExist())
+			.andReturn()
+			.getResponse()
+			.getContentAsString();
+		String checkedInAt = JsonPath.read(first, "$.item.checkedInAt");
+		scan(admin, "http://localhost:5173/ticket?t=" + token, null, false)
+			.andExpect(jsonPath("$.result").value("ALREADY_CHECKED_IN"))
+			.andExpect(jsonPath("$.item.checkedInAt").value(checkedInAt))
+			.andExpect(jsonPath("$.item.checkedInBy").value("Scanner"));
+		scan(volunteer.token(), "  https://www.peachhacks.com/ticket?utm=x&t=" + token + "#top ", null, false)
+			.andExpect(jsonPath("$.result").value("ALREADY_CHECKED_IN"));
+
+		for (String unknown : new String[] { com.peachhacks.backend.common.Tokens.random(), "hello",
+				"https://example.com/ticket?t=nope", "https://example.com/menu" }) {
+			scan(volunteer.token(), unknown, null, false).andExpect(jsonPath("$.result").value("NOT_RECOGNISED"))
+				.andExpect(jsonPath("$.item").value(nullValue()));
+		}
+		mockMvc
+			.perform(post("/admin/check-in/scan").header("Authorization", volunteer.token())
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"code\":\"\"}"))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.fieldErrors.code").isNotEmpty());
+
+		String pendingToken = ticketToken(pendingId);
+		scan(volunteer.token(), pendingToken, null, false).andExpect(jsonPath("$.result").value("NOT_ACCEPTED"))
+			.andExpect(jsonPath("$.item.id").value(pendingId))
+			.andExpect(jsonPath("$.item.firstName").value("Ada"))
+			.andExpect(jsonPath("$.item.status").value("PENDING"))
+			.andExpect(jsonPath("$.item.checkedInAt").value(nullValue()));
+		assertThat(checkInCount(pendingId)).isZero();
+		scan(volunteer.token(), pendingToken, null, true).andExpect(jsonPath("$.result").value("CHECKED_IN"))
+			.andExpect(jsonPath("$.item.status").value("PENDING"))
+			.andExpect(jsonPath("$.item.checkedInAt").isNotEmpty());
+		assertThat(checkInCount(pendingId)).isEqualTo(1);
+
+		String event = mockMvc
+			.perform(eventRequest(post("/admin/events"), admin, "{\"name\":\"Workshop %s\"}".formatted(unique())))
+			.andExpect(status().isCreated())
+			.andReturn()
+			.getResponse()
+			.getContentAsString();
+		String eventId = JsonPath.read(event, "$.id");
+		mockMvc.perform(delete("/admin/check-in/" + acceptedId).header("Authorization", admin))
+			.andExpect(status().isOk());
+		scan(volunteer.token(), token, eventId, false).andExpect(jsonPath("$.result").value("CHECKED_IN"))
+			.andExpect(jsonPath("$.event.id").value(eventId))
+			.andExpect(jsonPath("$.event.general").value(false))
+			.andExpect(jsonPath("$.item.generalCheckedIn").value(false));
+		scan(volunteer.token(), token, null, false).andExpect(jsonPath("$.result").value("CHECKED_IN"));
+		scan(volunteer.token(), token, eventId, false).andExpect(jsonPath("$.result").value("ALREADY_CHECKED_IN"))
+			.andExpect(jsonPath("$.item.generalCheckedIn").value(true));
+		scan(volunteer.token(), token, UUID.randomUUID().toString(), false).andExpect(status().isNotFound());
+
+		mockMvc.perform(delete("/admin/events/" + eventId).header("Authorization", admin))
+			.andExpect(status().isNoContent());
+		mockMvc.perform(delete("/admin/admins/" + volunteer.id()).header("Authorization", admin))
+			.andExpect(status().isNoContent());
+		deleteRegistrations(admin, acceptedId, pendingId);
+	}
+
+	@Test
+	void publicTicketExistsOnlyWhileTheRegistrationIsAccepted() throws Exception {
+		String admin = bearer();
+		String school = uniqueSchool();
+		String registrationId = registerHacker(admin, unique() + "@example.com", school);
+		String token = ticketToken(registrationId);
+
+		for (String path : new String[] { "/public/tickets/" + token, "/public/tickets/" + token + "/qr.png",
+				"/public/tickets/" + com.peachhacks.backend.common.Tokens.random(),
+				"/public/tickets/" + com.peachhacks.backend.common.Tokens.random() + "/qr.png",
+				"/public/tickets/short" }) {
+			mockMvc.perform(get(path))
+				.andExpect(status().isNotFound())
+				.andExpect(jsonPath("$.code").value("NOT_FOUND"))
+				.andExpect(jsonPath("$.message").value("Ticket not found."));
+		}
+		mockMvc.perform(get("/admin/registrations/" + registrationId).header("Authorization", admin))
+			.andExpect(jsonPath("$.ticketToken").value(nullValue()))
+			.andExpect(jsonPath("$.ticketUrl").value(nullValue()));
+
+		setStatus(admin, registrationId, "ACCEPTED");
+		String ticketUrl = "http://localhost:5173/ticket?t=" + token;
+		mockMvc.perform(get("/admin/registrations/" + registrationId).header("Authorization", admin))
+			.andExpect(jsonPath("$.ticketToken").value(token))
+			.andExpect(jsonPath("$.ticketUrl").value(ticketUrl))
+			.andExpect(jsonPath("$.googleWalletUrl").value(nullValue()));
+		String ticket = mockMvc
+			.perform(get("/public/tickets/" + token).header(HttpHeaders.ORIGIN, "https://www.peachhacks.com"))
+			.andExpect(status().isOk())
+			.andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, "https://www.peachhacks.com"))
+			.andExpect(header().string(HttpHeaders.CACHE_CONTROL, containsString("no-store")))
+			.andExpect(jsonPath("$.firstName").value("Ada"))
+			.andExpect(jsonPath("$.lastName").value("Lovelace"))
+			.andExpect(jsonPath("$.school").value(school))
+			.andExpect(jsonPath("$.checkedIn").value(false))
+			.andExpect(jsonPath("$.googleWalletUrl").value(nullValue()))
+			.andReturn()
+			.getResponse()
+			.getContentAsString();
+		Map<String, Object> fields = JsonPath.read(ticket, "$");
+		assertThat(fields.keySet()).containsExactlyInAnyOrder("firstName", "lastName", "school", "checkedIn",
+				"googleWalletUrl");
+
+		byte[] png = mockMvc.perform(get("/public/tickets/" + token + "/qr.png"))
+			.andExpect(status().isOk())
+			.andExpect(header().string(HttpHeaders.CONTENT_TYPE, "image/png"))
+			.andExpect(header().string(HttpHeaders.CACHE_CONTROL, containsString("max-age=86400")))
+			.andReturn()
+			.getResponse()
+			.getContentAsByteArray();
+		assertThat(Arrays.copyOf(png, 8)).containsExactly(0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n');
+		BufferedImage image = ImageIO.read(new ByteArrayInputStream(png));
+		assertThat(image.getWidth()).isEqualTo(image.getHeight()).isGreaterThanOrEqualTo(400);
+		assertThat(image.getRGB(0, 0) & 0xFFFFFF).as("the quiet zone is white").isEqualTo(0xFFFFFF);
+		int[] pixels = image.getRGB(0, 0, image.getWidth(), image.getHeight(), null, 0, image.getWidth());
+		String decoded = new QRCodeReader()
+			.decode(new BinaryBitmap(
+					new HybridBinarizer(new RGBLuminanceSource(image.getWidth(), image.getHeight(), pixels))))
+			.getText();
+		assertThat(decoded).isEqualTo(ticketUrl);
+
+		mockMvc.perform(post("/admin/check-in/" + registrationId).header("Authorization", admin))
+			.andExpect(status().isOk());
+		mockMvc.perform(get("/public/tickets/" + token)).andExpect(jsonPath("$.checkedIn").value(true));
+
+		setStatus(admin, registrationId, "REJECTED");
+		mockMvc.perform(get("/public/tickets/" + token)).andExpect(status().isNotFound());
+		mockMvc.perform(get("/public/tickets/" + token + "/qr.png")).andExpect(status().isNotFound());
+		deleteRegistrations(admin, registrationId);
+	}
+
+	@Test
+	void acceptanceSendsTheTicketEmailOncePerTransition() throws Exception {
+		String admin = bearer();
+		String email = unique() + "@example.com";
+		String registrationId = registerHacker(admin, email, uniqueSchool());
+		String ticketUrl = "http://localhost:5173/ticket?t=" + ticketToken(registrationId);
+
+		mockMvc.perform(post("/admin/registrations/" + registrationId + "/ticket-email").header("Authorization", admin))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+		setStatus(admin, registrationId, "WAITLISTED");
+		assertThat(ticketEmails(email, 0)).isEmpty();
+
+		setStatus(admin, registrationId, "ACCEPTED");
+		List<EmailMessage> sent = ticketEmails(email, 1);
+		assertThat(sent).hasSize(1);
+		EmailMessage message = sent.get(0);
+		assertThat(message.subject()).contains("You're in");
+		assertThat(message.text()).contains("Hi Ada,").contains(ticketUrl).doesNotContainIgnoringCase("wallet");
+		assertThat(message.html()).contains("cid:peachhacks-ticket").contains("ticket?t=");
+		assertThat(message.attachments()).hasSize(1);
+		assertThat(message.attachments().get(0).contentType()).isEqualTo("image/png");
+		assertThat(Arrays.copyOf(message.attachments().get(0).content(), 4)).containsExactly(0x89, 'P', 'N', 'G');
+
+		setStatus(admin, registrationId, "ACCEPTED");
+		assertThat(ticketEmails(email, 1)).as("staying ACCEPTED does not send again").hasSize(1);
+		setStatus(admin, registrationId, "PENDING");
+		setStatus(admin, registrationId, "ACCEPTED");
+		assertThat(ticketEmails(email, 2)).hasSize(2);
+
+		mockMvc.perform(post("/admin/registrations/" + registrationId + "/ticket-email").header("Authorization", admin))
+			.andExpect(status().isNoContent());
+		assertThat(ticketEmails(email, 3)).hasSize(3);
+		mockMvc
+			.perform(post("/admin/registrations/" + UUID.randomUUID() + "/ticket-email").header("Authorization", admin))
+			.andExpect(status().isNotFound());
+		deleteRegistrations(admin, registrationId);
+	}
+
+	@Test
+	void volunteersAreForbiddenFromEverythingButCheckIn() throws Exception {
+		String admin = bearer();
+		String registrationId = registerHacker(admin, unique() + "@example.com", uniqueSchool());
+		setStatus(admin, registrationId, "ACCEPTED");
+		Volunteer volunteer = createVolunteer(admin, "Door Volunteer");
+		String generalId = jdbc.sql("select id from events where general").query(UUID.class).single().toString();
+		String json = "{}";
+
+		MockHttpServletRequestBuilder[] adminOnly = { get("/admin/registrations"),
+				get("/admin/registrations/" + registrationId),
+				patch("/admin/registrations/" + registrationId).contentType(MediaType.APPLICATION_JSON)
+					.content("{\"status\":\"REJECTED\"}"),
+				delete("/admin/registrations/" + registrationId), get("/admin/registrations/export.csv"),
+				post("/admin/registrations/" + registrationId + "/ticket-email"), get("/admin/pre-registrations"),
+				get("/admin/pre-registrations/export.csv"), delete("/admin/pre-registrations/" + UUID.randomUUID()),
+				get("/admin/stats"), get("/admin/settings"),
+				put("/admin/settings").contentType(MediaType.APPLICATION_JSON).content("{\"registrationOpen\":true}"),
+				get("/admin/emails"), post("/admin/emails").contentType(MediaType.APPLICATION_JSON).content(json),
+				post("/admin/emails/test").contentType(MediaType.APPLICATION_JSON).content(json),
+				post("/admin/emails/recipient-count").contentType(MediaType.APPLICATION_JSON).content(json),
+				get("/admin/admins"),
+				post("/admin/admins").contentType(MediaType.APPLICATION_JSON)
+					.content("{\"email\":\"%s@test.local\",\"name\":\"Sneaky\",\"password\":\"another-long-password\"}"
+						.formatted(unique())),
+				delete("/admin/admins/" + volunteer.id()),
+				post("/admin/events").contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"Sneaky\"}"),
+				patch("/admin/events/" + generalId).contentType(MediaType.APPLICATION_JSON)
+					.content("{\"name\":\"Sneaky\"}"),
+				delete("/admin/events/" + generalId), get("/admin/events/" + generalId + "/export.csv"),
+				get("/admin/events/" + generalId), get("/admin/a-route-added-later") };
+		for (MockHttpServletRequestBuilder request : adminOnly) {
+			mockMvc.perform(request.header("Authorization", volunteer.token()))
+				.andExpect(status().isForbidden())
+				.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+				.andExpect(jsonPath("$.code").value("FORBIDDEN"))
+				.andExpect(jsonPath("$.message").isNotEmpty());
+		}
+
+		mockMvc.perform(get("/admin/registrations/" + registrationId).header("Authorization", admin))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.status").value("ACCEPTED"));
+		mockMvc.perform(get("/public/status")).andExpect(jsonPath("$.registrationOpen").value(false));
+		mockMvc.perform(get("/admin/events").header("Authorization", volunteer.token()))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$[0].name").value("General check-in"));
+
+		mockMvc.perform(post("/admin/auth/logout").header("Authorization", volunteer.token()))
+			.andExpect(status().isNoContent());
+		mockMvc.perform(delete("/admin/admins/" + volunteer.id()).header("Authorization", admin))
+			.andExpect(status().isNoContent());
+		deleteRegistrations(admin, registrationId);
+	}
+
+	@Test
+	void accountRoleIsValidatedAndTheLastAdminRuleIgnoresVolunteers() throws Exception {
+		String admin = bearer();
+		mockMvc
+			.perform(post("/admin/admins").header("Authorization", admin)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"email\":\"%s@test.local\",\"name\":\"Odd\",\"password\":\"another-long-password\",\"role\":\"OWNER\"}"
+					.formatted(unique())))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+			.andExpect(jsonPath("$.fieldErrors.role").isNotEmpty());
+
+		Volunteer volunteer = createVolunteer(admin, "Second Volunteer");
+		mockMvc.perform(get("/admin/admins").header("Authorization", admin))
+			.andExpect(jsonPath("$[?(@.id == '%s')].role".formatted(volunteer.id())).value("VOLUNTEER"))
+			.andExpect(jsonPath("$[?(@.email == '%s')].role".formatted(ADMIN_EMAIL)).value("ADMIN"));
+
+		assertThat(count("select count(*) from admins where role = 'ADMIN'")).isEqualTo(1);
+		UUID adminId = jdbc.sql("select id from admins where email = :email")
+			.param("email", ADMIN_EMAIL)
+			.query(UUID.class)
+			.single();
+		// No signed-in admin can reach this state over HTTP (they cannot delete themselves), so
+		// the rule is exercised directly: one ADMIN plus one VOLUNTEER is still "the last admin".
+		AdminPrincipal other = new AdminPrincipal(UUID.fromString(volunteer.id()), "second@test.local",
+				"Second Volunteer", AdminRole.VOLUNTEER, "unused");
+		assertThatThrownBy(() -> authService.delete(adminId, other)).isInstanceOf(ApiException.class)
+			.hasMessage("The last admin account cannot be deleted.");
+		assertThat(count("select count(*) from admins where role = 'ADMIN'")).isEqualTo(1);
+
+		mockMvc.perform(delete("/admin/admins/" + volunteer.id()).header("Authorization", admin))
+			.andExpect(status().isNoContent());
 	}
 
 	@Test
@@ -414,6 +998,100 @@ class RegistrationApiTests {
 			.getResponse()
 			.getContentAsString();
 		return "Bearer " + JsonPath.read(body, "$.token");
+	}
+
+	private record Volunteer(String id, String token) {
+	}
+
+	private Volunteer createVolunteer(String adminToken, String name) throws Exception {
+		String email = unique() + "@test.local";
+		String created = mockMvc
+			.perform(post("/admin/admins").header("Authorization", adminToken)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"email\":\"%s\",\"name\":\"%s\",\"password\":\"volunteer-password\",\"role\":\"VOLUNTEER\"}"
+					.formatted(email, name)))
+			.andExpect(status().isCreated())
+			.andExpect(jsonPath("$.role").value("VOLUNTEER"))
+			.andReturn()
+			.getResponse()
+			.getContentAsString();
+		String session = login(email, "volunteer-password").andExpect(status().isOk())
+			.andExpect(jsonPath("$.admin.role").value("VOLUNTEER"))
+			.andReturn()
+			.getResponse()
+			.getContentAsString();
+		return new Volunteer(JsonPath.read(created, "$.id"), "Bearer " + JsonPath.read(session, "$.token"));
+	}
+
+	private String registerHacker(String adminToken, String email, String school) throws Exception {
+		setRegistrationOpen(adminToken, true);
+		String created = register(registrationJson(email, school, true, true)).andExpect(status().isCreated())
+			.andReturn()
+			.getResponse()
+			.getContentAsString();
+		setRegistrationOpen(adminToken, false);
+		return JsonPath.read(created, "$.id");
+	}
+
+	private void deleteRegistrations(String adminToken, String... ids) throws Exception {
+		for (String id : ids) {
+			mockMvc.perform(delete("/admin/registrations/" + id).header("Authorization", adminToken))
+				.andExpect(status().isNoContent());
+		}
+	}
+
+	private void setStatus(String adminToken, String registrationId, String status) throws Exception {
+		mockMvc
+			.perform(patch("/admin/registrations/" + registrationId).header("Authorization", adminToken)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"status\":\"%s\"}".formatted(status)))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.status").value(status));
+	}
+
+	private ResultActions scan(String token, String code, String eventId, boolean override) throws Exception {
+		String event = (eventId != null) ? "\"" + eventId + "\"" : "null";
+		return mockMvc.perform(post("/admin/check-in/scan").header("Authorization", token)
+			.contentType(MediaType.APPLICATION_JSON)
+			.content("{\"code\":\"%s\",\"eventId\":%s,\"override\":%s}".formatted(code, event, override)));
+	}
+
+	private static MockHttpServletRequestBuilder eventRequest(MockHttpServletRequestBuilder request, String token,
+			String json) {
+		return request.header("Authorization", token).contentType(MediaType.APPLICATION_JSON).content(json);
+	}
+
+	private String ticketToken(String registrationId) {
+		return jdbc.sql("select ticket_token from registrations where id = :id")
+			.param("id", UUID.fromString(registrationId))
+			.query(String.class)
+			.single();
+	}
+
+	private long checkInCount(String registrationId) {
+		return jdbc.sql("select count(*) from check_ins where registration_id = :id")
+			.param("id", UUID.fromString(registrationId))
+			.query(Long.class)
+			.single();
+	}
+
+	/** Mail is sent on a background thread, so wait for the expected number before reading. */
+	private List<EmailMessage> ticketEmails(String to, int expected) throws InterruptedException {
+		List<EmailMessage> matching = List.of();
+		for (int attempt = 0; attempt < 50; attempt++) {
+			matching = sentEmails.stream()
+				.filter(message -> message.to().equals(to) && !message.attachments().isEmpty())
+				.toList();
+			if (matching.size() >= expected && expected > 0) {
+				break;
+			}
+			Thread.sleep(expected > 0 ? 100 : 10);
+		}
+		return matching;
+	}
+
+	private long count(String sql) {
+		return jdbc.sql(sql).query(Long.class).single();
 	}
 
 	private void setRegistrationOpen(String token, boolean open) throws Exception {

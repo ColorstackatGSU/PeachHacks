@@ -44,7 +44,7 @@ public class AdminAuthController {
 
 	@GetMapping("/me")
 	AuthService.AdminView me(@AuthenticationPrincipal AdminPrincipal admin) {
-		return new AuthService.AdminView(admin.id(), admin.email(), admin.name());
+		return new AuthService.AdminView(admin.id(), admin.email(), admin.name(), admin.role());
 	}
 
 }

@@ -56,8 +56,13 @@ public class SecurityConfig {
 				.permitAll()
 				.requestMatchers("/admin/auth/login")
 				.permitAll()
+				.requestMatchers("/admin/auth/**", "/admin/check-in", "/admin/check-in/**")
+				.hasAnyRole(AdminRole.ADMIN.name(), AdminRole.VOLUNTEER.name())
+				.requestMatchers(HttpMethod.GET, "/admin/events")
+				.hasAnyRole(AdminRole.ADMIN.name(), AdminRole.VOLUNTEER.name())
+				// Everything else under /admin is admin-only, including routes added later.
 				.requestMatchers("/admin/**")
-				.authenticated()
+				.hasRole(AdminRole.ADMIN.name())
 				.anyRequest()
 				.permitAll())
 			.exceptionHandling(handling -> handling

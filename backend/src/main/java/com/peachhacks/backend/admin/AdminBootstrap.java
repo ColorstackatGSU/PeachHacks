@@ -46,7 +46,7 @@ public class AdminBootstrap implements ApplicationRunner {
 			return;
 		}
 		String name = Texts.clean(properties.bootstrapName());
-		authService.create(email, (name != null) ? name : "Admin", password);
+		authService.create(email, (name != null) ? name : "Admin", password, AdminRole.ADMIN);
 		log.info("Bootstrapped admin account {}", email);
 	}
 

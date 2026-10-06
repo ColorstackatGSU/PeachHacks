@@ -4,11 +4,13 @@ import java.time.Instant;
 import java.util.UUID;
 
 public record RegistrationSummary(UUID id, String firstName, String lastName, String email, String school,
-		String levelOfStudy, String countryOfResidence, Integer age, RegistrationStatus status, Instant createdAt) {
+		String levelOfStudy, String countryOfResidence, Integer age, RegistrationStatus status, Instant createdAt,
+		Instant checkedInAt) {
 
-	static RegistrationSummary from(Registration r) {
+	static RegistrationSummary from(Registration r, Instant checkedInAt) {
 		return new RegistrationSummary(r.getId(), r.getFirstName(), r.getLastName(), r.getEmail(), r.getSchool(),
-				r.getLevelOfStudy(), r.getCountryOfResidence(), r.getAge(), r.getStatus(), r.getCreatedAt());
+				r.getLevelOfStudy(), r.getCountryOfResidence(), r.getAge(), r.getStatus(), r.getCreatedAt(),
+				checkedInAt);
 	}
 
 }

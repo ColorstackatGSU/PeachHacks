@@ -4,6 +4,8 @@ import java.time.Instant;
 import java.util.UUID;
 
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
@@ -20,16 +22,20 @@ public class Admin {
 
 	private String passwordHash;
 
+	@Enumerated(EnumType.STRING)
+	private AdminRole role;
+
 	private Instant createdAt;
 
 	protected Admin() {
 	}
 
-	public Admin(String email, String name, String passwordHash) {
+	public Admin(String email, String name, String passwordHash, AdminRole role) {
 		this.id = UUID.randomUUID();
 		this.email = email;
 		this.name = name;
 		this.passwordHash = passwordHash;
+		this.role = role;
 		this.createdAt = Instant.now();
 	}
 
@@ -47,6 +53,10 @@ public class Admin {
 
 	String getPasswordHash() {
 		return passwordHash;
+	}
+
+	public AdminRole getRole() {
+		return role;
 	}
 
 	public Instant getCreatedAt() {

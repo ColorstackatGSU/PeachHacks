@@ -16,6 +16,8 @@ public interface AdminRepository extends JpaRepository<Admin, UUID> {
 
 	List<Admin> findAllByOrderByCreatedAtAsc();
 
+	long countByRole(AdminRole role);
+
 	@Query("select a from Admin a, AdminSession s where s.adminId = a.id and s.tokenHash = :tokenHash"
 			+ " and s.expiresAt > :now")
 	Optional<Admin> findBySessionToken(@Param("tokenHash") String tokenHash, @Param("now") Instant now);

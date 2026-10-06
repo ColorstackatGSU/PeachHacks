@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import com.peachhacks.backend.registration.RegistrationStatus;
 
@@ -27,12 +28,16 @@ public class StatsService {
 			List<DayCount> byDay) {
 	}
 
-	public record RegistrationStats(long total, List<SchoolCount> bySchool, List<DayCount> byDay,
+	public record RegistrationStats(long total, long checkedIn, List<SchoolCount> bySchool, List<DayCount> byDay,
 			List<LabelCount> byLevelOfStudy, List<LabelCount> byStatus) {
 	}
 
+	public record EventCount(UUID eventId, String name, long checkedIn) {
+	}
+
+	/** registrations.checkedIn counts the general event; events lists every event, general first. */
 	public record Stats(boolean registrationOpen, PreRegistrationStats preRegistrations,
-			RegistrationStats registrations, long preRegisteredNotRegistered) {
+			RegistrationStats registrations, long preRegisteredNotRegistered, List<EventCount> events) {
 	}
 
 	private final JdbcClient jdbc;
@@ -59,13 +64,24 @@ public class StatsService {
 			byStatus.add(new LabelCount(status.name(), statusCounts.getOrDefault(status.name(), 0L)));
 		}
 		RegistrationStats registrations = new RegistrationStats(count("select count(*) from registrations"),
+				count("select count(*) from check_ins c join events e on e.id = c.event_id where e.general"),
 				bySchool("registrations"), byDay("registrations"), byLabel("level_of_study"), byStatus);
 
 		long preRegisteredNotRegistered = count("""
 				select count(*) from pre_registrations p
 				where not exists (select 1 from registrations r where r.email = p.email)
 				""");
-		return new Stats(settings.isRegistrationOpen(), preRegistrations, registrations, preRegisteredNotRegistered);
+		List<EventCount> events = jdbc.sql("""
+				select e.id, e.name, count(c.id) as total from events e
+				left join check_ins c on c.event_id = e.id
+				group by e.id, e.name, e.general, e.starts_at
+				order by e.general desc, e.starts_at asc nulls last, lower(e.name) asc
+				""")
+			.query((rs, rowNum) -> new EventCount(rs.getObject("id", UUID.class), rs.getString("name"),
+					rs.getLong("total")))
+			.list();
+		return new Stats(settings.isRegistrationOpen(), preRegistrations, registrations, preRegisteredNotRegistered,
+				events);
 	}
 
 	private long count(String sql) {

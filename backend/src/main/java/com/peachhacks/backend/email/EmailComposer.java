@@ -18,6 +18,13 @@ public class EmailComposer {
 
 	private static final Pattern LAST_NAME = Pattern.compile("\\{\\{\\s*lastName\\s*}}");
 
+	/** A paragraph that is exactly this marker is replaced by the Block passed to compose. */
+	public static final String BLOCK_MARKER = "{{block}}";
+
+	/** Pre-rendered content for one paragraph: trusted HTML and its plain-text equivalent. */
+	public record Block(String html, String text) {
+	}
+
 	private static final Pattern PARAGRAPH_BREAK = Pattern.compile("\\n[ \\t]*\\n\\s*");
 
 	private final EmailProperties properties;
@@ -28,6 +35,11 @@ public class EmailComposer {
 
 	public EmailMessage compose(String to, String subject, String body, String firstName, String lastName,
 			String unsubscribeToken) {
+		return compose(to, subject, body, firstName, lastName, unsubscribeToken, null);
+	}
+
+	public EmailMessage compose(String to, String subject, String body, String firstName, String lastName,
+			String unsubscribeToken, Block block) {
 		String personalSubject = personalize(subject, firstName, lastName).replaceAll("[\\r\\n]+", " ").strip();
 		String personalBody = personalize(body, firstName, lastName).replace("\r\n", "\n").replace('\r', '\n').strip();
 		String unsubscribeUrl = (unsubscribeToken != null) ? unsubscribeUrl(unsubscribeToken) : null;
@@ -41,11 +53,16 @@ public class EmailComposer {
 			if (paragraph.isBlank()) {
 				continue;
 			}
+			if (block != null && BLOCK_MARKER.equals(paragraph.strip())) {
+				html.append(block.html());
+				continue;
+			}
 			html.append("<p style=\"font-size:16px;line-height:1.5;margin:0 0 16px\">")
 				.append(HtmlUtils.htmlEscape(paragraph.strip(), "UTF-8").replace("\n", "<br>"))
 				.append("</p>");
 		}
-		StringBuilder text = new StringBuilder(personalBody);
+		StringBuilder text = new StringBuilder(
+				(block != null) ? personalBody.replace(BLOCK_MARKER, block.text()) : personalBody);
 		if (unsubscribeUrl != null) {
 			html.append("<hr style=\"border:none;border-top:1px solid #f0d9c8;margin:24px 0 16px\">")
 				.append("<p style=\"font-size:12px;line-height:1.5;color:#777777;margin:0\">")

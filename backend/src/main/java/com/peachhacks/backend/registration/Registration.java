@@ -96,6 +96,8 @@ public class Registration {
 
 	private String unsubscribeToken;
 
+	private String ticketToken;
+
 	private Instant createdAt;
 
 	protected Registration() {
@@ -137,6 +139,7 @@ public class Registration {
 		r.status = RegistrationStatus.PENDING;
 		r.unsubscribed = false;
 		r.unsubscribeToken = Tokens.random();
+		r.ticketToken = Tokens.random();
 		r.createdAt = Instant.now();
 		return r;
 	}
@@ -284,6 +287,12 @@ public class Registration {
 	@JsonIgnore
 	public String getUnsubscribeToken() {
 		return unsubscribeToken;
+	}
+
+	/** Identifies the ticket in its QR code; exposed only through RegistrationDetail. */
+	@JsonIgnore
+	public String getTicketToken() {
+		return ticketToken;
 	}
 
 	public Instant getCreatedAt() {

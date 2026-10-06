@@ -26,10 +26,11 @@ import com.peachhacks.backend.email.MailService;
 @RequestMapping("/admin/admins")
 public class AdminAccountController {
 
-	public record AdminItem(UUID id, String email, String name, Instant createdAt) {
+	public record AdminItem(UUID id, String email, String name, AdminRole role, Instant createdAt) {
 
 		static AdminItem from(Admin admin) {
-			return new AdminItem(admin.getId(), admin.getEmail(), admin.getName(), admin.getCreatedAt());
+			return new AdminItem(admin.getId(), admin.getEmail(), admin.getName(), admin.getRole(),
+					admin.getCreatedAt());
 		}
 
 	}
@@ -42,11 +43,12 @@ public class AdminAccountController {
 					message = "Name must be at most 100 characters") String name,
 			@NotBlank(message = "Password is required") @Size(min = AuthService.MIN_PASSWORD_LENGTH,
 					max = AuthService.MAX_PASSWORD_LENGTH,
-					message = "Password must be 10 to 72 characters") String password) {
+					message = "Password must be 10 to 72 characters") String password,
+			String role) {
 
 		@Override
 		public String toString() {
-			return "CreateAdminRequest[email=" + email + ", name=" + name + "]";
+			return "CreateAdminRequest[email=" + email + ", name=" + name + ", role=" + role + "]";
 		}
 
 	}
@@ -68,8 +70,14 @@ public class AdminAccountController {
 	@PostMapping
 	ResponseEntity<AdminItem> create(@Valid @RequestBody CreateAdminRequest request,
 			@AuthenticationPrincipal AdminPrincipal current) {
-		Admin admin = authService.create(request.email(), request.name(), request.password());
-		mailService.sendAdminWelcome(admin.getEmail(), admin.getName(), current.name());
+		AdminRole role = AdminRole.parseOrDefault(request.role());
+		Admin admin = authService.create(request.email(), request.name(), request.password(), role);
+		if (role == AdminRole.VOLUNTEER) {
+			mailService.sendVolunteerWelcome(admin.getEmail(), admin.getName(), current.name());
+		}
+		else {
+			mailService.sendAdminWelcome(admin.getEmail(), admin.getName(), current.name());
+		}
 		return ResponseEntity.status(HttpStatus.CREATED).body(AdminItem.from(admin));
 	}
 

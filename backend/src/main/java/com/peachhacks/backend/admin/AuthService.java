@@ -20,7 +20,7 @@ import org.springframework.stereotype.Service;
 @Service
 public class AuthService {
 
-	public record AdminView(UUID id, String email, String name) {
+	public record AdminView(UUID id, String email, String name, AdminRole role) {
 	}
 
 	public record Login(String token, Instant expiresAt, AdminView admin) {
@@ -82,7 +82,8 @@ public class AuthService {
 		}
 		String tokenHash = Tokens.sha256(token);
 		return admins.findBySessionToken(tokenHash, Instant.now())
-			.map(admin -> new AdminPrincipal(admin.getId(), admin.getEmail(), admin.getName(), tokenHash));
+			.map(admin -> new AdminPrincipal(admin.getId(), admin.getEmail(), admin.getName(), admin.getRole(),
+					tokenHash));
 	}
 
 	public void logout(AdminPrincipal principal) {
@@ -93,29 +94,27 @@ public class AuthService {
 		return admins.findAllByOrderByCreatedAtAsc();
 	}
 
-	public Admin create(String email, String name, String password) {
+	public Admin create(String email, String name, String password, AdminRole role) {
 		String normalized = Texts.email(email);
 		if (admins.findByEmail(normalized).isPresent()) {
-			throw ApiException.invalidField("email", "An admin with this email already exists.");
+			throw ApiException.invalidField("email", "An account with this email already exists.");
 		}
 		try {
-			Admin admin = admins.save(new Admin(normalized, name.strip(), passwordEncoder.encode(password)));
-			log.info("Admin account {} created", normalized);
+			Admin admin = admins.save(new Admin(normalized, name.strip(), passwordEncoder.encode(password), role));
+			log.info("{} account {} created", role, normalized);
 			return admin;
 		}
 		catch (DataIntegrityViolationException ex) {
-			throw ApiException.invalidField("email", "An admin with this email already exists.");
+			throw ApiException.invalidField("email", "An account with this email already exists.");
 		}
 	}
 
 	public void delete(UUID id, AdminPrincipal current) {
-		if (!admins.existsById(id)) {
-			throw ApiException.notFound("Admin not found.");
-		}
+		Admin target = admins.findById(id).orElseThrow(() -> ApiException.notFound("Admin not found."));
 		if (id.equals(current.id())) {
 			throw ApiException.validation("You cannot delete your own account.", null);
 		}
-		if (admins.count() <= 1) {
+		if (target.getRole() == AdminRole.ADMIN && admins.countByRole(AdminRole.ADMIN) <= 1) {
 			throw ApiException.validation("The last admin account cannot be deleted.", null);
 		}
 		// Sessions are removed by the foreign key's cascade.
@@ -124,7 +123,7 @@ public class AuthService {
 	}
 
 	public static AdminView view(Admin admin) {
-		return new AdminView(admin.getId(), admin.getEmail(), admin.getName());
+		return new AdminView(admin.getId(), admin.getEmail(), admin.getName(), admin.getRole());
 	}
 
 }

@@ -9,6 +9,8 @@ import com.peachhacks.backend.common.RequestValidator;
 import com.peachhacks.backend.common.Texts;
 import com.peachhacks.backend.email.MailService;
 import com.peachhacks.backend.stats.SettingsService;
+import com.peachhacks.backend.ticket.GoogleWallet;
+import com.peachhacks.backend.ticket.Tickets;
 
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
@@ -29,12 +31,18 @@ public class RegistrationService {
 
 	private final MailService mailService;
 
+	private final Tickets tickets;
+
+	private final GoogleWallet googleWallet;
+
 	public RegistrationService(RegistrationRepository repository, SettingsService settings,
-			RequestValidator validator, MailService mailService) {
+			RequestValidator validator, MailService mailService, Tickets tickets, GoogleWallet googleWallet) {
 		this.repository = repository;
 		this.settings = settings;
 		this.validator = validator;
 		this.mailService = mailService;
+		this.tickets = tickets;
+		this.googleWallet = googleWallet;
 	}
 
 	public UUID submit(RegistrationRequest request) {
@@ -65,10 +73,11 @@ public class RegistrationService {
 		return registration.getId();
 	}
 
-	public Page<Registration> search(String q, String school, String status, Pageable pageable) {
+	public Page<Registration> search(String q, String school, String status, Boolean checkedIn, Pageable pageable) {
 		RegistrationStatus parsed = parseStatus(status);
 		return repository.search(Texts.containsPattern(q), Texts.orEmpty(school), parsed == null,
-				(parsed != null) ? parsed : RegistrationStatus.PENDING, pageable);
+				(parsed != null) ? parsed : RegistrationStatus.PENDING, checkedIn == null,
+				Boolean.TRUE.equals(checkedIn), pageable);
 	}
 
 	public Registration get(UUID id) {
@@ -77,8 +86,29 @@ public class RegistrationService {
 
 	public Registration updateStatus(UUID id, RegistrationStatus status) {
 		Registration registration = get(id);
+		boolean newlyAccepted = status == RegistrationStatus.ACCEPTED
+				&& registration.getStatus() != RegistrationStatus.ACCEPTED;
 		registration.setStatus(status);
-		return repository.save(registration);
+		Registration saved = repository.save(registration);
+		if (newlyAccepted) {
+			sendTicketEmail(saved);
+		}
+		return saved;
+	}
+
+	public void resendTicketEmail(UUID id) {
+		Registration registration = get(id);
+		if (registration.getStatus() != RegistrationStatus.ACCEPTED) {
+			throw ApiException.validation("Only accepted registrations have a ticket to send.", null);
+		}
+		sendTicketEmail(registration);
+	}
+
+	private void sendTicketEmail(Registration registration) {
+		String token = registration.getTicketToken();
+		String ticketUrl = tickets.url(token);
+		mailService.sendTicket(registration.getEmail(), registration.getFirstName(), ticketUrl, tickets.qrPng(token),
+				googleWallet.saveUrl(registration, ticketUrl).orElse(null), registration.getUnsubscribeToken());
 	}
 
 	public void delete(UUID id) {

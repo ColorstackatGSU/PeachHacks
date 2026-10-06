@@ -2,6 +2,8 @@ package com.peachhacks.backend.email;
 
 import java.net.http.HttpClient;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -42,6 +44,20 @@ public class ResendEmailSender implements EmailSender {
 		payload.put("text", message.text());
 		if (!message.headers().isEmpty()) {
 			payload.put("headers", message.headers());
+		}
+		if (!message.attachments().isEmpty()) {
+			List<Map<String, Object>> attachments = new ArrayList<>();
+			for (EmailMessage.Attachment file : message.attachments()) {
+				Map<String, Object> attachment = new LinkedHashMap<>();
+				attachment.put("filename", file.filename());
+				attachment.put("content", Base64.getEncoder().encodeToString(file.content()));
+				attachment.put("content_type", file.contentType());
+				if (file.contentId() != null) {
+					attachment.put("content_id", file.contentId());
+				}
+				attachments.add(attachment);
+			}
+			payload.put("attachments", attachments);
 		}
 		try {
 			post(payload);

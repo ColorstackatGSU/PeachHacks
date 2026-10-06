@@ -37,7 +37,7 @@ public class BearerTokenFilter extends OncePerRequestFilter {
 		if (header != null && header.regionMatches(true, 0, PREFIX, 0, PREFIX.length())) {
 			authService.authenticate(header.substring(PREFIX.length()).trim()).ifPresent(principal -> {
 				UsernamePasswordAuthenticationToken authentication = UsernamePasswordAuthenticationToken
-					.authenticated(principal, null, List.of(new SimpleGrantedAuthority("ROLE_ADMIN")));
+					.authenticated(principal, null, List.of(new SimpleGrantedAuthority(principal.role().authority())));
 				SecurityContext context = SecurityContextHolder.createEmptyContext();
 				context.setAuthentication(authentication);
 				SecurityContextHolder.setContext(context);

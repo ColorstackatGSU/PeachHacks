@@ -9,8 +9,8 @@ public class LoggingEmailSender implements EmailSender {
 
 	@Override
 	public void send(EmailMessage message) {
-		log.info("Email not sent (RESEND_API_KEY is not set)\nTo: {}\nSubject: {}\n\n{}", message.to(),
-				message.subject(), message.text());
+		log.info("Email not sent (RESEND_API_KEY is not set)\nTo: {}\nSubject: {}\nAttachments: {}\n\n{}",
+				message.to(), message.subject(), message.attachments(), message.text());
 	}
 
 }

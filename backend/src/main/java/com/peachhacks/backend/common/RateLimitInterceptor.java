@@ -22,13 +22,27 @@ public class RateLimitInterceptor implements HandlerInterceptor {
 
 	@Override
 	public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
-		if (!"POST".equalsIgnoreCase(request.getMethod())) {
+		String uri = request.getRequestURI();
+		String bucket;
+		int limit;
+		if (uri.startsWith(request.getContextPath() + "/public/tickets/")) {
+			// Ticket pages are opened by everyone in the door queue, often from one venue
+			// network address, so they get their own, larger allowance.
+			bucket = "ticket:";
+			limit = properties.ticketPerMinute();
+		}
+		else if (!"POST".equalsIgnoreCase(request.getMethod())) {
 			return true;
 		}
-		boolean login = request.getRequestURI().endsWith("/admin/auth/login");
-		String key = (login ? "login:" : "public:") + clientAddress(request);
-		int limit = login ? properties.loginPerMinute() : properties.publicPerMinute();
-		if (!rateLimiter.tryAcquire(key, limit)) {
+		else if (uri.endsWith("/admin/auth/login")) {
+			bucket = "login:";
+			limit = properties.loginPerMinute();
+		}
+		else {
+			bucket = "public:";
+			limit = properties.publicPerMinute();
+		}
+		if (!rateLimiter.tryAcquire(bucket + clientAddress(request), limit)) {
 			throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "RATE_LIMITED",
 					"Too many requests. Please wait a minute and try again.");
 		}

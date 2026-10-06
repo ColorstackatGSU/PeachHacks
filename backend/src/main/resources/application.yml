@@ -40,6 +40,11 @@ app:
     web-base-url: ${WEB_BASE_URL:http://localhost:5173}
     admin-base-url: ${ADMIN_BASE_URL:http://localhost:5174}
     campaign-delay: 600ms
+  google-wallet:
+    issuer-id: ${GOOGLE_WALLET_ISSUER_ID:}
+    service-account-email: ${GOOGLE_WALLET_SERVICE_ACCOUNT_EMAIL:}
+    private-key: ${GOOGLE_WALLET_PRIVATE_KEY:}
+    class-id: ${GOOGLE_WALLET_CLASS_ID:peachhacks_2027}
   admin:
     bootstrap-email: ${ADMIN_BOOTSTRAP_EMAIL:}
     bootstrap-password: ${ADMIN_BOOTSTRAP_PASSWORD:}
@@ -48,4 +53,5 @@ app:
   rate-limit:
     public-per-minute: 60
     login-per-minute: 10
+    ticket-per-minute: 300
     trust-forwarded-for: false
