@@ -42,15 +42,6 @@ const tracksBackdropRows = [
   ['Ship it', 'PeachHacks', 'Atlanta', 'Build', 'Learn', 'Spring 2027'],
 ];
 
-const heroLights = [
-  ['13.3%', '35.1%', '1.35s', 'cream'], ['15.2%', '44%', '1.9s', 'peach'], ['17.1%', '52.9%', '1.55s', 'cream'],
-  ['22.8%', '28.4%', '2.3s', 'peach'], ['25.3%', '37.3%', '1.45s', 'cream'], ['23.4%', '47.4%', '2.05s', 'cream'],
-  ['27.2%', '55.2%', '1.7s', 'peach'], ['31.6%', '39.6%', '2.45s', 'cream'], ['33.1%', '50.7%', '1.6s', 'peach'],
-  ['59.4%', '32.9%', '1.5s', 'peach'], ['61.3%', '46.3%', '2.2s', 'cream'], ['59.4%', '57.4%', '1.8s', 'cream'],
-  ['68.3%', '39.6%', '1.4s', 'cream'], ['69.6%', '52.9%', '2.35s', 'peach'], ['74.6%', '44%', '1.65s', 'cream'],
-  ['77.2%', '55.2%', '2.15s', 'peach'], ['82.8%', '41.8%', '1.95s', 'cream'], ['84.5%', '48.5%', '2.55s', 'peach'],
-];
-
 const faqData = [
   { q: 'Is PeachHacks free to attend?', a: 'Yes! Food will be provided for the duration of the event. We’ll also have swag and prizes.' },
   { q: 'Where is the event? Is it in person or virtual?', a: 'The event is planned to be in person at Georgia State University, in the XXXX Building at STREET ADDRESS. Parking information will be shared here once confirmed: campus parking site coming soon.' },
@@ -407,15 +398,6 @@ function App() {
           <StarField className="intro-stars hero-fx" stars={introStars} />
           <div className="hero-scene hero-fx" aria-hidden="true">
             <img className="hero-art" src="/assets/Hero.svg" alt="" />
-            <div className="hero-lights">
-              {heroLights.map(([x, y, delay, tone]) => (
-                <span
-                  className={`hero-light hero-light-${tone}`}
-                  key={`${x}-${y}`}
-                  style={{ '--light-x': x, '--light-y': y, '--light-delay': delay }}
-                />
-              ))}
-            </div>
             <div className="hero-water-lines">
               {Array.from({ length: 15 }, (_, idx) => (
                 <span className="hero-water-line" key={idx} />

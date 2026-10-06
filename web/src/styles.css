@@ -262,10 +262,6 @@ html.assets-pending .tracks-content, html.assets-pending .tracks-backdrop { opac
 @media (max-width: 620px) { .hero-card { min-height: 0; aspect-ratio: auto; border-radius: 3px; }.partners-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; } .partner-box { min-height: 72px; padding: 12px; } .partner-box-label { font-size: 10px; } .partner-box-text { font-size: 18px; } }
 @media (max-width: 620px) { .site-footer { height: clamp(112px, 17dvh, 150px); padding: 16px 20px; } .site-footer p { font-size: 12px; letter-spacing: .08em; } .footer-links { gap: 6px 18px; } .site-footer a { font-size: 12px; letter-spacing: .1em; } }
 @media (max-width: 620px) { .tracks-copy { font-size: 14px; } .tracks-backdrop-word { -webkit-text-stroke-width: 1px; } }
-.hero-lights { position: absolute; z-index: 1; top: 0; left: 0; width: 100%; aspect-ratio: 705 / 400; pointer-events: none; }
-.hero-light { position: absolute; top: var(--light-y); left: var(--light-x); width: clamp(3px, .3vw, 6px); height: clamp(4px, .4vw, 8px); border-radius: 1px; background: var(--cream); opacity: .85; animation: light-flicker 11s ease-in-out calc(var(--light-delay, 1.5s) + 2.5s) infinite; }
-.hero-light-cream { box-shadow: 0 0 5px rgba(244, 246, 237, .45); }
-.hero-light-peach { background: var(--peach); box-shadow: 0 0 6px rgba(252, 163, 36, .55); }
 .scroll-cue { display: flex; justify-content: center; margin: 4px 0 0; padding: 8px 18px 10px; border: 0; border-radius: 4px; background: none; color: rgba(35, 62, 86, .6); cursor: pointer; transition: color .2s ease; }
 .scroll-cue:hover { color: var(--navy); }
 .scroll-cue:focus-visible { outline: 2px solid var(--navy); outline-offset: 2px; }
@@ -279,11 +275,6 @@ html.assets-pending .tracks-content, html.assets-pending .tracks-backdrop { opac
 .faq-list details:hover { box-shadow: 0 6px 0 rgba(0, 31, 58, .14); transform: translateY(-2px); }
 .faq-question { padding-bottom: 3px; background: linear-gradient(var(--peach), var(--peach)) left bottom / 0 2px no-repeat; transition: background-size .35s cubic-bezier(.25, 1, .5, 1); }
 .faq-list summary:hover .faq-question, .faq-list summary:focus-visible .faq-question { background-size: 100% 2px; }
-@keyframes light-flicker {
-  0%, 88%, 100% { opacity: .85; }
-  92% { opacity: .3; }
-  95% { opacity: .95; }
-}
 @keyframes cue-bounce {
   0%, 100% { translate: 0 0; }
   50% { translate: 0 5px; }
@@ -448,7 +439,7 @@ html.no-scroll-timeline .scroll-fx { animation-timeline: auto; animation-range: 
   .intro { position: relative; animation: none !important; }
   .tracks-section { height: auto; margin-top: 0; padding: clamp(64px, 12svh, 120px) 24px; background: #10689b; }
   .scroll-fx, .hero-fx { animation: none !important; }
-  .top-cloud, .hero-water-line, .hero-light, .scroll-cue-chevron, .register-button::after { animation: none !important; }
+  .top-cloud, .hero-water-line, .scroll-cue-chevron, .register-button::after { animation: none !important; }
   .cloud-one { transform: translateX(94vw); }
   .cloud-two { transform: translateX(30vw); }
   .cloud-three { transform: translateX(108vw); }
