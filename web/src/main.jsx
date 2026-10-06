@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
 import { createRoot } from 'react-dom/client';
 import { scroll } from 'motion';
-import { animateSingleValue, motion, useDragControls, useMotionValue, useReducedMotion, useSpring, useTransform, useVelocity } from 'motion/react';
+import { animateSingleValue, motion, useDragControls, useMotionValue, useMotionValueEvent, useReducedMotion, useSpring, useTransform, useVelocity } from 'motion/react';
 import SiteHeader from './home/SiteHeader.jsx';
 import SiteFooter from './home/SiteFooter.jsx';
 import RegisterLayer, { preloadRegisterPanel } from './home/RegisterLayer.jsx';
@@ -121,6 +121,9 @@ const TOW_ANGLE = (26 * Math.PI) / 180;
 const TAG_TOW_SPRING = { type: 'spring', stiffness: 120, damping: 13 };
 const TAG_PEEK = 72;
 const ROPE_TUCK = 18;
+// No overshoot: while the tag springs past its spot the rope must stay on the panel.
+const ROPE_TIE_EASE = { duration: 0.16, ease: 'easeOut' };
+const PANEL_CLEARANCE = 48;
 const TAG_PULL_OPEN_OFFSET = 150;
 const TAG_OFFSCREEN = 120;
 const TAG_RELEASE_OFFSET = 80;
@@ -150,6 +153,9 @@ function HeroTag({ registerButtonRef, tagCloseRef }) {
   const y = useMotionValue(0);
   const tilt = useSpring(useTransform(useVelocity(x), [-600, 600], [-TAG_MAX_TILT, TAG_MAX_TILT]), { stiffness: 180, damping: 12 });
   const ropeTie = useRef({ panel: 0, eyeletX: 0, eyeletY: 0 });
+  const parkTarget = useRef(0);
+  const towScale = useRef(1);
+  const panelShift = (tagX) => towScale.current * Math.min(0, tagX - parkTarget.current);
   const tied = useMotionValue(0);
   const towTransform = useTransform(() => {
     const reach = window.innerWidth * 0.5;
@@ -159,7 +165,7 @@ function HeroTag({ registerButtonRef, tagCloseRef }) {
     const { panel, eyeletX, eyeletY } = ropeTie.current;
     const shiftX = eyeletX * blend;
     const shiftY = eyeletY * blend;
-    const towX = restX + (panel - restX) * blend - x.get() - shiftX;
+    const towX = (restX - x.get()) * (1 - blend) + (panel + panelShift(x.get()) - x.get() - eyeletX) * blend;
     const towY = restY * (1 - blend) - y.get();
     let bend = ((Math.atan2(towY, towX) - Math.atan2(restY, restX)) * 180) / Math.PI;
     if (bend > 180) bend -= 360;
@@ -186,6 +192,18 @@ function HeroTag({ registerButtonRef, tagCloseRef }) {
   // While the panel is open the rope runs from the tag's eyelet to the panel's
   // right edge, its tapered end tucked under the panel. offsetLeft/offsetWidth
   // ignore the panel's opening transform, which getBoundingClientRect would not.
+  // The panel is towed in behind the tag. The scale makes sure it has left the
+  // screen entirely by the time the tag is back at rest.
+  const towPanel = useCallback((tagX) => {
+    document.documentElement.style.setProperty('--panel-shift', `${panelShift(tagX).toFixed(1)}px`);
+  }, []);
+  const setParkTarget = useCallback(() => {
+    const panel = document.querySelector('.register-panel');
+    parkTarget.current = parkedX();
+    towScale.current = panel ? Math.max(1, (panel.offsetLeft + panel.offsetWidth + PANEL_CLEARANCE) / parkTarget.current) : 1;
+  }, [parkedX]);
+  useMotionValueEvent(x, 'change', towPanel);
+
   const tieRopeToPanel = useCallback(() => {
     const panel = document.querySelector('.register-panel');
     const card = tagRef.current.firstElementChild;
@@ -226,18 +244,24 @@ function HeroTag({ registerButtonRef, tagCloseRef }) {
     if (first && !parked) return undefined;
     const instant = reduceMotion || (first && openedOnLoad);
     const tie = parked && !sheet ? 1 : 0;
+    if (parked) {
+      setParkTarget();
+      towPanel(x.get());
+    }
     if (tie) tieRopeToPanel();
     if (instant) tied.jump(tie);
-    else animateSingleValue(tied, tie, TAG_TOW_SPRING);
+    else animateSingleValue(tied, tie, ROPE_TIE_EASE);
     towTo(parked ? parkedX() : 0, instant);
     if (!parked) return undefined;
     const onResize = () => {
+      setParkTarget();
       tieRopeToPanel();
-      towTo(parkedX(), true);
+      towTo(parkTarget.current, true);
+      towPanel(parkTarget.current);
     };
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
-  }, [parked, sheet, reduceMotion, parkedX, towTo, tieRopeToPanel, tied]);
+  }, [parked, sheet, reduceMotion, parkedX, towTo, tieRopeToPanel, towPanel, setParkTarget, tied, x]);
 
   return (
     <motion.div

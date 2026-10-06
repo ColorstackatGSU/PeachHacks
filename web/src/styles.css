@@ -297,11 +297,10 @@ html.assets-pending .tracks-content, html.assets-pending .tracks-backdrop { opac
 }
 
 html.register-open { overflow: hidden; scrollbar-gutter: stable; }
-.register-layer { --park-space: 172px; position: fixed; z-index: 70; top: 0; right: 0; left: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; height: var(--vv-height, 100%); padding: calc(var(--header-h) + 8px) var(--park-space) 28px clamp(24px, calc(50vw - 360px), var(--park-space)); pointer-events: none; visibility: hidden; transform: translateY(var(--vv-top, 0)); transition: visibility 0s .3s; }
+.register-layer { --park-space: 172px; position: fixed; z-index: 70; top: 0; right: 0; left: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; height: var(--vv-height, 100%); padding: calc(var(--header-h) + 8px) var(--park-space) 28px clamp(24px, calc(50vw - 360px), var(--park-space)); pointer-events: none; visibility: hidden; transform: translateY(var(--vv-top, 0)); transition: visibility 0s .7s; }
 .register-layer.is-open { visibility: visible; transition-delay: 0s; }
-.register-panel { display: flex; flex-direction: column; width: min(100%, 720px); min-height: min(100%, 420px); max-height: 100%; overflow: hidden; border-radius: 6px; background: var(--cream); box-shadow: 0 12px 0 rgba(0, 15, 30, .35), 0 26px 40px rgba(0, 15, 30, .3); color: #233e56; text-align: left; opacity: 0; transform: translateY(18px) scale(.97); transition: opacity .2s ease, transform .3s cubic-bezier(.25, 1, .5, 1); pointer-events: auto; }
+.register-panel { display: flex; flex-direction: column; width: min(100%, 720px); min-height: min(100%, 420px); max-height: 100%; overflow: hidden; border-radius: 6px; background: var(--cream); box-shadow: 0 12px 0 rgba(0, 15, 30, .35), 0 26px 40px rgba(0, 15, 30, .3); color: #233e56; text-align: left; transform: translateX(var(--panel-shift, -100vw)); pointer-events: auto; }
 .register-panel:focus { outline: none; }
-.register-layer.is-open .register-panel { opacity: 1; transform: none; transition-delay: .18s; }
 .register-panel-bar { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; padding: 2px 6px 2px 18px; background: var(--navy); color: var(--cream); }
 .register-panel-name { margin: 0; font-size: 12px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
 .register-panel-close { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 12px; border: 0; border-radius: 4px; background: none; color: inherit; font: inherit; font-size: 14px; font-weight: 800; cursor: pointer; transition: color .2s ease; }
