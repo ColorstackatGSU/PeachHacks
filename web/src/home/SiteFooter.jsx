@@ -1,0 +1,62 @@
+import React from 'react';
+import { useRegistrationCta } from './registration.js';
+import { CONTACT_EMAIL, EVENT_DATES, EVENT_PLACE, SPONSOR_EMAIL, SPONSOR_FORM_PATH, isHomePage, sectionHref, sectionLinks, socialLinks } from './site.js';
+
+function SiteFooter() {
+  const cta = useRegistrationCta();
+
+  return (
+    <footer className="site-footer">
+      <div className="footer-art-band" aria-hidden="true">
+        <img className="footer-art" src="/assets/Footer.svg" alt="" width="904" height="57" loading="lazy" decoding="async" />
+      </div>
+      <div className="footer-body">
+        <div className="footer-inner">
+          <div className="footer-brand">
+            <a className="footer-logo-link" href={isHomePage() ? '#top' : '/'} aria-label="PeachHacks home">
+              <img className="footer-logo" src="/assets/logo.svg" alt="" width="210" height="79" loading="lazy" decoding="async" />
+            </a>
+            <p className="footer-event">{EVENT_DATES}<br />{EVENT_PLACE}</p>
+            <ul className="footer-social">
+              {socialLinks.map((social) => (
+                <li key={social.label}>
+                  <a className="footer-social-link" href={social.href} target="_blank" rel="noopener noreferrer" aria-label={`ColorStack at GSU on ${social.label} (opens in a new tab)`}>
+                    <img src={social.icon} alt="" width="32" height="32" loading="lazy" decoding="async" />
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <nav className="footer-column" aria-label="Sections">
+            <p className="footer-heading">Explore</p>
+            <ul>
+              {sectionLinks.map((link) => (
+                <li key={link.id}><a className="footer-link" href={sectionHref(link.id)}>{link.label}</a></li>
+              ))}
+            </ul>
+          </nav>
+
+          <nav className="footer-column" aria-label="Take part">
+            <p className="footer-heading">Take part</p>
+            <ul>
+              <li><a className="footer-link" href={cta.href}>{cta.label}</a></li>
+              <li><a className="footer-link" href={SPONSOR_FORM_PATH}>Sponsor PeachHacks</a></li>
+            </ul>
+          </nav>
+
+          <div className="footer-column footer-contact">
+            <p className="footer-heading">Contact</p>
+            <ul>
+              <li><span className="footer-contact-label">General</span><a className="footer-link" href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a></li>
+              <li><span className="footer-contact-label">Sponsorship</span><a className="footer-link" href={`mailto:${SPONSOR_EMAIL}`}>{SPONSOR_EMAIL}</a></li>
+            </ul>
+          </div>
+        </div>
+        <p className="footer-legal">PeachHacks 2027 <span aria-hidden="true">·</span> Hosted by ColorStack at Georgia State University</p>
+      </div>
+    </footer>
+  );
+}
+
+export default SiteFooter;
