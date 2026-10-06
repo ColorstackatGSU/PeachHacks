@@ -42,7 +42,7 @@ public class AdminRegistrationController {
 			"sexualOrientation", "sexualOrientationOther", "highestEducation", "highestEducationOther", "tshirtSize",
 			"shippingLine1", "shippingLine2", "shippingCity", "shippingState", "shippingCountry",
 			"shippingPostalCode", "majorFieldOfStudy", "majorOther", "linkedinUrl", "checked_in_at",
-			"has_resume", "resume_opt_in", "school_email");
+			"has_resume", "resume_opt_in", "school_email", "school_email_confirmed");
 
 	private final RegistrationService service;
 
@@ -67,9 +67,11 @@ public class AdminRegistrationController {
 	PageResponse<RegistrationSummary> list(@RequestParam(defaultValue = "0") int page,
 			@RequestParam(defaultValue = "25") int size, @RequestParam(required = false) String q,
 			@RequestParam(required = false) String school, @RequestParam(required = false) String status,
-			@RequestParam(required = false) Boolean checkedIn, @RequestParam(required = false) String resume) {
+			@RequestParam(required = false) Boolean checkedIn, @RequestParam(required = false) String resume,
+			@RequestParam(required = false) Boolean schoolEmailConfirmed) {
 		Pageable pageable = PageResponse.pageable(page, size);
-		Page<Registration> result = service.search(q, school, status, checkedIn, resume, pageable);
+		Page<Registration> result = service.search(q, school, status, checkedIn, resume, schoolEmailConfirmed,
+				pageable);
 		List<UUID> ids = result.getContent().stream().map(Registration::getId).toList();
 		Map<UUID, CheckIn> general = checkIns.general(ids);
 		Map<UUID, RegistrationResume> uploaded = resumes.byRegistration(ids);
@@ -80,11 +82,13 @@ public class AdminRegistrationController {
 	@GetMapping("/export.csv")
 	ResponseEntity<byte[]> export(@RequestParam(required = false) String q,
 			@RequestParam(required = false) String school, @RequestParam(required = false) String status,
-			@RequestParam(required = false) Boolean checkedIn, @RequestParam(required = false) String resume) {
+			@RequestParam(required = false) Boolean checkedIn, @RequestParam(required = false) String resume,
+			@RequestParam(required = false) Boolean schoolEmailConfirmed) {
 		Map<UUID, CheckIn> general = checkIns.general();
 		Map<UUID, RegistrationResume> uploaded = resumes.byRegistration();
 		Csv csv = new Csv(CSV_HEADER);
-		for (Registration r : service.search(q, school, status, checkedIn, resume, Pageable.unpaged())) {
+		for (Registration r : service.search(q, school, status, checkedIn, resume, schoolEmailConfirmed,
+				Pageable.unpaged())) {
 			RegistrationResume file = uploaded.get(r.getId());
 			ShippingAddress address = (r.getShippingAddress() != null) ? r.getShippingAddress()
 					: new ShippingAddress(null, null, null, null, null, null);
@@ -98,7 +102,7 @@ public class AdminRegistrationController {
 					r.getHighestEducationOther(), r.getTshirtSize(), address.line1(), address.line2(), address.city(),
 					address.state(), address.country(), address.postalCode(), r.getMajorFieldOfStudy(),
 					r.getMajorOther(), r.getLinkedinUrl(), checkedInAt(general, r), file != null,
-					file != null && file.isSponsorOptIn(), r.getSchoolEmail()));
+					file != null && file.isSponsorOptIn(), r.getSchoolEmail(), r.isSchoolEmailConfirmed()));
 		}
 		return csv.toResponse("peachhacks-registrations");
 	}
@@ -116,6 +120,12 @@ public class AdminRegistrationController {
 	@PostMapping("/{id}/ticket-email")
 	ResponseEntity<Void> resendTicketEmail(@PathVariable UUID id) {
 		service.resendTicketEmail(id);
+		return ResponseEntity.noContent().build();
+	}
+
+	@PostMapping("/{id}/school-email/resend")
+	ResponseEntity<Void> resendSchoolEmailConfirmation(@PathVariable UUID id) {
+		service.resendSchoolEmailConfirmation(id);
 		return ResponseEntity.noContent().build();
 	}
 

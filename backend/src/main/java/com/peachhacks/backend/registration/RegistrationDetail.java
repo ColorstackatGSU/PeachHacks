@@ -11,7 +11,9 @@ import com.peachhacks.backend.checkin.CheckInService;
  * checkedInBy are the general check-in; the ticket fields are null unless the status is
  * ACCEPTED, because no ticket exists for anyone else; googleWalletUrl is also null while
  * Google Wallet is not configured. resume is null when none was uploaded, and resumeOptIn
- * (sponsors may receive it) is then always false.
+ * (sponsors may receive it) is then always false. schoolEmailConfirmed and
+ * schoolEmailConfirmedAt come from the registration itself; an unconfirmed school email
+ * does not stop any status change, it is there for the organizer to see.
  */
 public record RegistrationDetail(@JsonUnwrapped Registration registration, Instant checkedInAt, String checkedInBy,
 		List<CheckInService.EventCheckIn> checkIns, String ticketToken, String ticketUrl,

@@ -15,6 +15,7 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.Formula;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
@@ -37,6 +38,11 @@ public class Registration {
 	private String email;
 
 	private String schoolEmail;
+
+	/** Read from the confirmation of this row's (email, school email) pair; null until confirmed. */
+	@Formula("(select c.confirmed_at from school_email_confirmations c"
+			+ " where c.email = email and c.school_email = school_email)")
+	private Instant schoolEmailConfirmedAt;
 
 	private String school;
 
@@ -181,6 +187,15 @@ public class Registration {
 	/** Null for registrations made before the form asked for it. */
 	public String getSchoolEmail() {
 		return schoolEmail;
+	}
+
+	public Instant getSchoolEmailConfirmedAt() {
+		return schoolEmailConfirmedAt;
+	}
+
+	/** False also for registrations that have no school email at all. */
+	public boolean isSchoolEmailConfirmed() {
+		return schoolEmailConfirmedAt != null;
 	}
 
 	public String getSchool() {

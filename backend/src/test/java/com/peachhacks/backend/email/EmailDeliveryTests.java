@@ -142,7 +142,7 @@ class EmailDeliveryTests {
 		List<EmailMessage> sent = new ArrayList<>();
 		MailService mail = new MailService(sent::add, new EmailComposer(properties), Runnable::run, properties);
 
-		mail.sendRegistrationConfirmation("ada@example.com", "Ada", "tok123");
+		mail.sendRegistrationConfirmation("ada@example.com", "Ada", "tok123", null);
 
 		assertThat(sent.get(0).text()).contains("We received your application")
 			.contains("If you are accepted, we will email you your ticket");

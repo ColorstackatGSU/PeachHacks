@@ -9,6 +9,7 @@ import com.peachhacks.backend.common.RequestValidator;
 import com.peachhacks.backend.common.Texts;
 import com.peachhacks.backend.email.MailService;
 import com.peachhacks.backend.registration.ResumeUpload.ResumeFile;
+import com.peachhacks.backend.schoolemail.SchoolEmailService;
 import com.peachhacks.backend.stats.SettingsService;
 import com.peachhacks.backend.ticket.GoogleWallet;
 import com.peachhacks.backend.ticket.Tickets;
@@ -42,11 +43,13 @@ public class RegistrationService {
 
 	private final ResumeService resumes;
 
+	private final SchoolEmailService schoolEmails;
+
 	private final TransactionTemplate transaction;
 
 	public RegistrationService(RegistrationRepository repository, SettingsService settings,
 			RequestValidator validator, MailService mailService, Tickets tickets, GoogleWallet googleWallet,
-			ResumeService resumes, PlatformTransactionManager transactionManager) {
+			ResumeService resumes, SchoolEmailService schoolEmails, PlatformTransactionManager transactionManager) {
 		this.repository = repository;
 		this.settings = settings;
 		this.validator = validator;
@@ -54,6 +57,7 @@ public class RegistrationService {
 		this.tickets = tickets;
 		this.googleWallet = googleWallet;
 		this.resumes = resumes;
+		this.schoolEmails = schoolEmails;
 		this.transaction = new TransactionTemplate(transactionManager);
 	}
 
@@ -87,17 +91,21 @@ public class RegistrationService {
 			// Two submissions for one email at the same moment: the unique index decides.
 			throw alreadyRegistered();
 		}
+		// A pair confirmed at pre-registration stays confirmed, and then nothing is mailed.
+		boolean unconfirmed = schoolEmails.requestConfirmation(registration.getEmail(), registration.getSchoolEmail(),
+				registration.getFirstName());
 		mailService.sendRegistrationConfirmation(registration.getEmail(), registration.getFirstName(),
-				registration.getUnsubscribeToken());
+				registration.getUnsubscribeToken(), unconfirmed ? registration.getSchoolEmail() : null);
 		return registration.getId();
 	}
 
 	public Page<Registration> search(String q, String school, String status, Boolean checkedIn, String resume,
-			Pageable pageable) {
+			Boolean schoolEmailConfirmed, Pageable pageable) {
 		RegistrationStatus parsed = parseStatus(status);
 		return repository.search(Texts.containsPattern(q), Texts.orEmpty(school), parsed == null,
 				(parsed != null) ? parsed : RegistrationStatus.PENDING, checkedIn == null,
-				Boolean.TRUE.equals(checkedIn), parseResumeFilter(resume), pageable);
+				Boolean.TRUE.equals(checkedIn), parseResumeFilter(resume), schoolEmailConfirmed == null,
+				Boolean.TRUE.equals(schoolEmailConfirmed), pageable);
 	}
 
 	public Registration get(UUID id) {
@@ -131,11 +139,15 @@ public class RegistrationService {
 				googleWallet.saveUrl(registration, ticketUrl).orElse(null), registration.getUnsubscribeToken());
 	}
 
+	public void resendSchoolEmailConfirmation(UUID id) {
+		Registration registration = get(id);
+		schoolEmails.sendNow(registration.getEmail(), registration.getSchoolEmail(), registration.getFirstName());
+	}
+
 	public void delete(UUID id) {
-		if (!repository.existsById(id)) {
-			throw ApiException.notFound("Registration not found.");
-		}
+		Registration registration = get(id);
 		repository.deleteById(id);
+		schoolEmails.forget(registration.getEmail());
 	}
 
 	private static RegistrationStatus parseStatus(String status) {

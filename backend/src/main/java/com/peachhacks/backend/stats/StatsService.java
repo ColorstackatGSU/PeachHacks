@@ -24,12 +24,14 @@ public class StatsService {
 	public record LabelCount(String label, long count) {
 	}
 
-	public record PreRegistrationStats(long total, long unsubscribed, List<SchoolCount> bySchool,
+	public record PreRegistrationStats(long total, long unsubscribed, long schoolEmailConfirmed,
+			List<SchoolCount> bySchool,
 			List<DayCount> byDay) {
 	}
 
 	/** resumeOptIn counts the uploaded resumes whose owner agreed to share them with sponsors. */
 	public record RegistrationStats(long total, long checkedIn, long withResume, long resumeOptIn,
+			long schoolEmailConfirmed,
 			List<SchoolCount> bySchool, List<DayCount> byDay, List<LabelCount> byLevelOfStudy,
 			List<LabelCount> byStatus) {
 	}
@@ -55,6 +57,7 @@ public class StatsService {
 	public Stats stats() {
 		PreRegistrationStats preRegistrations = new PreRegistrationStats(count("select count(*) from pre_registrations"),
 				count("select count(*) from pre_registrations where unsubscribed = true"),
+				schoolEmailConfirmed("pre_registrations"),
 				bySchool("pre_registrations"), byDay("pre_registrations"));
 
 		Map<String, Long> statusCounts = new HashMap<>();
@@ -69,6 +72,7 @@ public class StatsService {
 				count("select count(*) from check_ins c join events e on e.id = c.event_id where e.general"),
 				count("select count(*) from registration_resumes"),
 				count("select count(*) from registration_resumes where sponsor_opt_in"),
+				schoolEmailConfirmed("registrations"),
 				bySchool("registrations"), byDay("registrations"), byLabel("level_of_study"), byStatus);
 
 		long preRegisteredNotRegistered = count("""
@@ -90,6 +94,11 @@ public class StatsService {
 
 	private long count(String sql) {
 		return jdbc.sql(sql).query(Long.class).single();
+	}
+
+	private long schoolEmailConfirmed(String table) {
+		return count("select count(*) from " + table + " t where exists (select 1 from school_email_confirmations c"
+				+ " where c.email = t.email and c.school_email = t.school_email and c.confirmed_at is not null)");
 	}
 
 	private List<SchoolCount> bySchool(String table) {

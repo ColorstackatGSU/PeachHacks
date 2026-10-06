@@ -18,7 +18,8 @@ public interface RegistrationRepository extends JpaRepository<Registration, UUID
 
 	/**
 	 * checkedIn is about the general event and only applies when anyAttendance is false.
-	 * resume is '' (no filter), 'any', 'opted-in' or 'none'.
+	 * resume is '' (no filter), 'any', 'opted-in' or 'none'. confirmed is about the school
+	 * email and only applies when anyConfirmation is false.
 	 */
 	@Query(value = """
 			select r from Registration r
@@ -38,6 +39,9 @@ public interface RegistrationRepository extends JpaRepository<Registration, UUID
 						where x.registrationId = r.id and x.sponsorOptIn = true))
 					or (:resume = 'none' and not exists (select 1 from RegistrationResume x
 						where x.registrationId = r.id)))
+				and (:anyConfirmation = true
+					or (:confirmed = true and r.schoolEmailConfirmedAt is not null)
+					or (:confirmed = false and r.schoolEmailConfirmedAt is null))
 			order by r.createdAt desc, r.id desc
 			""", countQuery = """
 			select count(r) from Registration r
@@ -57,11 +61,15 @@ public interface RegistrationRepository extends JpaRepository<Registration, UUID
 						where x.registrationId = r.id and x.sponsorOptIn = true))
 					or (:resume = 'none' and not exists (select 1 from RegistrationResume x
 						where x.registrationId = r.id)))
+				and (:anyConfirmation = true
+					or (:confirmed = true and r.schoolEmailConfirmedAt is not null)
+					or (:confirmed = false and r.schoolEmailConfirmedAt is null))
 			""")
 	Page<Registration> search(@Param("pattern") String pattern, @Param("school") String school,
 			@Param("anyStatus") boolean anyStatus, @Param("status") RegistrationStatus status,
 			@Param("anyAttendance") boolean anyAttendance, @Param("checkedIn") boolean checkedIn,
-			@Param("resume") String resume, Pageable pageable);
+			@Param("resume") String resume, @Param("anyConfirmation") boolean anyConfirmation,
+			@Param("confirmed") boolean confirmed, Pageable pageable);
 
 	/**
 	 * Each row is a Registration and its CheckIn for the event (or null), people who still

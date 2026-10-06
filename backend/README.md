@@ -49,7 +49,7 @@ Without `RESEND_API_KEY` no email leaves the machine: every message (confirmatio
 ./mvnw test
 ```
 
-The integration tests run the real application against Testcontainers (`postgres:16-alpine`) and are skipped automatically when Docker is not available. They cover pre-registration, the registration gate, validation, admin authentication and roles, events and check-in, tickets and scanning, the acceptance email, Google Wallet links, CSV export, campaign audiences, and resume upload, download, removal and the sponsor resume book.
+The integration tests run the real application against Testcontainers (`postgres:16-alpine`) and are skipped automatically when Docker is not available. They cover pre-registration, the registration gate, validation, admin authentication and roles, events and check-in, tickets and scanning, the acceptance email, Google Wallet links, CSV export, campaign audiences, resume upload, download, removal and the sponsor resume book, and school email confirmation (the link, its expiry, the resend limit, carry-over from pre-registration to registration, and the admin filters and resend).
 
 ## Container image
 
@@ -75,7 +75,7 @@ Standard Spring Boot environment variables; see `.env.example`.
 | `ADMIN_BOOTSTRAP_NAME` | Its display name (default `Admin`) |
 | `RESEND_API_KEY` | Resend API key. Blank means emails are logged, not sent |
 | `EMAIL_FROM` | Sender (default `PeachHacks <hello@peachhacks.com>`); the domain must be verified in Resend |
-| `WEB_BASE_URL` | Public site URL used for links in emails and for the ticket URL inside every QR code (default `http://localhost:5173`, `https://www.peachhacks.com` in `prod`). Changing it changes what newly rendered QR codes contain; codes already sent keep working because the scanner only reads the token |
+| `WEB_BASE_URL` | Public site URL used for links in emails (unsubscribe, ticket, school email confirmation) and for the ticket URL inside every QR code (default `http://localhost:5173`, `https://www.peachhacks.com` in `prod`). Changing it changes what newly rendered QR codes contain; codes already sent keep working because the scanner only reads the token |
 | `ADMIN_BASE_URL` | Admin site URL used in the email sent to a newly added admin or volunteer (default `http://localhost:5174`, `https://admin.peachhacks.com` in `prod`) |
 | `CORS_ALLOWED_ORIGINS` | Comma-separated origins (default `http://localhost:5173`, `http://localhost:5174`, `https://www.peachhacks.com`, `https://peachhacks.com`, `https://admin.peachhacks.com`) |
 | `SPRING_DATASOURCE_HIKARI_MAXIMUMPOOLSIZE` | Connection pool size (5 in `prod`) |
@@ -105,10 +105,24 @@ Codes: `VALIDATION_ERROR` (400), `INVALID_CREDENTIALS` and `UNAUTHORIZED` (401),
 | `POST /public/pre-registrations` | Pre-register. `schoolEmail` is required. Idempotent on `email` (case-insensitive): a repeat updates the row and returns the same `id` with 201 |
 | `POST /public/registrations` | Full MLH registration. `schoolEmail` is required. Optional `resume` and `resumeOptIn`, see [Resumes](#resumes). 403 while the gate is closed, 409 if the `email` is already registered |
 | `POST /public/unsubscribe` | `{ "token": "..." }` from an email link; 204, or 404 for an unknown token |
+| `POST /public/school-email/confirm` | `{ "token": "..." }` from the link mailed to the school address; 200 `{ "schoolEmail": "ada@school.edu" }`, also when that link was already used; 404 `NOT_FOUND` for an unknown or expired token. See [School email confirmation](#school-email-confirmation) |
+| `POST /public/school-email/resend` | `{ "email": "<personal email>" }`; always 204, whether or not the email is known. Mails a new link to the school address if there is an unconfirmed one and none was sent in the last 10 minutes |
 | `GET /public/tickets/{token}` | The ticket behind a QR code: `{ "firstName", "lastName", "school", "checkedIn", "googleWalletUrl" }`. `checkedIn` is the general check-in; `googleWalletUrl` is null unless Google Wallet is configured. 404 `NOT_FOUND` unless the registration is `ACCEPTED` |
 | `GET /public/tickets/{token}/qr.png` | The QR code as a PNG (1-bit, about 640 px, four-module quiet zone, `Cache-Control: public, max-age=86400`). Same 404 rule |
 
 Both forms take two addresses: `email` is the personal one that identifies the person (uniqueness, confirmation and ticket emails), `schoolEmail` is the school-issued one. `schoolEmail` must be a well-formed address of at most 255 characters; it does not have to end in `.edu`, may equal `email`, is stored trimmed and lower-cased, and is not unique. Registrations made before it was collected have `schoolEmail: null`.
+
+#### School email confirmation
+
+PeachHacks is for current students, and the school address is how that is checked: the API mails a link to the school address (not the personal one), and opening it and pressing the button on the page confirms the address. It is plain email confirmation, not a sign-in.
+
+- Confirmation belongs to the pair (personal `email`, `schoolEmail`), kept in `school_email_confirmations`. A pre-registration or registration is confirmed when its own two addresses match a confirmed pair, so someone who confirms after pre-registering and then registers with the same two addresses is not asked again. A submission with a different school email is a different pair and starts unconfirmed.
+- A link is mailed on every pre-registration and on every registration whose pair is not confirmed, at most once per pair per 10 minutes, so repeating the idempotent pre-registration call does not fill the inbox. The confirmation email to the personal address tells the person to look in their school inbox.
+- The link is `$WEB_BASE_URL/confirm-email?token=<token>`. Tokens are random, stored only as a SHA-256 hash (`school_email_tokens`) and expire after 14 days. A new link does not cancel earlier ones. The token is only ever written to the email; with `RESEND_API_KEY` unset that email, like every other, is printed in the application log.
+- Nothing is confirmed by a GET: mail scanners open links. The page posts the token to `POST /public/school-email/confirm`.
+- Rows that existed before this feature are unconfirmed and are not mailed automatically; use the admin resend, or the public resend from the page.
+- An unconfirmed school email does not block any status change. Organizers see `schoolEmailConfirmed` and decide.
+- Deleting a pre-registration or registration also deletes the pair's confirmation and links once neither table uses that pair.
 
 Both forms accept a hidden `website` honeypot field: when it is filled in, the request gets a normal 201 and nothing is stored. Public POSTs are limited to 60 per minute per client address, login to 10 per minute and the ticket endpoints to 300 per minute (a whole door queue can share one venue address); all in memory, per instance, see `app.rate-limit.*`.
 
@@ -123,13 +137,15 @@ Every account is an `ADMIN` (full access) or a `VOLUNTEER` (check-in only); the 
 | Endpoint | Purpose |
 | --- | --- |
 | `POST /admin/auth/login`, `POST /admin/auth/logout`, `GET /admin/auth/me` | Sign in, invalidate the token, current account (`{ id, email, name, role }`) |
-| `GET /admin/stats` | Totals, per school, per day, per level of study and per status; `registrations.checkedIn` (general check-in), `registrations.withResume` and `registrations.resumeOptIn` (resumes uploaded, and how many of those may be shared with sponsors) and `events`, a list of `{ eventId, name, checkedIn }` |
-| `GET /admin/pre-registrations?page=&size=&q=&school=` | Paged list, newest first (`size` is capped at 200) |
-| `GET /admin/pre-registrations/export.csv`, `DELETE /admin/pre-registrations/{id}` | CSV export with the same filters; delete |
-| `GET /admin/registrations?page=&size=&q=&school=&status=&checkedIn=&resume=` | Paged summaries with `schoolEmail`, `checkedInAt` (general check-in), `hasResume` and `resumeOptIn`. `q` matches the name, `email` or `schoolEmail`. `checkedIn=true` or `false` filters on the check-in; `resume=any` (uploaded one), `none`, or `opted-in` (uploaded one and agreed to share it) filters on the resume |
-| `GET`, `PATCH`, `DELETE /admin/registrations/{id}` | Detail, set `status` (`PENDING`, `ACCEPTED`, `WAITLISTED`, `REJECTED`), delete. The detail adds `checkedInAt`, `checkedInBy`, `checkIns` (every event: `{ eventId, name, general, checkedInAt, checkedInBy }`) and, only while `ACCEPTED`, `ticketToken`, `ticketUrl` and `googleWalletUrl`; also `resume` (`null` or `{ fileName, size, uploadedAt }`, never the file itself) and `resumeOptIn`. Deleting a registration deletes its resume. Changing the status to `ACCEPTED` from anything else emails the ticket |
+| `GET /admin/stats` | Totals, per school, per day, per level of study and per status; `preRegistrations.schoolEmailConfirmed` and `registrations.schoolEmailConfirmed` (how many have a confirmed school email); `registrations.checkedIn` (general check-in), `registrations.withResume` and `registrations.resumeOptIn` (resumes uploaded, and how many of those may be shared with sponsors) and `events`, a list of `{ eventId, name, checkedIn }` |
+| `GET /admin/pre-registrations?page=&size=&q=&school=&schoolEmailConfirmed=` | Paged list, newest first (`size` is capped at 200). Items carry `schoolEmailConfirmed` and `schoolEmailConfirmedAt` (null until confirmed); `schoolEmailConfirmed=true` or `false` filters on it |
+| `GET /admin/pre-registrations/export.csv`, `DELETE /admin/pre-registrations/{id}` | CSV export with the same filters, `school_email_confirmed` appended last; delete |
+| `POST /admin/pre-registrations/{id}/school-email/resend` | Mail a new confirmation link to the school address, ignoring the 10-minute limit; 204, or 400 if it is already confirmed |
+| `GET /admin/registrations?page=&size=&q=&school=&status=&checkedIn=&resume=&schoolEmailConfirmed=` | Paged summaries with `schoolEmail`, `schoolEmailConfirmed`, `schoolEmailConfirmedAt`, `checkedInAt` (general check-in), `hasResume` and `resumeOptIn`. `q` matches the name, `email` or `schoolEmail`. `checkedIn=true` or `false` filters on the check-in; `resume=any` (uploaded one), `none`, or `opted-in` (uploaded one and agreed to share it) filters on the resume; `schoolEmailConfirmed=true` or `false` filters on the school email (`false` includes registrations that have none) |
+| `GET`, `PATCH`, `DELETE /admin/registrations/{id}` | Detail, set `status` (`PENDING`, `ACCEPTED`, `WAITLISTED`, `REJECTED`), delete. The detail adds `checkedInAt`, `checkedInBy`, `checkIns` (every event: `{ eventId, name, general, checkedInAt, checkedInBy }`) and, only while `ACCEPTED`, `ticketToken`, `ticketUrl` and `googleWalletUrl`; also `resume` (`null` or `{ fileName, size, uploadedAt }`, never the file itself) and `resumeOptIn`, and `schoolEmailConfirmed` with `schoolEmailConfirmedAt`, which the admin site turns into a warning on the status control. An unconfirmed school email does not block `ACCEPTED`. Deleting a registration deletes its resume. Changing the status to `ACCEPTED` from anything else emails the ticket |
 | `POST /admin/registrations/{id}/ticket-email` | Send the ticket email again; 204, or 400 if the registration is not `ACCEPTED` |
-| `GET /admin/registrations/export.csv` | Every column plus, appended last, `checked_in_at` (general check-in), `has_resume`, `resume_opt_in` and `school_email`; same filters. This is the check-in data MLH asks for |
+| `POST /admin/registrations/{id}/school-email/resend` | Mail a new confirmation link to the school address, ignoring the 10-minute limit; 204, or 400 if it is already confirmed or the registration has no school email |
+| `GET /admin/registrations/export.csv` | Every column plus, appended last, `checked_in_at` (general check-in), `has_resume`, `resume_opt_in`, `school_email` and `school_email_confirmed`; same filters. This is the check-in data MLH asks for |
 | `GET /admin/registrations/{id}/resume` | The uploaded PDF as an attachment, whether or not the person opted in to sponsor sharing. 404 if there is none |
 | `DELETE /admin/registrations/{id}/resume` | Deletes the file and the opt-in, for a removal request; 204, or 404 if there is none. The registration stays |
 | `GET /admin/resumes/export.zip?checkedIn=` | The sponsor resume book, see [Resumes](#resumes) |
@@ -187,7 +203,7 @@ CSV cells that a spreadsheet would treat as a formula (starting with `=`, `+`, `
 
 ### Email
 
-Confirmation emails go out after a new pre-registration and after a registration, and a newly added admin or volunteer gets an email with the sign-in link (never the password) that says which kind of account it is.
+Confirmation emails go out to the personal address after a new pre-registration and after a registration; while the school email is unconfirmed they include a sentence pointing to the school inbox, where the separate confirmation link is sent (see [School email confirmation](#school-email-confirmation)). A newly added admin or volunteer gets an email with the sign-in link (never the password) that says which kind of account it is.
 
 When a registration becomes `ACCEPTED` the hacker gets a "You're in" email with a link to their ticket page and the QR code itself, embedded in the message (`cid:` image) and listed as a PNG attachment, because many mail clients block images loaded from a server. It is sent once per change to `ACCEPTED`, not when a save leaves the status at `ACCEPTED`; `POST /admin/registrations/{id}/ticket-email` sends it again. With Google Wallet configured it also carries an "Add to Google Wallet" link. Campaign audiences are `PRE_REGISTRANTS`, `PRE_REGISTRANTS_NOT_REGISTERED` and `REGISTRANTS`, optionally narrowed to one school; unsubscribed addresses are skipped. The body is plain text: blank lines separate paragraphs, `{{firstName}}` and `{{lastName}}` are filled in per recipient, and an unsubscribe link (`$WEB_BASE_URL/unsubscribe.html?token=...`) is appended.
 

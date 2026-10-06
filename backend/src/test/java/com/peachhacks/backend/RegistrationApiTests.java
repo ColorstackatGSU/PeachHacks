@@ -11,6 +11,8 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -25,6 +27,7 @@ import com.peachhacks.backend.admin.AdminPrincipal;
 import com.peachhacks.backend.admin.AdminRole;
 import com.peachhacks.backend.admin.AuthService;
 import com.peachhacks.backend.common.ApiException;
+import com.peachhacks.backend.common.Tokens;
 import com.peachhacks.backend.email.EmailMessage;
 import com.peachhacks.backend.email.EmailSender;
 import org.junit.jupiter.api.Test;
@@ -80,6 +83,8 @@ class RegistrationApiTests {
 	private static final String GENERAL_COUNT = "select count(*) from check_ins c join events e on e.id = c.event_id where e.general";
 
 	private static final List<EmailMessage> sentEmails = new CopyOnWriteArrayList<>();
+
+	private static final Pattern CONFIRM_LINK = Pattern.compile("/confirm-email\\?token=([A-Za-z0-9_-]+)");
 
 	@TestConfiguration(proxyBeanMethods = false)
 	static class RecordingEmail {
@@ -469,11 +474,11 @@ class RegistrationApiTests {
 		mockMvc
 			.perform(get("/admin/registrations/export.csv").param("school", school).header("Authorization", admin))
 			.andExpect(content()
-				.string(containsString(",linkedinUrl,checked_in_at,has_resume,resume_opt_in,school_email\r\n")))
+				.string(containsString(",linkedinUrl,checked_in_at,has_resume,resume_opt_in,school_email,school_email_confirmed\r\n")))
 			.andExpect(content().string(containsString(prefix + "a@example.com")))
 			.andExpect(content().string(containsString(prefix + "b@example.com")))
 			.andExpect(content()
-				.string(containsString("," + checkedInAt + ",false,false,ada.lovelace@school.edu\r\n")));
+				.string(containsString("," + checkedInAt + ",false,false,ada.lovelace@school.edu,false\r\n")));
 		mockMvc
 			.perform(get("/admin/registrations/export.csv").param("school", school)
 				.param("checkedIn", "true")
@@ -826,6 +831,8 @@ class RegistrationApiTests {
 					.content("{\"status\":\"REJECTED\"}"),
 				delete("/admin/registrations/" + registrationId), get("/admin/registrations/export.csv"),
 				post("/admin/registrations/" + registrationId + "/ticket-email"),
+				post("/admin/registrations/" + registrationId + "/school-email/resend"),
+				post("/admin/pre-registrations/" + UUID.randomUUID() + "/school-email/resend"),
 				get("/admin/registrations/" + registrationId + "/resume"),
 				delete("/admin/registrations/" + registrationId + "/resume"), get("/admin/resumes/export.zip"),
 				get("/admin/pre-registrations"),
@@ -1052,7 +1059,7 @@ class RegistrationApiTests {
 		mockMvc
 			.perform(get("/admin/registrations/export.csv").param("school", school).header("Authorization", admin))
 			.andExpect(status().isOk())
-			.andExpect(content().string(containsString(",true,true,ada.lovelace@school.edu\r\n")));
+			.andExpect(content().string(containsString(",true,true,ada.lovelace@school.edu,false\r\n")));
 		mockMvc.perform(get("/admin/stats").header("Authorization", admin))
 			.andExpect(jsonPath("$.registrations.withResume")
 				.value((int) count("select count(*) from registration_resumes")))
@@ -1222,6 +1229,361 @@ class RegistrationApiTests {
 
 		deleteRegistrations(admin, shared, attended, pending, notOptedIn, noResume);
 		assertThat(count("select count(*) from registration_resumes")).isZero();
+	}
+
+	@Test
+	void schoolEmailIsConfirmedByALinkSentToTheSchoolAddress() throws Exception {
+		String admin = bearer();
+		String school = uniqueSchool();
+		String email = unique() + "@example.com";
+		String schoolEmail = unique() + "@school.edu";
+
+		preRegister("Ada", "Lovelace", email, school, schoolEmail.toUpperCase()).andExpect(status().isCreated());
+
+		List<EmailMessage> links = confirmationEmails(schoolEmail, 1);
+		assertThat(links).hasSize(1);
+		assertThat(links.get(0).subject()).isEqualTo("Confirm your school email for PeachHacks");
+		assertThat(links.get(0).text()).contains("Hi Ada,").contains("http://localhost:5173/confirm-email?token=");
+		assertThat(links.get(0).html()).contains("confirm-email?token=").contains("Confirm my school email");
+		assertThat(links.get(0).headers()).isEmpty();
+		assertThat(confirmationEmails(email, 0)).as("nothing to confirm is sent to the personal address").isEmpty();
+		assertThat(emailsTo(email, "You're pre-registered", 1).get(0).text())
+			.contains("look in your school inbox (" + schoolEmail + ")");
+		String token = confirmationToken(links.get(0));
+		assertThat(count("select count(*) from school_email_tokens where token_hash = '" + token + "'"))
+			.as("the token is stored hashed")
+			.isZero();
+		mockMvc.perform(get("/admin/pre-registrations").param("school", school).header("Authorization", admin))
+			.andExpect(jsonPath("$.items[0].schoolEmailConfirmed").value(false))
+			.andExpect(jsonPath("$.items[0].schoolEmailConfirmedAt").value(nullValue()));
+		long confirmedBefore = JsonPath.parse(mockMvc.perform(get("/admin/stats").header("Authorization", admin))
+			.andReturn()
+			.getResponse()
+			.getContentAsString()).read("$.preRegistrations.schoolEmailConfirmed", Long.class);
+
+		mockMvc.perform(get("/public/school-email/confirm").param("token", token))
+			.andExpect(status().is4xxClientError());
+		mockMvc.perform(get("/admin/pre-registrations").param("school", school).header("Authorization", admin))
+			.andExpect(jsonPath("$.items[0].schoolEmailConfirmed").value(false));
+		confirm("no-such-token").andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("NOT_FOUND"));
+		confirm("").andExpect(status().isNotFound());
+		mockMvc.perform(post("/public/school-email/confirm").contentType(MediaType.APPLICATION_JSON).content("{}"))
+			.andExpect(status().isNotFound())
+			.andExpect(jsonPath("$.code").value("NOT_FOUND"));
+
+		confirm(token).andExpect(status().isOk()).andExpect(jsonPath("$.schoolEmail").value(schoolEmail));
+		String confirmedAt = JsonPath.read(mockMvc
+			.perform(get("/admin/pre-registrations").param("school", school).header("Authorization", admin))
+			.andExpect(jsonPath("$.items[0].schoolEmailConfirmed").value(true))
+			.andReturn()
+			.getResponse()
+			.getContentAsString(), "$.items[0].schoolEmailConfirmedAt");
+		assertThat(confirmedAt).isNotEmpty();
+		confirm(token).andExpect(status().isOk()).andExpect(jsonPath("$.schoolEmail").value(schoolEmail));
+		mockMvc.perform(get("/admin/pre-registrations").param("school", school).header("Authorization", admin))
+			.andExpect(jsonPath("$.items[0].schoolEmailConfirmedAt").value(confirmedAt));
+
+		mockMvc
+			.perform(get("/admin/pre-registrations").param("school", school)
+				.param("schoolEmailConfirmed", "true")
+				.header("Authorization", admin))
+			.andExpect(jsonPath("$.total").value(1));
+		mockMvc
+			.perform(get("/admin/pre-registrations").param("school", school)
+				.param("schoolEmailConfirmed", "false")
+				.header("Authorization", admin))
+			.andExpect(jsonPath("$.total").value(0));
+		mockMvc
+			.perform(get("/admin/pre-registrations/export.csv").param("school", school)
+				.header("Authorization", admin))
+			.andExpect(content().string(containsString("registered,createdAt,school_email_confirmed\r\n")))
+			.andExpect(content().string(containsString(",true\r\n")));
+		mockMvc
+			.perform(get("/admin/pre-registrations/export.csv").param("school", school)
+				.param("schoolEmailConfirmed", "false")
+				.header("Authorization", admin))
+			.andExpect(content().string(not(containsString(email))));
+		mockMvc.perform(get("/admin/stats").header("Authorization", admin))
+			.andExpect(jsonPath("$.preRegistrations.schoolEmailConfirmed").value(confirmedBefore + 1));
+	}
+
+	@Test
+	void schoolEmailConfirmationCarriesToARegistrationWithTheSamePairOnly() throws Exception {
+		String admin = bearer();
+		String school = uniqueSchool();
+		String sameEmail = unique() + "@example.com";
+		String sameSchoolEmail = unique() + "@school.edu";
+		String changedEmail = unique() + "@example.com";
+		String firstSchoolEmail = unique() + "@school.edu";
+		String otherSchoolEmail = unique() + "@school.edu";
+		preRegister("Ada", "Lovelace", sameEmail, school, sameSchoolEmail).andExpect(status().isCreated());
+		preRegister("Grace", "Hopper", changedEmail, school, firstSchoolEmail).andExpect(status().isCreated());
+		confirm(confirmationToken(confirmationEmails(sameSchoolEmail, 1).get(0))).andExpect(status().isOk());
+		confirm(confirmationToken(confirmationEmails(firstSchoolEmail, 1).get(0))).andExpect(status().isOk());
+
+		setRegistrationOpen(admin, true);
+		String same = JsonPath.read(
+				register(withSchoolEmail(registrationJson(sameEmail, school, true, true), sameSchoolEmail.toUpperCase()))
+					.andExpect(status().isCreated())
+					.andReturn()
+					.getResponse()
+					.getContentAsString(),
+				"$.id");
+		String changed = JsonPath.read(
+				register(withSchoolEmail(registrationJson(changedEmail, school, true, true), otherSchoolEmail))
+					.andExpect(status().isCreated())
+					.andReturn()
+					.getResponse()
+					.getContentAsString(),
+				"$.id");
+		setRegistrationOpen(admin, false);
+
+		assertThat(confirmationEmails(otherSchoolEmail, 1)).hasSize(1);
+		assertThat(confirmationEmails(sameSchoolEmail, 1)).as("an already confirmed pair is not asked again").hasSize(1);
+		assertThat(emailsTo(sameEmail, "We received your PeachHacks registration", 1).get(0).text())
+			.doesNotContain("school inbox");
+		assertThat(emailsTo(changedEmail, "We received your PeachHacks registration", 1).get(0).text())
+			.contains("look in your school inbox (" + otherSchoolEmail + ")");
+		mockMvc.perform(get("/admin/registrations/" + same).header("Authorization", admin))
+			.andExpect(jsonPath("$.schoolEmailConfirmed").value(true))
+			.andExpect(jsonPath("$.schoolEmailConfirmedAt").isNotEmpty());
+		mockMvc.perform(get("/admin/registrations/" + changed).header("Authorization", admin))
+			.andExpect(jsonPath("$.schoolEmail").value(otherSchoolEmail))
+			.andExpect(jsonPath("$.schoolEmailConfirmed").value(false))
+			.andExpect(jsonPath("$.schoolEmailConfirmedAt").value(nullValue()));
+		mockMvc
+			.perform(get("/admin/registrations").param("school", school)
+				.param("schoolEmailConfirmed", "true")
+				.header("Authorization", admin))
+			.andExpect(jsonPath("$.total").value(1))
+			.andExpect(jsonPath("$.items[0].id").value(same))
+			.andExpect(jsonPath("$.items[0].schoolEmailConfirmed").value(true))
+			.andExpect(jsonPath("$.items[0].schoolEmailConfirmedAt").isNotEmpty());
+		mockMvc
+			.perform(get("/admin/registrations").param("school", school)
+				.param("schoolEmailConfirmed", "false")
+				.header("Authorization", admin))
+			.andExpect(jsonPath("$.total").value(1))
+			.andExpect(jsonPath("$.items[0].id").value(changed))
+			.andExpect(jsonPath("$.items[0].schoolEmailConfirmed").value(false));
+		mockMvc.perform(get("/admin/registrations").param("school", school).header("Authorization", admin))
+			.andExpect(jsonPath("$.total").value(2));
+		mockMvc
+			.perform(get("/admin/registrations/export.csv").param("school", school)
+				.param("schoolEmailConfirmed", "true")
+				.header("Authorization", admin))
+			.andExpect(content().string(containsString("resume_opt_in,school_email,school_email_confirmed\r\n")))
+			.andExpect(content().string(containsString("," + sameSchoolEmail + ",true\r\n")))
+			.andExpect(content().string(not(containsString(otherSchoolEmail))));
+		mockMvc.perform(get("/admin/stats").header("Authorization", admin))
+			.andExpect(jsonPath("$.registrations.schoolEmailConfirmed").isNumber());
+
+		// Acceptance is the organizers' call: an unconfirmed school email does not block it.
+		setStatus(admin, changed, "ACCEPTED");
+
+		deleteRegistrations(admin, same, changed);
+		assertThat(pairCount(changedEmail, otherSchoolEmail)).as("the registration's pair goes with it").isZero();
+		assertThat(pairCount(sameEmail, sameSchoolEmail)).as("the pre-registration still uses this pair").isEqualTo(1);
+	}
+
+	@Test
+	void expiredSchoolEmailLinksAreRejected() throws Exception {
+		String admin = bearer();
+		String school = uniqueSchool();
+		String schoolEmail = unique() + "@school.edu";
+		preRegister("Ada", "Lovelace", unique() + "@example.com", school, schoolEmail).andExpect(status().isCreated());
+		String token = confirmationToken(confirmationEmails(schoolEmail, 1).get(0));
+		// A calendar day is 23 or 25 hours across a clock change, hence the hour either side.
+		assertThat(jdbc.sql("""
+				select expires_at - created_at between interval '335 hours' and interval '337 hours'
+				from school_email_tokens where token_hash = :hash
+				""").param("hash", Tokens.sha256(token)).query(Boolean.class).single()).isTrue();
+
+		jdbc.sql("update school_email_tokens set expires_at = now() - interval '1 second' where token_hash = :hash")
+			.param("hash", Tokens.sha256(token))
+			.update();
+
+		confirm(token).andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("NOT_FOUND"));
+		mockMvc.perform(get("/admin/pre-registrations").param("school", school).header("Authorization", admin))
+			.andExpect(jsonPath("$.items[0].schoolEmailConfirmed").value(false));
+	}
+
+	@Test
+	void schoolEmailLinksAreLimitedPerPairAndResendRevealsNothing() throws Exception {
+		String school = uniqueSchool();
+		String email = unique() + "@example.com";
+		String schoolEmail = unique() + "@school.edu";
+		preRegister("Ada", "Lovelace", email, school, schoolEmail).andExpect(status().isCreated());
+		assertThat(confirmationEmails(schoolEmail, 1)).hasSize(1);
+
+		preRegister("Ada", "Lovelace", email, school, schoolEmail).andExpect(status().isCreated());
+		resend(email).andExpect(status().isNoContent()).andExpect(content().string(""));
+		resend(unique() + "@example.com").andExpect(status().isNoContent()).andExpect(content().string(""));
+		resend("").andExpect(status().isNoContent());
+		mockMvc.perform(post("/public/school-email/resend").contentType(MediaType.APPLICATION_JSON).content("{}"))
+			.andExpect(status().isNoContent());
+		assertThat(confirmationEmails(schoolEmail, 2)).as("one link per pair inside the interval").hasSize(1);
+
+		jdbc.sql("update school_email_confirmations set last_sent_at = now() - interval '9 minutes' where school_email = :schoolEmail")
+			.param("schoolEmail", schoolEmail)
+			.update();
+		resend(email).andExpect(status().isNoContent());
+		assertThat(confirmationEmails(schoolEmail, 2)).hasSize(1);
+
+		jdbc.sql("update school_email_confirmations set last_sent_at = now() - interval '11 minutes' where school_email = :schoolEmail")
+			.param("schoolEmail", schoolEmail)
+			.update();
+		resend(email.toUpperCase()).andExpect(status().isNoContent());
+		List<EmailMessage> links = confirmationEmails(schoolEmail, 2);
+		assertThat(links).hasSize(2);
+		assertThat(confirmationToken(links.get(1))).isNotEqualTo(confirmationToken(links.get(0)));
+
+		confirm(confirmationToken(links.get(1))).andExpect(status().isOk());
+		// The earlier link was not the one clicked, but it has not expired either.
+		confirm(confirmationToken(links.get(0))).andExpect(status().isOk())
+			.andExpect(jsonPath("$.schoolEmail").value(schoolEmail));
+		jdbc.sql("update school_email_confirmations set last_sent_at = null where school_email = :schoolEmail")
+			.param("schoolEmail", schoolEmail)
+			.update();
+		resend(email).andExpect(status().isNoContent());
+		assertThat(confirmationEmails(schoolEmail, 3)).as("a confirmed address is not mailed again").hasSize(2);
+	}
+
+	@Test
+	void adminsCanResendTheSchoolEmailLinkUntilItIsConfirmed() throws Exception {
+		String admin = bearer();
+		String school = uniqueSchool();
+		String schoolEmail = unique() + "@school.edu";
+		String preSchoolEmail = unique() + "@school.edu";
+		setRegistrationOpen(admin, true);
+		String registrationId = JsonPath.read(
+				register(withSchoolEmail(registrationJson(unique() + "@example.com", school, true, true), schoolEmail))
+					.andExpect(status().isCreated())
+					.andReturn()
+					.getResponse()
+					.getContentAsString(),
+				"$.id");
+		setRegistrationOpen(admin, false);
+		String preRegistrationId = JsonPath.read(
+				preRegister("Grace", "Hopper", unique() + "@example.com", school, preSchoolEmail)
+					.andExpect(status().isCreated())
+					.andReturn()
+					.getResponse()
+					.getContentAsString(),
+				"$.id");
+		assertThat(confirmationEmails(schoolEmail, 1)).hasSize(1);
+		assertThat(confirmationEmails(preSchoolEmail, 1)).hasSize(1);
+
+		String registrationResend = "/admin/registrations/" + registrationId + "/school-email/resend";
+		String preRegistrationResend = "/admin/pre-registrations/" + preRegistrationId + "/school-email/resend";
+		mockMvc.perform(post(registrationResend).header("Authorization", admin))
+			.andExpect(status().isNoContent());
+		mockMvc.perform(post(preRegistrationResend).header("Authorization", admin))
+			.andExpect(status().isNoContent());
+		List<EmailMessage> links = confirmationEmails(schoolEmail, 2);
+		assertThat(links).as("an admin resend ignores the interval").hasSize(2);
+		assertThat(links.get(1).text()).contains("Hi Ada,");
+		List<EmailMessage> preLinks = confirmationEmails(preSchoolEmail, 2);
+		assertThat(preLinks).hasSize(2);
+		assertThat(preLinks.get(1).text()).contains("Hi Grace,");
+
+		mockMvc.perform(post("/admin/registrations/" + UUID.randomUUID() + "/school-email/resend")
+			.header("Authorization", admin)).andExpect(status().isNotFound());
+		mockMvc.perform(post("/admin/pre-registrations/" + UUID.randomUUID() + "/school-email/resend")
+			.header("Authorization", admin)).andExpect(status().isNotFound());
+		mockMvc.perform(post(registrationResend)).andExpect(status().isUnauthorized());
+
+		confirm(confirmationToken(links.get(1))).andExpect(status().isOk());
+		confirm(confirmationToken(preLinks.get(0))).andExpect(status().isOk());
+		mockMvc.perform(post(registrationResend).header("Authorization", admin))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+			.andExpect(jsonPath("$.message").value("This school email is already confirmed."));
+		mockMvc.perform(post(preRegistrationResend).header("Authorization", admin))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+		assertThat(confirmationEmails(schoolEmail, 3)).hasSize(2);
+
+		deleteRegistrations(admin, registrationId);
+		mockMvc.perform(delete("/admin/pre-registrations/" + preRegistrationId).header("Authorization", admin))
+			.andExpect(status().isNoContent());
+		assertThat(count("select count(*) from school_email_confirmations where school_email in ('" + schoolEmail
+				+ "', '" + preSchoolEmail + "')")).isZero();
+	}
+
+	@Test
+	void registrationsFromBeforeSchoolEmailsAreSimplyUnconfirmed() throws Exception {
+		String admin = bearer();
+		String school = uniqueSchool();
+		String registrationId = registerHacker(admin, unique() + "@example.com", school);
+		jdbc.sql("update registrations set school_email = null where id = :id")
+			.param("id", UUID.fromString(registrationId))
+			.update();
+
+		mockMvc.perform(get("/admin/registrations/" + registrationId).header("Authorization", admin))
+			.andExpect(jsonPath("$.schoolEmail").value(nullValue()))
+			.andExpect(jsonPath("$.schoolEmailConfirmed").value(false));
+		mockMvc
+			.perform(get("/admin/registrations").param("school", school)
+				.param("schoolEmailConfirmed", "false")
+				.header("Authorization", admin))
+			.andExpect(jsonPath("$.total").value(1));
+		mockMvc
+			.perform(post("/admin/registrations/" + registrationId + "/school-email/resend").header("Authorization",
+					admin))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+		deleteRegistrations(admin, registrationId);
+	}
+
+	private ResultActions confirm(String token) throws Exception {
+		return mockMvc.perform(post("/public/school-email/confirm").contentType(MediaType.APPLICATION_JSON)
+			.content("{\"token\":\"%s\"}".formatted(token)));
+	}
+
+	private ResultActions resend(String email) throws Exception {
+		return mockMvc.perform(post("/public/school-email/resend").contentType(MediaType.APPLICATION_JSON)
+			.content("{\"email\":\"%s\"}".formatted(email)));
+	}
+
+	private List<EmailMessage> confirmationEmails(String to, int expected) throws InterruptedException {
+		return emailsTo(to, "Confirm your school email", expected);
+	}
+
+	/**
+	 * Mail is sent on a background thread. Waits for the expected number; asking for one
+	 * more than should exist, or for none, waits a moment and so shows that no extra arrived.
+	 */
+	private List<EmailMessage> emailsTo(String to, String subjectStart, int expected) throws InterruptedException {
+		List<EmailMessage> matching = List.of();
+		for (int attempt = 0; attempt < 15; attempt++) {
+			matching = sentEmails.stream()
+				.filter(message -> message.to().equals(to) && message.subject().startsWith(subjectStart))
+				.toList();
+			if (matching.size() >= expected && expected > 0) {
+				break;
+			}
+			Thread.sleep(expected > 0 ? 100 : 20);
+		}
+		return matching;
+	}
+
+	private static String confirmationToken(EmailMessage message) {
+		Matcher matcher = CONFIRM_LINK.matcher(message.text());
+		assertThat(matcher.find()).as("confirmation link in %s", message.text()).isTrue();
+		return matcher.group(1);
+	}
+
+	private long pairCount(String email, String schoolEmail) {
+		return jdbc.sql("select count(*) from school_email_confirmations where email = :email and school_email = :schoolEmail")
+			.param("email", email)
+			.param("schoolEmail", schoolEmail)
+			.query(Long.class)
+			.single();
+	}
+
+	private static String withSchoolEmail(String json, String schoolEmail) {
+		return json.replace("Ada.Lovelace@School.EDU", schoolEmail);
 	}
 
 	private ResultActions preRegister(String firstName, String lastName, String email, String school,

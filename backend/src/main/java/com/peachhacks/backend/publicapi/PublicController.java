@@ -8,6 +8,7 @@ import com.peachhacks.backend.prereg.PreRegistrationRequest;
 import com.peachhacks.backend.prereg.PreRegistrationService;
 import com.peachhacks.backend.registration.RegistrationRequest;
 import com.peachhacks.backend.registration.RegistrationService;
+import com.peachhacks.backend.schoolemail.SchoolEmailService;
 import com.peachhacks.backend.stats.SettingsService;
 
 import org.springframework.http.HttpStatus;
@@ -26,6 +27,18 @@ public class PublicController {
 	public record UnsubscribeRequest(String token) {
 	}
 
+	public record SchoolEmailConfirmRequest(String token) {
+
+		@Override
+		public String toString() {
+			return "SchoolEmailConfirmRequest[]";
+		}
+
+	}
+
+	public record SchoolEmailResendRequest(String email) {
+	}
+
 	private final SettingsService settings;
 
 	private final PreRegistrationService preRegistrations;
@@ -34,12 +47,15 @@ public class PublicController {
 
 	private final AudienceService audiences;
 
+	private final SchoolEmailService schoolEmails;
+
 	public PublicController(SettingsService settings, PreRegistrationService preRegistrations,
-			RegistrationService registrations, AudienceService audiences) {
+			RegistrationService registrations, AudienceService audiences, SchoolEmailService schoolEmails) {
 		this.settings = settings;
 		this.preRegistrations = preRegistrations;
 		this.registrations = registrations;
 		this.audiences = audiences;
+		this.schoolEmails = schoolEmails;
 	}
 
 	@GetMapping("/status")
@@ -60,6 +76,22 @@ public class PublicController {
 	@PostMapping("/unsubscribe")
 	ResponseEntity<Void> unsubscribe(@RequestBody UnsubscribeRequest request) {
 		audiences.unsubscribe(request.token());
+		return ResponseEntity.noContent().build();
+	}
+
+	/**
+	 * A POST, not a GET on the emailed link: mail scanners open links, and that must not
+	 * confirm an address on its owner's behalf.
+	 */
+	@PostMapping("/school-email/confirm")
+	Map<String, String> confirmSchoolEmail(@RequestBody SchoolEmailConfirmRequest request) {
+		return Map.of("schoolEmail", schoolEmails.confirm(request.token()));
+	}
+
+	/** Always 204, so the response does not reveal whether the email belongs to anyone. */
+	@PostMapping("/school-email/resend")
+	ResponseEntity<Void> resendSchoolEmailConfirmation(@RequestBody SchoolEmailResendRequest request) {
+		schoolEmails.resend(request.email());
 		return ResponseEntity.noContent().build();
 	}
 
