@@ -1,25 +1,44 @@
 package com.peachhacks.backend.config;
 
+import java.util.List;
+
+import com.peachhacks.backend.common.RateLimitInterceptor;
+
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.web.servlet.config.annotation.CorsRegistry;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 @Configuration(proxyBeanMethods = false)
 public class WebConfig implements WebMvcConfigurer {
 
-	private final CorsProperties corsProperties;
+	private final RateLimitInterceptor rateLimitInterceptor;
 
-	public WebConfig(CorsProperties corsProperties) {
-		this.corsProperties = corsProperties;
+	public WebConfig(RateLimitInterceptor rateLimitInterceptor) {
+		this.rateLimitInterceptor = rateLimitInterceptor;
+	}
+
+	/** Picked up by Spring Security's CORS filter, so preflight requests are answered before authentication. */
+	@Bean
+	CorsConfigurationSource corsConfigurationSource(CorsProperties corsProperties) {
+		CorsConfiguration configuration = new CorsConfiguration();
+		configuration.setAllowedOrigins(corsProperties.allowedOrigins());
+		configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
+		configuration.setAllowedHeaders(List.of("*"));
+		configuration.setExposedHeaders(List.of("Content-Disposition"));
+		configuration.setAllowCredentials(false);
+		configuration.setMaxAge(3600L);
+		UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+		source.registerCorsConfiguration("/**", configuration);
+		return source;
 	}
 
 	@Override
-	public void addCorsMappings(CorsRegistry registry) {
-		registry.addMapping("/**")
-			.allowedOrigins(corsProperties.allowedOrigins().toArray(String[]::new))
-			.allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
-			.allowedHeaders("*")
-			.maxAge(3600);
+	public void addInterceptors(InterceptorRegistry registry) {
+		registry.addInterceptor(rateLimitInterceptor).addPathPatterns("/public/**", "/admin/auth/login");
 	}
 
 }

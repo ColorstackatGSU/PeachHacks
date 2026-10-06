@@ -1,0 +1,293 @@
+package com.peachhacks.backend.registration;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.Objects;
+import java.util.UUID;
+
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.peachhacks.backend.common.Texts;
+import com.peachhacks.backend.common.Tokens;
+import jakarta.persistence.Column;
+import jakarta.persistence.Embedded;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
+/** Serialized as-is for the admin detail view. */
+@Entity
+@Table(name = "registrations")
+public class Registration {
+
+	@Id
+	private UUID id;
+
+	private String firstName;
+
+	private String lastName;
+
+	private Integer age;
+
+	private String phone;
+
+	private String email;
+
+	private String school;
+
+	private String levelOfStudy;
+
+	private String countryOfResidence;
+
+	private boolean mlhCodeOfConduct;
+
+	private boolean mlhDataSharing;
+
+	private boolean mlhEmailOptIn;
+
+	@JdbcTypeCode(SqlTypes.ARRAY)
+	@Column(columnDefinition = "text[]")
+	private String[] dietaryRestrictions;
+
+	private String dietaryDetails;
+
+	private String underrepresentedGroup;
+
+	private String gender;
+
+	private String genderSelfDescribe;
+
+	private String pronouns;
+
+	private String pronounsOther;
+
+	@JdbcTypeCode(SqlTypes.ARRAY)
+	@Column(columnDefinition = "text[]")
+	private String[] raceEthnicity;
+
+	private String raceEthnicityOther;
+
+	private String sexualOrientation;
+
+	private String sexualOrientationOther;
+
+	private String highestEducation;
+
+	private String highestEducationOther;
+
+	private String tshirtSize;
+
+	@Embedded
+	private ShippingAddress shippingAddress;
+
+	private String majorFieldOfStudy;
+
+	private String majorOther;
+
+	private String linkedinUrl;
+
+	@Enumerated(EnumType.STRING)
+	private RegistrationStatus status;
+
+	private boolean unsubscribed;
+
+	private String unsubscribeToken;
+
+	private Instant createdAt;
+
+	protected Registration() {
+	}
+
+	/** Expects an already validated request. */
+	static Registration from(RegistrationRequest request) {
+		Registration r = new Registration();
+		r.id = UUID.randomUUID();
+		r.firstName = request.firstName().strip();
+		r.lastName = request.lastName().strip();
+		r.age = request.age();
+		r.phone = request.phone().strip();
+		r.email = Texts.email(request.email());
+		r.school = request.school().strip();
+		r.levelOfStudy = request.levelOfStudy().strip();
+		r.countryOfResidence = request.countryOfResidence();
+		r.mlhCodeOfConduct = request.mlhCodeOfConduct();
+		r.mlhDataSharing = request.mlhDataSharing();
+		r.mlhEmailOptIn = request.mlhEmailOptIn();
+		r.dietaryRestrictions = cleanList(request.dietaryRestrictions());
+		r.dietaryDetails = Texts.clean(request.dietaryDetails());
+		r.underrepresentedGroup = Texts.clean(request.underrepresentedGroup());
+		r.gender = Texts.clean(request.gender());
+		r.genderSelfDescribe = Texts.clean(request.genderSelfDescribe());
+		r.pronouns = Texts.clean(request.pronouns());
+		r.pronounsOther = Texts.clean(request.pronounsOther());
+		r.raceEthnicity = cleanList(request.raceEthnicity());
+		r.raceEthnicityOther = Texts.clean(request.raceEthnicityOther());
+		r.sexualOrientation = Texts.clean(request.sexualOrientation());
+		r.sexualOrientationOther = Texts.clean(request.sexualOrientationOther());
+		r.highestEducation = Texts.clean(request.highestEducation());
+		r.highestEducationOther = Texts.clean(request.highestEducationOther());
+		r.tshirtSize = Texts.clean(request.tshirtSize());
+		r.shippingAddress = ShippingAddress.cleaned(request.shippingAddress());
+		r.majorFieldOfStudy = Texts.clean(request.majorFieldOfStudy());
+		r.majorOther = Texts.clean(request.majorOther());
+		r.linkedinUrl = Texts.clean(request.linkedinUrl());
+		r.status = RegistrationStatus.PENDING;
+		r.unsubscribed = false;
+		r.unsubscribeToken = Tokens.random();
+		r.createdAt = Instant.now();
+		return r;
+	}
+
+	private static String[] cleanList(List<String> values) {
+		if (values == null) {
+			return new String[0];
+		}
+		return values.stream().map(Texts::clean).filter(Objects::nonNull).distinct().toArray(String[]::new);
+	}
+
+	public UUID getId() {
+		return id;
+	}
+
+	public String getFirstName() {
+		return firstName;
+	}
+
+	public String getLastName() {
+		return lastName;
+	}
+
+	public Integer getAge() {
+		return age;
+	}
+
+	public String getPhone() {
+		return phone;
+	}
+
+	public String getEmail() {
+		return email;
+	}
+
+	public String getSchool() {
+		return school;
+	}
+
+	public String getLevelOfStudy() {
+		return levelOfStudy;
+	}
+
+	public String getCountryOfResidence() {
+		return countryOfResidence;
+	}
+
+	public boolean isMlhCodeOfConduct() {
+		return mlhCodeOfConduct;
+	}
+
+	public boolean isMlhDataSharing() {
+		return mlhDataSharing;
+	}
+
+	public boolean isMlhEmailOptIn() {
+		return mlhEmailOptIn;
+	}
+
+	public String[] getDietaryRestrictions() {
+		return dietaryRestrictions;
+	}
+
+	public String getDietaryDetails() {
+		return dietaryDetails;
+	}
+
+	public String getUnderrepresentedGroup() {
+		return underrepresentedGroup;
+	}
+
+	public String getGender() {
+		return gender;
+	}
+
+	public String getGenderSelfDescribe() {
+		return genderSelfDescribe;
+	}
+
+	public String getPronouns() {
+		return pronouns;
+	}
+
+	public String getPronounsOther() {
+		return pronounsOther;
+	}
+
+	public String[] getRaceEthnicity() {
+		return raceEthnicity;
+	}
+
+	public String getRaceEthnicityOther() {
+		return raceEthnicityOther;
+	}
+
+	public String getSexualOrientation() {
+		return sexualOrientation;
+	}
+
+	public String getSexualOrientationOther() {
+		return sexualOrientationOther;
+	}
+
+	public String getHighestEducation() {
+		return highestEducation;
+	}
+
+	public String getHighestEducationOther() {
+		return highestEducationOther;
+	}
+
+	public String getTshirtSize() {
+		return tshirtSize;
+	}
+
+	public ShippingAddress getShippingAddress() {
+		return shippingAddress;
+	}
+
+	public String getMajorFieldOfStudy() {
+		return majorFieldOfStudy;
+	}
+
+	public String getMajorOther() {
+		return majorOther;
+	}
+
+	public String getLinkedinUrl() {
+		return linkedinUrl;
+	}
+
+	public RegistrationStatus getStatus() {
+		return status;
+	}
+
+	public void setStatus(RegistrationStatus status) {
+		this.status = status;
+	}
+
+	@JsonIgnore
+	public boolean isUnsubscribed() {
+		return unsubscribed;
+	}
+
+	@JsonIgnore
+	public String getUnsubscribeToken() {
+		return unsubscribeToken;
+	}
+
+	public Instant getCreatedAt() {
+		return createdAt;
+	}
+
+}

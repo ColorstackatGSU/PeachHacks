@@ -6,6 +6,12 @@ spring:
   jpa:
     show-sql: false
 
+app:
+  admin:
+    bootstrap-email: ${ADMIN_BOOTSTRAP_EMAIL:admin@peachhacks.local}
+    bootstrap-password: ${ADMIN_BOOTSTRAP_PASSWORD:peachhacks-local-admin}
+    bootstrap-name: ${ADMIN_BOOTSTRAP_NAME:Local Admin}
+
 logging:
   level:
     root: INFO
