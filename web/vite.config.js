@@ -17,6 +17,7 @@ export default defineConfig({
         preRegister: resolve(rootDir, "pre-register.html"),
         register: resolve(rootDir, "register.html"),
         sponsorForm: resolve(rootDir, "sponsor-form.html"),
+        ticket: resolve(rootDir, "ticket.html"),
         unsubscribe: resolve(rootDir, "unsubscribe.html"),
       },
     },
