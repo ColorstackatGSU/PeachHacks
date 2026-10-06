@@ -6,7 +6,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties(prefix = "app.email")
 public record EmailProperties(String resendApiKey, String resendBaseUrl, String from, String webBaseUrl,
-		Duration campaignDelay) {
+		String adminBaseUrl, Duration campaignDelay) {
 
 	public EmailProperties {
 		resendApiKey = (resendApiKey != null) ? resendApiKey.trim() : "";
@@ -14,6 +14,8 @@ public record EmailProperties(String resendApiKey, String resendBaseUrl, String 
 		from = (from != null && !from.isBlank()) ? from : "PeachHacks <hello@peachhacks.com>";
 		webBaseUrl = (webBaseUrl != null && !webBaseUrl.isBlank()) ? webBaseUrl.replaceAll("/+$", "")
 				: "http://localhost:5173";
+		adminBaseUrl = (adminBaseUrl != null && !adminBaseUrl.isBlank()) ? adminBaseUrl.replaceAll("/+$", "")
+				: "http://localhost:5174";
 		campaignDelay = (campaignDelay != null) ? campaignDelay : Duration.ofMillis(600);
 	}
 

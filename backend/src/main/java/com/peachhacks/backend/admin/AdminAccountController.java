@@ -20,6 +20,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.peachhacks.backend.email.MailService;
+
 @RestController
 @RequestMapping("/admin/admins")
 public class AdminAccountController {
@@ -51,8 +53,11 @@ public class AdminAccountController {
 
 	private final AuthService authService;
 
-	public AdminAccountController(AuthService authService) {
+	private final MailService mailService;
+
+	public AdminAccountController(AuthService authService, MailService mailService) {
 		this.authService = authService;
+		this.mailService = mailService;
 	}
 
 	@GetMapping
@@ -61,8 +66,10 @@ public class AdminAccountController {
 	}
 
 	@PostMapping
-	ResponseEntity<AdminItem> create(@Valid @RequestBody CreateAdminRequest request) {
+	ResponseEntity<AdminItem> create(@Valid @RequestBody CreateAdminRequest request,
+			@AuthenticationPrincipal AdminPrincipal current) {
 		Admin admin = authService.create(request.email(), request.name(), request.password());
+		mailService.sendAdminWelcome(admin.getEmail(), admin.getName(), current.name());
 		return ResponseEntity.status(HttpStatus.CREATED).body(AdminItem.from(admin));
 	}
 

@@ -3,6 +3,7 @@ package com.peachhacks.backend.email;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -31,7 +32,8 @@ class EmailDeliveryTests {
 	private HttpServer server;
 
 	private final EmailComposer composer = new EmailComposer(new EmailProperties("", null,
-			"PeachHacks <hello@peachhacks.com>", "https://www.peachhacks.com/", Duration.ZERO));
+			"PeachHacks <hello@peachhacks.com>", "https://www.peachhacks.com/", "https://admin.peachhacks.com/",
+			Duration.ZERO));
 
 	@BeforeEach
 	void startServer() throws Exception {
@@ -110,6 +112,25 @@ class EmailDeliveryTests {
 		assertThat(Csv.cell("Georgia State, Atlanta")).isEqualTo("\"Georgia State, Atlanta\"");
 		assertThat(Csv.cell("plain")).isEqualTo("plain");
 		assertThat(Csv.cell(null)).isEmpty();
+	}
+
+	@Test
+	void adminWelcomeLinksToTheAdminSiteAndNeverCarriesAPassword() {
+		EmailProperties properties = new EmailProperties("", null, null, null, "https://admin.peachhacks.com/",
+				Duration.ZERO);
+		List<EmailMessage> sent = new ArrayList<>();
+		MailService mail = new MailService(sent::add, new EmailComposer(properties), Runnable::run, properties);
+
+		mail.sendAdminWelcome("new@peachhacks.com", "Ada", "Grace");
+
+		assertThat(sent).hasSize(1);
+		EmailMessage message = sent.get(0);
+		assertThat(message.to()).isEqualTo("new@peachhacks.com");
+		assertThat(message.text()).contains("Hi Ada,")
+			.contains("Grace added you as an admin")
+			.contains("https://admin.peachhacks.com")
+			.doesNotContain("admin.peachhacks.com/")
+			.doesNotContainIgnoringCase("unsubscribe");
 	}
 
 }

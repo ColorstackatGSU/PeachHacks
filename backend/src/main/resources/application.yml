@@ -38,6 +38,7 @@ app:
     resend-base-url: https://api.resend.com
     from: ${EMAIL_FROM:PeachHacks <hello@peachhacks.com>}
     web-base-url: ${WEB_BASE_URL:http://localhost:5173}
+    admin-base-url: ${ADMIN_BASE_URL:http://localhost:5174}
     campaign-delay: 600ms
   admin:
     bootstrap-email: ${ADMIN_BOOTSTRAP_EMAIL:}

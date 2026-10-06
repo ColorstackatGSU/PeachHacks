@@ -76,6 +76,7 @@ Standard Spring Boot environment variables; see `.env.example`.
 | `RESEND_API_KEY` | Resend API key. Blank means emails are logged, not sent |
 | `EMAIL_FROM` | Sender (default `PeachHacks <hello@peachhacks.com>`); the domain must be verified in Resend |
 | `WEB_BASE_URL` | Public site URL used for links in emails (default `http://localhost:5173`, `https://www.peachhacks.com` in `prod`) |
+| `ADMIN_BASE_URL` | Admin site URL used in the email sent to a newly added admin (default `http://localhost:5174`, `https://admin.peachhacks.com` in `prod`) |
 | `CORS_ALLOWED_ORIGINS` | Comma-separated origins (default `http://localhost:5173`, `http://localhost:5174`, `https://www.peachhacks.com`, `https://peachhacks.com`, `https://admin.peachhacks.com`) |
 | `SPRING_DATASOURCE_HIKARI_MAXIMUMPOOLSIZE` | Connection pool size (5 in `prod`) |
 | `PORT` | HTTP port (default 8080) |
@@ -126,7 +127,7 @@ CSV cells that a spreadsheet would treat as a formula (starting with `=`, `+`, `
 
 ### Email
 
-Confirmation emails go out after a new pre-registration and after a registration. Campaign audiences are `PRE_REGISTRANTS`, `PRE_REGISTRANTS_NOT_REGISTERED` and `REGISTRANTS`, optionally narrowed to one school; unsubscribed addresses are skipped. The body is plain text: blank lines separate paragraphs, `{{firstName}}` and `{{lastName}}` are filled in per recipient, and an unsubscribe link (`$WEB_BASE_URL/unsubscribe.html?token=...`) is appended.
+Confirmation emails go out after a new pre-registration and after a registration, and a newly added admin gets an email with the sign-in link (never the password). Campaign audiences are `PRE_REGISTRANTS`, `PRE_REGISTRANTS_NOT_REGISTERED` and `REGISTRANTS`, optionally narrowed to one school; unsubscribed addresses are skipped. The body is plain text: blank lines separate paragraphs, `{{firstName}}` and `{{lastName}}` are filled in per recipient, and an unsubscribe link (`$WEB_BASE_URL/unsubscribe.html?token=...`) is appended.
 
 Campaigns are sent one recipient at a time, about 600 ms apart (`app.email.campaign-delay`), one campaign at a time. A failed recipient is counted in `failedCount` and does not stop the campaign. Sending happens in memory, so a campaign interrupted by a restart or redeploy is marked `FAILED` at the next startup with the counts it had reached; it is not resumed.
 
