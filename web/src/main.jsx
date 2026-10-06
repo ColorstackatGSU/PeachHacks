@@ -120,6 +120,8 @@ const TAG_MAX_TILT = 6;
 const TOW_ANGLE = (26 * Math.PI) / 180;
 const TAG_TOW_SPRING = { type: 'spring', stiffness: 120, damping: 13 };
 const TAG_PEEK = 72;
+const TAG_TAIL = 76;
+const TAG_TAIL_TUCK = 12;
 const TAG_OFFSCREEN = 120;
 const TAG_RELEASE_OFFSET = 80;
 const TAG_RELEASE_VELOCITY = 400;
@@ -165,12 +167,17 @@ function HeroTag({ registerButtonRef, tagCloseRef }) {
     if (add) tagRef.current?.classList.add(add);
   };
 
-  // Parked, a strip of the tag stays on screen at the right edge of the hero.
+  // Parked, the tag's tail tucks under the right edge of the sign-up panel so
+  // the two read as one piece. offsetLeft/offsetWidth ignore the panel's
+  // opening transform, which getBoundingClientRect would not.
   const parkedX = useCallback(() => {
     const tag = tagRef.current;
     const restLeft = tag.offsetParent.getBoundingClientRect().left + tag.offsetLeft + tag.firstElementChild.offsetLeft;
     const edge = tag.closest('.intro').getBoundingClientRect().right;
-    return (isSheet() ? edge + TAG_OFFSCREEN : edge - TAG_PEEK) - restLeft;
+    if (isSheet()) return edge + TAG_OFFSCREEN - restLeft;
+    const panel = document.querySelector('.register-panel');
+    if (!panel) return edge - TAG_PEEK - restLeft;
+    return panel.offsetLeft + panel.offsetWidth + TAG_TAIL - TAG_TAIL_TUCK - restLeft;
   }, []);
 
   // The tag drives itself with the motion values the drag uses, so the tow
