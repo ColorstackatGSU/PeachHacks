@@ -1,13 +1,16 @@
 package com.peachhacks.backend.registration;
 
+import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.transaction.annotation.Transactional;
 
 public interface RegistrationRepository extends JpaRepository<Registration, UUID> {
 
@@ -15,6 +18,14 @@ public interface RegistrationRepository extends JpaRepository<Registration, UUID
 	boolean existsByEmail(String email);
 
 	Optional<Registration> findByTicketToken(String ticketToken);
+
+	/** Returns 0 when the registration stopped waiting in the meantime (moved out of ACCEPTED, or already told). */
+	@Transactional
+	@Modifying
+	@Query("update Registration r set r.acceptanceNotifiedAt = :now where r.id = :id"
+			+ " and r.status = com.peachhacks.backend.registration.RegistrationStatus.ACCEPTED"
+			+ " and r.acceptanceNotifiedAt is null")
+	int markAcceptanceNotified(@Param("id") UUID id, @Param("now") Instant now);
 
 	/**
 	 * checkedIn is about the general event and only applies when anyAttendance is false.

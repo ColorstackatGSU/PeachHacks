@@ -49,6 +49,9 @@ app:
     service-account-email: ${GOOGLE_WALLET_SERVICE_ACCOUNT_EMAIL:}
     private-key: ${GOOGLE_WALLET_PRIVATE_KEY:}
     class-id: ${GOOGLE_WALLET_CLASS_ID:peachhacks_2027}
+  acceptance:
+    host-school-name: ${HOST_SCHOOL_NAME:Georgia State University}
+    host-school-target: ${HOST_SCHOOL_TARGET:0.70}
   admin:
     bootstrap-email: ${ADMIN_BOOTSTRAP_EMAIL:}
     bootstrap-password: ${ADMIN_BOOTSTRAP_PASSWORD:}

@@ -106,6 +106,20 @@ public class MailService {
 	 */
 	public void sendTicket(String email, String firstName, String ticketUrl, byte[] qrPng, String googleWalletUrl,
 			String unsubscribeToken) {
+		sendInBackground(ticketMessage(email, firstName, ticketUrl, qrPng, googleWalletUrl, unsubscribeToken));
+	}
+
+	/**
+	 * Sends on the calling thread so the caller knows the provider took the message.
+	 * @throws RuntimeException when it did not
+	 */
+	public void sendTicketNow(String email, String firstName, String ticketUrl, byte[] qrPng, String googleWalletUrl,
+			String unsubscribeToken) {
+		sender.send(ticketMessage(email, firstName, ticketUrl, qrPng, googleWalletUrl, unsubscribeToken));
+	}
+
+	private EmailMessage ticketMessage(String email, String firstName, String ticketUrl, byte[] qrPng,
+			String googleWalletUrl, String unsubscribeToken) {
 		String body = """
 				Hi {{firstName}},
 
@@ -135,11 +149,10 @@ public class MailService {
 			text += "\n\nAdd to Google Wallet: " + googleWalletUrl;
 		}
 		EmailComposer.Block block = new EmailComposer.Block(html, text);
-		EmailMessage message = composer
+		return composer
 			.compose(email, "You're in! Your PeachHacks ticket", body, firstName, null, unsubscribeToken, block)
 			.withAttachments(List.of(
 					new EmailMessage.Attachment("peachhacks-ticket.png", "image/png", qrPng, TICKET_CONTENT_ID)));
-		sendInBackground(message);
 	}
 
 	public void sendAdminWelcome(String email, String name, String addedBy) {

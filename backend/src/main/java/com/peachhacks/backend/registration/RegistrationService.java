@@ -1,5 +1,8 @@
 package com.peachhacks.backend.registration;
 
+import java.time.Instant;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
@@ -11,8 +14,6 @@ import com.peachhacks.backend.email.MailService;
 import com.peachhacks.backend.registration.ResumeUpload.ResumeFile;
 import com.peachhacks.backend.schoolemail.SchoolEmailService;
 import com.peachhacks.backend.stats.SettingsService;
-import com.peachhacks.backend.ticket.GoogleWallet;
-import com.peachhacks.backend.ticket.Tickets;
 
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
@@ -37,10 +38,6 @@ public class RegistrationService {
 
 	private final MailService mailService;
 
-	private final Tickets tickets;
-
-	private final GoogleWallet googleWallet;
-
 	private final ResumeService resumes;
 
 	private final SchoolEmailService schoolEmails;
@@ -48,14 +45,12 @@ public class RegistrationService {
 	private final TransactionTemplate transaction;
 
 	public RegistrationService(RegistrationRepository repository, SettingsService settings,
-			RequestValidator validator, MailService mailService, Tickets tickets, GoogleWallet googleWallet,
-			ResumeService resumes, SchoolEmailService schoolEmails, PlatformTransactionManager transactionManager) {
+			RequestValidator validator, MailService mailService, ResumeService resumes,
+			SchoolEmailService schoolEmails, PlatformTransactionManager transactionManager) {
 		this.repository = repository;
 		this.settings = settings;
 		this.validator = validator;
 		this.mailService = mailService;
-		this.tickets = tickets;
-		this.googleWallet = googleWallet;
 		this.resumes = resumes;
 		this.schoolEmails = schoolEmails;
 		this.transaction = new TransactionTemplate(transactionManager);
@@ -112,31 +107,32 @@ public class RegistrationService {
 		return repository.findById(id).orElseThrow(() -> ApiException.notFound("Registration not found."));
 	}
 
+	public record BulkStatusResult(int changed, int unchanged, int notFound) {
+	}
+
+	/** Nothing is emailed here: an accepted registration waits until the acceptance emails are sent. */
 	public Registration updateStatus(UUID id, RegistrationStatus status) {
-		Registration registration = get(id);
-		boolean newlyAccepted = status == RegistrationStatus.ACCEPTED
-				&& registration.getStatus() != RegistrationStatus.ACCEPTED;
-		registration.setStatus(status);
-		Registration saved = repository.save(registration);
-		if (newlyAccepted) {
-			sendTicketEmail(saved);
-		}
-		return saved;
+		return transaction.execute(tx -> {
+			Registration registration = get(id);
+			registration.changeStatus(status, Instant.now());
+			return registration;
+		});
 	}
 
-	public void resendTicketEmail(UUID id) {
-		Registration registration = get(id);
-		if (registration.getStatus() != RegistrationStatus.ACCEPTED) {
-			throw ApiException.validation("Only accepted registrations have a ticket to send.", null);
-		}
-		sendTicketEmail(registration);
-	}
-
-	private void sendTicketEmail(Registration registration) {
-		String token = registration.getTicketToken();
-		String ticketUrl = tickets.url(token);
-		mailService.sendTicket(registration.getEmail(), registration.getFirstName(), ticketUrl, tickets.qrPng(token),
-				googleWallet.saveUrl(registration, ticketUrl).orElse(null), registration.getUnsubscribeToken());
+	/** Ids that no longer exist are counted, not refused, so one deleted row does not block the rest. */
+	public BulkStatusResult updateStatuses(List<UUID> ids, RegistrationStatus status) {
+		Set<UUID> distinct = new LinkedHashSet<>(ids);
+		return transaction.execute(tx -> {
+			Instant now = Instant.now();
+			List<Registration> found = repository.findAllById(distinct);
+			int changed = 0;
+			for (Registration registration : found) {
+				if (registration.changeStatus(status, now)) {
+					changed++;
+				}
+			}
+			return new BulkStatusResult(changed, found.size() - changed, distinct.size() - found.size());
+		});
 	}
 
 	public void resendSchoolEmailConfirmation(UUID id) {

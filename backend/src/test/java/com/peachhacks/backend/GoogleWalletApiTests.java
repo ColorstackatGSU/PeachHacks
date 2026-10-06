@@ -102,6 +102,8 @@ class GoogleWalletApiTests {
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("{\"status\":\"ACCEPTED\"}"))
 			.andExpect(status().isOk());
+		mockMvc.perform(post("/admin/registrations/" + id + "/ticket-email").header("Authorization", admin))
+			.andExpect(status().isNoContent());
 
 		String ticket = mockMvc.perform(get("/public/tickets/" + token))
 			.andExpect(status().isOk())

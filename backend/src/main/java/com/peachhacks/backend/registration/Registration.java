@@ -106,6 +106,10 @@ public class Registration {
 
 	private String ticketToken;
 
+	private Instant acceptedAt;
+
+	private Instant acceptanceNotifiedAt;
+
 	private Instant createdAt;
 
 	protected Registration() {
@@ -298,8 +302,28 @@ public class Registration {
 		return status;
 	}
 
-	public void setStatus(RegistrationStatus status) {
+	/**
+	 * A change of status starts the acceptance over: someone accepted again after being
+	 * moved out has to be told again. Saving the status it already has changes nothing.
+	 */
+	public boolean changeStatus(RegistrationStatus status, Instant now) {
+		if (this.status == status) {
+			return false;
+		}
 		this.status = status;
+		this.acceptedAt = (status == RegistrationStatus.ACCEPTED) ? now : null;
+		this.acceptanceNotifiedAt = null;
+		return true;
+	}
+
+	/** Null unless ACCEPTED, and for rows accepted before this was recorded. */
+	public Instant getAcceptedAt() {
+		return acceptedAt;
+	}
+
+	/** When the acceptance email was handed to the mail provider; null while ACCEPTED means not told yet. */
+	public Instant getAcceptanceNotifiedAt() {
+		return acceptanceNotifiedAt;
 	}
 
 	@JsonIgnore

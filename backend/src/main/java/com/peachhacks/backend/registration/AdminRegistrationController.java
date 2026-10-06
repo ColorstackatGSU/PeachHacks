@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import com.peachhacks.backend.acceptance.AcceptanceMailer;
 import com.peachhacks.backend.checkin.CheckIn;
 import com.peachhacks.backend.checkin.CheckInService;
 import com.peachhacks.backend.common.Csv;
@@ -13,7 +14,9 @@ import com.peachhacks.backend.common.PageResponse;
 import com.peachhacks.backend.ticket.GoogleWallet;
 import com.peachhacks.backend.ticket.Tickets;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -35,6 +38,13 @@ public class AdminRegistrationController {
 	public record StatusRequest(@NotNull(message = "Status is required") RegistrationStatus status) {
 	}
 
+	public record BulkStatusRequest(
+			@NotEmpty(message = "Choose at least one registration") @Size(max = 500,
+					message = "At most 500 registrations at a time") List<@NotNull(
+							message = "Ids must not be null") UUID> ids,
+			@NotNull(message = "Status is required") RegistrationStatus status) {
+	}
+
 	private static final List<String> CSV_HEADER = List.of("id", "status", "createdAt", "firstName", "lastName", "age",
 			"phone", "email", "school", "levelOfStudy", "countryOfResidence", "mlhCodeOfConduct", "mlhDataSharing",
 			"mlhEmailOptIn", "dietaryRestrictions", "dietaryDetails", "underrepresentedGroup", "gender",
@@ -54,13 +64,16 @@ public class AdminRegistrationController {
 
 	private final ResumeService resumes;
 
+	private final AcceptanceMailer acceptanceMailer;
+
 	public AdminRegistrationController(RegistrationService service, CheckInService checkIns, Tickets tickets,
-			GoogleWallet googleWallet, ResumeService resumes) {
+			GoogleWallet googleWallet, ResumeService resumes, AcceptanceMailer acceptanceMailer) {
 		this.service = service;
 		this.checkIns = checkIns;
 		this.tickets = tickets;
 		this.googleWallet = googleWallet;
 		this.resumes = resumes;
+		this.acceptanceMailer = acceptanceMailer;
 	}
 
 	@GetMapping
@@ -117,9 +130,14 @@ public class AdminRegistrationController {
 		return detail(service.updateStatus(id, request.status()));
 	}
 
+	@PostMapping("/status")
+	RegistrationService.BulkStatusResult updateStatuses(@Valid @RequestBody BulkStatusRequest request) {
+		return service.updateStatuses(request.ids(), request.status());
+	}
+
 	@PostMapping("/{id}/ticket-email")
-	ResponseEntity<Void> resendTicketEmail(@PathVariable UUID id) {
-		service.resendTicketEmail(id);
+	ResponseEntity<Void> sendTicketEmail(@PathVariable UUID id) {
+		acceptanceMailer.sendTicketEmail(id);
 		return ResponseEntity.noContent().build();
 	}
 

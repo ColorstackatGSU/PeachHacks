@@ -778,7 +778,7 @@ class RegistrationApiTests {
 	}
 
 	@Test
-	void acceptanceSendsTheTicketEmailOncePerTransition() throws Exception {
+	void theTicketEmailIsSentOnRequestAndNeverByAccepting() throws Exception {
 		String admin = bearer();
 		String email = unique() + "@example.com";
 		String registrationId = registerHacker(admin, email, uniqueSchool());
@@ -788,9 +788,12 @@ class RegistrationApiTests {
 			.andExpect(status().isBadRequest())
 			.andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
 		setStatus(admin, registrationId, "WAITLISTED");
-		assertThat(ticketEmails(email, 0)).isEmpty();
-
 		setStatus(admin, registrationId, "ACCEPTED");
+		setStatus(admin, registrationId, "ACCEPTED");
+		assertThat(ticketEmails(email, 0)).as("accepting does not send the ticket").isEmpty();
+
+		mockMvc.perform(post("/admin/registrations/" + registrationId + "/ticket-email").header("Authorization", admin))
+			.andExpect(status().isNoContent());
 		List<EmailMessage> sent = ticketEmails(email, 1);
 		assertThat(sent).hasSize(1);
 		EmailMessage message = sent.get(0);
@@ -800,16 +803,12 @@ class RegistrationApiTests {
 		assertThat(message.attachments()).hasSize(1);
 		assertThat(message.attachments().get(0).contentType()).isEqualTo("image/png");
 		assertThat(Arrays.copyOf(message.attachments().get(0).content(), 4)).containsExactly(0x89, 'P', 'N', 'G');
-
-		setStatus(admin, registrationId, "ACCEPTED");
-		assertThat(ticketEmails(email, 1)).as("staying ACCEPTED does not send again").hasSize(1);
-		setStatus(admin, registrationId, "PENDING");
-		setStatus(admin, registrationId, "ACCEPTED");
-		assertThat(ticketEmails(email, 2)).hasSize(2);
+		mockMvc.perform(get("/admin/registrations/" + registrationId).header("Authorization", admin))
+			.andExpect(jsonPath("$.acceptanceNotifiedAt").isNotEmpty());
 
 		mockMvc.perform(post("/admin/registrations/" + registrationId + "/ticket-email").header("Authorization", admin))
 			.andExpect(status().isNoContent());
-		assertThat(ticketEmails(email, 3)).hasSize(3);
+		assertThat(ticketEmails(email, 2)).hasSize(2);
 		mockMvc
 			.perform(post("/admin/registrations/" + UUID.randomUUID() + "/ticket-email").header("Authorization", admin))
 			.andExpect(status().isNotFound());
@@ -831,6 +830,10 @@ class RegistrationApiTests {
 					.content("{\"status\":\"REJECTED\"}"),
 				delete("/admin/registrations/" + registrationId), get("/admin/registrations/export.csv"),
 				post("/admin/registrations/" + registrationId + "/ticket-email"),
+				post("/admin/registrations/status").contentType(MediaType.APPLICATION_JSON)
+					.content("{\"ids\":[\"%s\"],\"status\":\"REJECTED\"}".formatted(registrationId)),
+				get("/admin/acceptances/summary"), get("/admin/acceptances/waiting"),
+				get("/admin/acceptances/send"), post("/admin/acceptances/send"),
 				post("/admin/registrations/" + registrationId + "/school-email/resend"),
 				post("/admin/pre-registrations/" + UUID.randomUUID() + "/school-email/resend"),
 				get("/admin/registrations/" + registrationId + "/resume"),
