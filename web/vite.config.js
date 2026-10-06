@@ -14,9 +14,6 @@ export default defineConfig({
       input: {
         main: resolve(rootDir, "index.html"),
         confirmEmail: resolve(rootDir, "confirm-email.html"),
-        interestForm: resolve(rootDir, "interest-form.html"),
-        preRegister: resolve(rootDir, "pre-register.html"),
-        register: resolve(rootDir, "register.html"),
         sponsorForm: resolve(rootDir, "sponsor-form.html"),
         ticket: resolve(rootDir, "ticket.html"),
         unsubscribe: resolve(rootDir, "unsubscribe.html"),

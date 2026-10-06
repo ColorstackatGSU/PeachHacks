@@ -1,9 +1,11 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
 import { createRoot } from 'react-dom/client';
 import { scroll } from 'motion';
-import { motion, useDragControls, useMotionValue, useReducedMotion, useSpring, useTransform, useVelocity } from 'motion/react';
+import { animateSingleValue, motion, useDragControls, useMotionValue, useReducedMotion, useSpring, useTransform, useVelocity } from 'motion/react';
 import SiteHeader from './home/SiteHeader.jsx';
 import SiteFooter from './home/SiteFooter.jsx';
+import RegisterLayer, { preloadRegisterPanel } from './home/RegisterLayer.jsx';
+import { closeRegisterPanel, openRegisterPanel, openedOnLoad, useRegisterPanelShown } from './home/registerPanel.js';
 import { useRegistrationCta } from './home/registration.js';
 import { PARTNER_PLACEHOLDERS, getFaqColumns, scheduleGroups, scheduleNote, tracksBackdropRows, tracksData } from './home/content.jsx';
 import { EVENT_DATES, SPONSOR_EMAIL, SPONSOR_FORM_PATH, prefersReducedMotion } from './home/site.js';
@@ -116,12 +118,31 @@ function scrollToTracks() {
 const TAG_CLICK_SLOP = 6;
 const TAG_MAX_TILT = 6;
 const TOW_ANGLE = (26 * Math.PI) / 180;
+const TAG_TOW_SPRING = { type: 'spring', stiffness: 120, damping: 13 };
+const TAG_PEEK = 72;
+const TAG_OFFSCREEN = 120;
+const TAG_RELEASE_OFFSET = 80;
+const TAG_RELEASE_VELOCITY = 400;
+// Where the hero stops pinning (see styles.css); there the sign-up panel is a
+// full-screen sheet and the parked tag sits out of sight behind it.
+const SHEET_QUERY = '(max-width: 768px), (max-height: 520px)';
 
-function HeroTag() {
+function subscribeToSheet(listener) {
+  const query = window.matchMedia(SHEET_QUERY);
+  query.addEventListener('change', listener);
+  return () => query.removeEventListener('change', listener);
+}
+const isSheet = () => window.matchMedia(SHEET_QUERY).matches;
+
+function HeroTag({ registerButtonRef, tagCloseRef }) {
   const cta = useRegistrationCta();
+  const parked = useRegisterPanelShown();
+  const sheet = useSyncExternalStore(subscribeToSheet, isSheet);
   const reduceMotion = useReducedMotion();
   const tagRef = useRef(null);
   const draggedFar = useRef(false);
+  const towing = useRef([]);
+  const settled = useRef(false);
   const dragControls = useDragControls();
   const x = useMotionValue(0);
   const y = useMotionValue(0);
@@ -138,10 +159,51 @@ function HeroTag() {
     return `rotate(${(26 + bend - tilt.get()).toFixed(3)}deg) scaleX(${(Math.hypot(towX, towY) / reach).toFixed(4)})`;
   });
   const limits = { left: -window.innerWidth * 0.3, right: window.innerWidth * 0.3, top: -window.innerHeight * 0.2, bottom: window.innerHeight * 0.2 };
+  const parkedLimits = { ...limits, left: 0, right: window.innerWidth };
   const setTagState = (add, remove) => {
     tagRef.current?.classList.remove(remove);
     if (add) tagRef.current?.classList.add(add);
   };
+
+  // Parked, a strip of the tag stays on screen at the right edge of the hero.
+  const parkedX = useCallback(() => {
+    const tag = tagRef.current;
+    const restLeft = tag.offsetParent.getBoundingClientRect().left + tag.offsetLeft + tag.firstElementChild.offsetLeft;
+    const edge = tag.closest('.intro').getBoundingClientRect().right;
+    return (isSheet() ? edge + TAG_OFFSCREEN : edge - TAG_PEEK) - restLeft;
+  }, []);
+
+  // The tag drives itself with the motion values the drag uses, so the tow
+  // line and the tilt follow along and a grab mid-flight simply takes over.
+  const towTo = useCallback((targetX, instant) => {
+    towing.current.forEach((animation) => animation.stop());
+    const tag = tagRef.current;
+    tag.classList.remove('is-dragging');
+    if (instant) {
+      towing.current = [];
+      tag.classList.remove('is-springing');
+      x.jump(targetX);
+      y.jump(0);
+      return;
+    }
+    tag.classList.add('is-springing');
+    const animations = [animateSingleValue(x, targetX, TAG_TOW_SPRING), animateSingleValue(y, 0, TAG_TOW_SPRING)];
+    towing.current = animations;
+    Promise.all(animations).then(() => {
+      if (towing.current === animations) tag.classList.remove('is-springing');
+    });
+  }, [x, y]);
+
+  useEffect(() => {
+    const first = !settled.current;
+    settled.current = true;
+    if (first && !parked) return undefined;
+    towTo(parked ? parkedX() : 0, reduceMotion || (first && openedOnLoad));
+    if (!parked) return undefined;
+    const onResize = () => towTo(parkedX(), true);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [parked, sheet, reduceMotion, parkedX, towTo]);
 
   return (
     <motion.div
@@ -151,9 +213,10 @@ function HeroTag() {
       drag={!reduceMotion}
       dragListener={false}
       dragControls={dragControls}
-      dragSnapToOrigin
+      dragSnapToOrigin={!parked}
+      dragMomentum={!parked}
       dragElastic={0.22}
-      dragConstraints={limits}
+      dragConstraints={parked ? parkedLimits : limits}
       dragTransition={{ bounceStiffness: 120, bounceDamping: 9 }}
       onPointerDown={(event) => {
         draggedFar.current = false;
@@ -166,7 +229,11 @@ function HeroTag() {
       onDrag={(event, info) => {
         if (Math.hypot(info.offset.x, info.offset.y) > TAG_CLICK_SLOP) draggedFar.current = true;
       }}
-      onDragEnd={() => setTagState('is-springing', 'is-dragging')}
+      onDragEnd={(event, info) => {
+        if (!parked) setTagState('is-springing', 'is-dragging');
+        else if (info.offset.x < -TAG_RELEASE_OFFSET || info.velocity.x < -TAG_RELEASE_VELOCITY) closeRegisterPanel();
+        else towTo(parkedX(), false);
+      }}
       onDragTransitionEnd={() => setTagState(null, 'is-springing')}
       onClickCapture={(event) => {
         if (!draggedFar.current) return;
@@ -178,14 +245,29 @@ function HeroTag() {
       <div className="hero-card window-card">
         <motion.span className="banner-tow-line" aria-hidden="true" style={{ transform: towTransform }} />
         <span className="hero-tag-eyelet" aria-hidden="true" />
-        <div className="window-content">
+        {parked && !sheet && (
+          <button type="button" className="tag-close" ref={tagCloseRef} aria-label="Close the sign-up form" onClick={closeRegisterPanel}>
+            <span className="tag-close-mark" aria-hidden="true">✕</span>
+          </button>
+        )}
+        <div className="window-content" inert={parked}>
           <p className="hero-kicker">{EVENT_DATES} <span aria-hidden="true">·</span> Atlanta, GA</p>
           <h1 id="page-title">Join PeachHacks!</h1>
           <p className="intro-copy">
             A weekend of learning, building, and networking for students, mentors, and industry professionals, hosted by ColorStack at Georgia State University.{' '}
             {cta.open ? 'Registration is open.' : 'Pre-register and we’ll email you the moment registration opens.'}
           </p>
-          <a className="register-button" href={cta.href} draggable={false}>{cta.label}</a>
+          <button
+            type="button"
+            className="register-button"
+            ref={registerButtonRef}
+            aria-haspopup="dialog"
+            onClick={(event) => openRegisterPanel(event.currentTarget)}
+            onPointerEnter={preloadRegisterPanel}
+            onFocus={preloadRegisterPanel}
+          >
+            {cta.label}
+          </button>
           <button type="button" className="scroll-cue" aria-label="Next section: Tracks" onClick={scrollToTracks}>
             <span className="scroll-cue-chevron" aria-hidden="true" />
           </button>
@@ -337,6 +419,9 @@ function App() {
   const pageRef = useRef(null);
   const pinRef = useRef(null);
   const cardShellRef = useRef(null);
+  const registerButtonRef = useRef(null);
+  const tagCloseRef = useRef(null);
+  const panelShown = useRegisterPanelShown();
   useScrollProgressFallback(pageRef);
   useHeroCardInert(pinRef, cardShellRef);
   useStarPointerParallax(pageRef);
@@ -371,7 +456,7 @@ function App() {
                 <img className="hero-logo" src="/assets/logo.svg" alt="PeachHacks" width="210" height="79" />
               </div>
               <div className="hero-card-shell hero-fx" ref={cardShellRef}>
-                <HeroTag />
+                <HeroTag registerButtonRef={registerButtonRef} tagCloseRef={tagCloseRef} />
               </div>
             </div>
           </section>
@@ -383,6 +468,7 @@ function App() {
         <FaqSection />
       </main>
       <SiteFooter />
+      <RegisterLayer shown={panelShown} tagCloseRef={tagCloseRef} returnFocusRef={registerButtonRef} />
     </div>
   );
 }

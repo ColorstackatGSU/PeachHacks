@@ -53,14 +53,6 @@ async function request(path, { method = 'GET', body, signal } = {}) {
   return data;
 }
 
-export async function getRegistrationStatus(signal) {
-  const data = await request('/public/status', { signal });
-  if (typeof data?.registrationOpen !== 'boolean') {
-    throw new ApiError({ message: 'Unexpected response from the server' });
-  }
-  return data.registrationOpen;
-}
-
 export function submitPreRegistration(payload) {
   return request('/public/pre-registrations', { method: 'POST', body: payload });
 }

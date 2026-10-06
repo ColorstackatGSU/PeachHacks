@@ -145,7 +145,7 @@ function buildPayload(values, resume) {
 function Section({ id, title, summary, open, onToggle, children }) {
   return (
     <section className="pf-section">
-      <h2 className="pf-section-heading">
+      <h3 className="pf-section-heading">
         <button
           type="button"
           className="pf-section-toggle"
@@ -159,7 +159,7 @@ function Section({ id, title, summary, open, onToggle, children }) {
           <span className="pf-section-summary">{summary}</span>
           <span className="pf-section-chevron" aria-hidden="true" />
         </button>
-      </h2>
+      </h3>
       <div className="pf-section-body" id={`pf-section-${id}`} hidden={!open}>
         {children}
       </div>
@@ -167,7 +167,7 @@ function Section({ id, title, summary, open, onToggle, children }) {
   );
 }
 
-// onSuccess(email, schoolEmail), onClosed() when the gate turns out to be shut at submit.
+// onSuccess(email, schoolEmail); onClosed(values) when the gate turns out to be shut at submit.
 export default function RegisterForm({ titleId, onSuccess, onClosed }) {
   const formRef = useRef(null);
   const [values, setValues] = useState(INITIAL_VALUES);
@@ -260,7 +260,7 @@ export default function RegisterForm({ titleId, onSuccess, onClosed }) {
       onSuccess(values.email.trim(), values.schoolEmail.trim());
     } catch (error) {
       if (error?.code === 'REGISTRATION_CLOSED') {
-        onClosed();
+        onClosed(values);
         return;
       }
       if (error?.code === 'ALREADY_REGISTERED') {
@@ -356,7 +356,7 @@ export default function RegisterForm({ titleId, onSuccess, onClosed }) {
       </fieldset>
 
       <div className="pf-optional-intro">
-        <h2 className="pf-legend">A little more, if you like</h2>
+        <h3 className="pf-legend">A little more, if you like</h3>
         <p className="pf-note">
           Everything below is optional. Skip any of it and you can still register.
         </p>

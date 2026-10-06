@@ -1,0 +1,161 @@
+/* The shell of the standalone pages (ticket, unsubscribe, confirm-email), and
+   the only place these pages set global styles. Loaded with forms.css. */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--pf-navy);
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  min-width: 320px;
+  margin: 0;
+  background: var(--pf-navy);
+  color: var(--pf-cream);
+  font-family: var(--pf-body);
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+noscript {
+  display: block;
+  padding: 24px;
+  text-align: center;
+}
+
+.pf-page {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow-x: clip;
+  background: linear-gradient(180deg, #001f3a 0, #003f64 55%, #0b5a88 100%);
+}
+
+.pf-sky {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    radial-gradient(circle at 24px 34px, rgb(244 246 237 / 90%) 0 1.2px, transparent 1.9px),
+    radial-gradient(circle at 152px 96px, rgb(244 246 237 / 60%) 0 1px, transparent 1.7px),
+    radial-gradient(circle at 268px 44px, rgb(244 246 237 / 85%) 0 1.6px, transparent 2.3px),
+    radial-gradient(circle at 92px 208px, rgb(244 246 237 / 55%) 0 1px, transparent 1.7px),
+    radial-gradient(circle at 318px 246px, rgb(244 246 237 / 80%) 0 1.3px, transparent 2px),
+    radial-gradient(circle at 204px 306px, rgb(252 163 36 / 85%) 0 1.4px, transparent 2.1px);
+  background-size: 360px 340px;
+  mask-image: linear-gradient(#000 0, #000 35%, transparent 85%);
+}
+
+.pf-moon {
+  position: absolute;
+  top: 84px;
+  right: max(24px, calc(50% - 520px));
+  width: 84px;
+  height: auto;
+  opacity: .95;
+}
+
+.pf-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: min(100% - 32px, 720px);
+  margin: 0 auto;
+  padding: 14px 0 6px;
+}
+
+.pf-brand {
+  display: block;
+  border-radius: 6px;
+}
+
+.pf-brand img {
+  display: block;
+  width: clamp(124px, 34vw, 168px);
+  height: auto;
+}
+
+.pf-home-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 8px 16px;
+  border: 2px solid rgb(244 246 237 / 45%);
+  border-radius: 999px;
+  color: var(--pf-cream);
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background .2s, border-color .2s;
+}
+
+.pf-home-link:hover {
+  border-color: var(--pf-cream);
+  background: rgb(244 246 237 / 12%);
+}
+
+.pf-brand:focus-visible,
+.pf-home-link:focus-visible {
+  outline: 3px solid var(--pf-peach);
+  outline-offset: 3px;
+}
+
+.pf-main {
+  flex: 1;
+  width: min(100% - 24px, 720px);
+  margin: 0 auto;
+  padding: 14px 0 44px;
+}
+
+.pf-footer {
+  padding: 0 16px 32px;
+  color: var(--pf-mist);
+  font-size: 14px;
+  text-align: center;
+}
+
+.pf-footer p {
+  margin: 0;
+}
+
+.pf-footer-link {
+  color: var(--pf-cream);
+  font-weight: 700;
+  text-underline-offset: 3px;
+}
+
+.pf-footer-link:focus-visible {
+  outline: 3px solid var(--pf-peach);
+  outline-offset: 3px;
+}
+
+@media (max-width: 860px) {
+  .pf-moon {
+    display: none;
+  }
+}
+
+@media (max-width: 560px) {
+  .pf-home-link {
+    padding: 8px 13px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pf-home-link {
+    transition: none;
+  }
+}

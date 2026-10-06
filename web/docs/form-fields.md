@@ -2,17 +2,31 @@
 
 Reference: [MLH Guide - Registrations](https://guide.mlh.com/general-information/managing-registrations/registrations)
 
-### Pages
+### Where the forms live
 
-| Page | What it does |
-| ---- | ------------ |
-| `/pre-register.html` | Pre-registration form. Posts to `POST /public/pre-registrations`. |
-| `/register.html` | Full registration form, shown only while `GET /public/status` reports `registrationOpen: true`. Posts to `POST /public/registrations`. |
+The pre-registration and registration forms have no page of their own. They open in the sign-up panel on the homepage: the register button on the hero tag tows the tag to the right edge and the panel takes its place (a full-screen sheet on phones and tablets).
+
+| URL | What it does |
+| --- | ------------ |
+| `/#register` | The homepage with the sign-up panel open. Every call to action on the site links here. While `GET /public/status` reports `registrationOpen: false` the panel holds the pre-registration form (`POST /public/pre-registrations`); while it reports `true`, the full registration form (`POST /public/registrations`). |
+| `/?register=1` | Rewritten to `/#register` on load. The redirects land here because a redirect destination with a `#fragment` is not documented by Vercel. |
+| `/pre-register`, `/register`, `/interest-form` (and `.html`) | Old form pages. `vercel.json` redirects them to `/?register=1` so old links and emails keep working. |
 | `/unsubscribe.html?token=...` | Confirms, then posts the token to `POST /public/unsubscribe`. |
 | `/confirm-email?token=...` | School email confirmation, reached from the link mailed to the school address. See [School email confirmation](#school-email-confirmation). |
-| `/interest-form.html` | Redirects to `/pre-register.html` so old links keep working. |
+| `/ticket?t=...` | The check-in ticket linked from the acceptance email. |
 
-The code lives in `src/forms/`; styles are in `src/forms/forms.css` (these pages do not load `src/styles.css`). The API base URL comes from `VITE_API_BASE_URL`, falling back to `http://localhost:8080` in dev and `https://api.peachhacks.com` in production builds.
+How the panel behaves:
+
+- The URL is the state. Opening pushes `/#register`, so the browser's Back button closes the panel; Escape, the panel's Close button, clicking the parked tag or dragging it back to the left do the same. Opening from further down the page scrolls back to the hero first.
+- The panel waits for the API before showing a form. A failed status check shows a retry, never a form. If registration closes while someone is filling in the registration form, the submit is refused and the panel switches to the pre-registration form with their name, emails and school carried over.
+- Closing the panel keeps what was typed (including a chosen resume) for as long as the page stays open. Nothing is written to storage. After a successful submit the next opening starts with a fresh form.
+- The panel is a dialog: focus moves into it and stays there, the rest of the page is inert and cannot scroll, and focus returns to the control that opened it.
+
+The code lives in `src/forms/`, with the panel shell in `src/home/RegisterLayer.jsx` (dialog, focus, scroll lock), `src/home/registerPanel.js` (the URL state) and `src/forms/RegisterPanel.jsx` (which form to show). The form code is loaded the first time the panel opens, not with the homepage.
+
+Styles are split in two. `src/forms/forms.css` holds the form components and only styles `.pf-*` classes, so the homepage can load it without its own global styles changing. `src/forms/page.css` is the shell of the standalone pages (ticket, unsubscribe, confirm-email) and the only place those pages set global styles; they load both files and do not load `src/styles.css`.
+
+The API base URL comes from `VITE_API_BASE_URL`, falling back to `http://localhost:8080` in dev and `https://api.peachhacks.com` in production builds.
 
 ### Pre-registration fields
 

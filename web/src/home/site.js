@@ -1,6 +1,8 @@
 export const CONTACT_EMAIL = 'hello@peachhacks.com';
 export const SPONSOR_EMAIL = 'sponsors@peachhacks.com';
 export const SPONSOR_FORM_PATH = '/sponsor-form';
+export const REGISTER_PANEL_HASH = '#register';
+export const REGISTER_PANEL_HREF = `/${REGISTER_PANEL_HASH}`;
 
 export const EVENT_DATES = 'February 5–7, 2027';
 export const EVENT_PLACE = 'Georgia State University, Atlanta';
