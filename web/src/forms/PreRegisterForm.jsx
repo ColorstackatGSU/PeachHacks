@@ -94,7 +94,11 @@ export default function PreRegisterForm() {
               Thanks, {values.firstName.trim()}. We&apos;ll email <strong>{values.email.trim()}</strong> as soon as
               registration opens.
             </p>
-            <p className="pf-muted">A confirmation is on its way. If you don&apos;t see it, check your spam folder.</p>
+            <p>
+              One more step: check your school inbox (<strong>{values.schoolEmail.trim()}</strong>) for a
+              confirmation link and open it, so we know you&apos;re a current student.
+            </p>
+            <p className="pf-muted">If you don&apos;t see our emails, check your spam folders.</p>
             <a className="pf-button" href="/">Back to PeachHacks</a>
           </div>
         </Card>

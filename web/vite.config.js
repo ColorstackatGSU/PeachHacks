@@ -13,6 +13,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: resolve(rootDir, "index.html"),
+        confirmEmail: resolve(rootDir, "confirm-email.html"),
         interestForm: resolve(rootDir, "interest-form.html"),
         preRegister: resolve(rootDir, "pre-register.html"),
         register: resolve(rootDir, "register.html"),
