@@ -120,6 +120,8 @@ const TAG_MAX_TILT = 6;
 const TOW_ANGLE = (26 * Math.PI) / 180;
 const TAG_TOW_SPRING = { type: 'spring', stiffness: 120, damping: 13 };
 const TAG_PEEK = 72;
+const ROPE_TUCK = 18;
+const TAG_PULL_OPEN_OFFSET = 150;
 const TAG_OFFSCREEN = 120;
 const TAG_RELEASE_OFFSET = 80;
 const TAG_RELEASE_VELOCITY = 400;
@@ -147,19 +149,22 @@ function HeroTag({ registerButtonRef, tagCloseRef }) {
   const x = useMotionValue(0);
   const y = useMotionValue(0);
   const tilt = useSpring(useTransform(useVelocity(x), [-600, 600], [-TAG_MAX_TILT, TAG_MAX_TILT]), { stiffness: 180, damping: 12 });
-  const ropeTie = useRef(0);
+  const ropeTie = useRef({ panel: 0, eyeletX: 0, eyeletY: 0 });
   const tied = useMotionValue(0);
   const towTransform = useTransform(() => {
     const reach = window.innerWidth * 0.5;
     const restX = -reach * Math.cos(TOW_ANGLE);
     const restY = -reach * Math.sin(TOW_ANGLE);
     const blend = tied.get();
-    const towX = restX + (ropeTie.current - restX) * blend - x.get();
+    const { panel, eyeletX, eyeletY } = ropeTie.current;
+    const shiftX = eyeletX * blend;
+    const shiftY = eyeletY * blend;
+    const towX = restX + (panel - restX) * blend - x.get() - shiftX;
     const towY = restY * (1 - blend) - y.get();
     let bend = ((Math.atan2(towY, towX) - Math.atan2(restY, restX)) * 180) / Math.PI;
     if (bend > 180) bend -= 360;
     if (bend < -180) bend += 360;
-    return `rotate(${(26 + bend - tilt.get()).toFixed(3)}deg) scaleX(${(Math.hypot(towX, towY) / reach).toFixed(4)})`;
+    return `translate(${shiftX.toFixed(2)}px, ${shiftY.toFixed(2)}px) rotate(${(26 + bend - tilt.get()).toFixed(3)}deg) scaleX(${(Math.hypot(towX, towY) / reach).toFixed(4)})`;
   });
   const limits = { left: -window.innerWidth * 0.3, right: window.innerWidth * 0.3, top: -window.innerHeight * 0.2, bottom: window.innerHeight * 0.2 };
   const parkedLimits = { ...limits, left: 0, right: window.innerWidth };
@@ -178,12 +183,20 @@ function HeroTag({ registerButtonRef, tagCloseRef }) {
     return (isSheet() ? edge + TAG_OFFSCREEN : edge - TAG_PEEK) - restLeft();
   }, []);
 
-  // While the panel is open the rope ties to its right edge instead of
-  // running off to the left. offsetLeft/offsetWidth ignore the panel's
-  // opening transform, which getBoundingClientRect would not.
+  // While the panel is open the rope runs from the tag's eyelet to the panel's
+  // right edge, its tapered end tucked under the panel. offsetLeft/offsetWidth
+  // ignore the panel's opening transform, which getBoundingClientRect would not.
   const tieRopeToPanel = useCallback(() => {
     const panel = document.querySelector('.register-panel');
-    if (panel) ropeTie.current = panel.offsetLeft + panel.offsetWidth - restLeft();
+    const card = tagRef.current.firstElementChild;
+    const rope = card.querySelector('.banner-tow-line');
+    const eyelet = card.querySelector('.hero-tag-eyelet');
+    if (!panel) return;
+    ropeTie.current = {
+      panel: panel.offsetLeft + panel.offsetWidth - ROPE_TUCK - restLeft(),
+      eyeletX: eyelet.offsetLeft + eyelet.offsetWidth / 2,
+      eyeletY: eyelet.offsetTop + eyelet.offsetHeight / 2 - (rope.offsetTop + rope.offsetHeight / 2),
+    };
   }, []);
 
   // The tag drives itself with the motion values the drag uses, so the tow
@@ -251,7 +264,8 @@ function HeroTag({ registerButtonRef, tagCloseRef }) {
         if (Math.hypot(info.offset.x, info.offset.y) > TAG_CLICK_SLOP) draggedFar.current = true;
       }}
       onDragEnd={(event, info) => {
-        if (!parked) setTagState('is-springing', 'is-dragging');
+        if (!parked && info.offset.x > TAG_PULL_OPEN_OFFSET) openRegisterPanel(registerButtonRef.current);
+        else if (!parked) setTagState('is-springing', 'is-dragging');
         else if (info.offset.x < -TAG_RELEASE_OFFSET || info.velocity.x < -TAG_RELEASE_VELOCITY) closeRegisterPanel();
         else towTo(parkedX(), false);
       }}
