@@ -219,14 +219,11 @@ function HeroTag({ registerButtonRef, tagCloseRef }) {
   // ignore the panel's own transform, which getBoundingClientRect would not.
   const tieRopeToPanel = useCallback(() => {
     const panel = document.querySelector('.register-panel');
-    const card = tagRef.current.firstElementChild;
-    const rope = card.querySelector('.banner-tow-line');
-    const eyelet = card.querySelector('.hero-tag-eyelet');
     if (!panel) return;
     ropeTie.current = {
       panel: panel.offsetLeft + panel.offsetWidth - ROPE_TUCK - restLeft(),
-      eyeletX: eyelet.offsetLeft + eyelet.offsetWidth / 2,
-      eyeletY: eyelet.offsetTop + eyelet.offsetHeight / 2 - (rope.offsetTop + rope.offsetHeight / 2),
+      eyeletX: 0,
+      eyeletY: 0,
     };
   }, []);
 
@@ -352,7 +349,6 @@ function HeroTag({ registerButtonRef, tagCloseRef }) {
     >
       <div className="hero-card window-card">
         <motion.span className="banner-tow-line" aria-hidden="true" style={{ transform: towTransform }} />
-        <span className="hero-tag-eyelet" aria-hidden="true" />
         {parked && !sheet && (
           <button type="button" className="tag-close" ref={tagCloseRef} aria-label="Close the sign-up form" onClick={closeRegisterPanel}>
             <span className="tag-close-mark" aria-hidden="true">✕</span>
@@ -549,11 +545,11 @@ function App() {
               <img className="top-cloud cloud-two" src="/assets/Cloud.svg" alt="" />
               <img className="top-cloud cloud-three" src="/assets/Cloud.svg" alt="" />
             </div>
-            <img className="hero-front-cloud hero-front-cloud-left hero-fx" src="/assets/Cloud.svg" alt="" aria-hidden="true" />
-            <img className="hero-front-cloud hero-front-cloud-right hero-fx" src="/assets/Cloud.svg" alt="" aria-hidden="true" />
             <div className="hero-stack">
+              <div className="hero-circle-shell hero-fx" aria-hidden="true">
+                <div className="hero-logo-circle" />
+              </div>
               <div className="hero-logo-shell hero-fx">
-                <div className="hero-logo-circle" aria-hidden="true" />
                 <img className="hero-logo" src="/assets/logo.svg" alt="PeachHacks" width="210" height="79" />
               </div>
               <div className="hero-card-shell hero-fx" ref={cardShellRef}>
