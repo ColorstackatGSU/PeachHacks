@@ -23,14 +23,11 @@ export function HeroCardContent({ registerButtonRef, inert = false }) {
         <span className="hero-kicker-dot" aria-hidden="true">·</span>{' '}
         <span className="hero-kicker-part">{EVENT_PLACE}</span>
       </p>
-      <p className="hero-theme">
-        <span className="hero-theme-label">Theme</span>{' '}
-        <span className="hero-theme-name">{EVENT_THEME}</span>
-      </p>
-      <h1 id="page-title">A free weekend hackathon for college students</h1>
+      <p className="hero-theme">{EVENT_THEME}</p>
+      <h1 id="page-title">Join PeachHacks!</h1>
       <p className="intro-copy">
-        Build something from scratch with a team, with workshops, mentors and meals along the way. No experience needed.{' '}
-        {cta.open ? 'Registration is open.' : 'Pre-register and we’ll email you when registration opens.'}
+        A weekend of learning, building, and networking for students, mentors, and industry professionals, hosted by ColorStack at Georgia State University.{' '}
+        {cta.open ? 'Registration is open.' : 'Pre-register and we’ll email you the moment registration opens.'}
       </p>
       <button
         type="button"
@@ -43,7 +40,6 @@ export function HeroCardContent({ registerButtonRef, inert = false }) {
       >
         {cta.label}
       </button>
-      <a className="hero-faq-link" href="#faq">New to hackathons? Start with the FAQ</a>
       <a className="scroll-cue" href="#about" aria-label="Next section: About">
         <span className="scroll-cue-chevron" aria-hidden="true" />
       </a>

@@ -101,9 +101,7 @@ main:focus { outline: none; }
 .tag-close:focus-visible { outline: none; }
 .tag-close:focus-visible .tag-close-mark { outline: 3px solid var(--navy); outline-offset: 3px; box-shadow: 0 0 0 9px rgba(244, 246, 237, .9); }
 .hero-kicker { margin: 0 0 10px; color: #233e56; font-size: clamp(12px, 1vw, 14px); font-weight: 800; line-height: 1.4; letter-spacing: .1em; text-transform: uppercase; text-wrap: balance; }
-.hero-theme { display: inline-flex; flex-wrap: wrap; align-items: baseline; justify-content: center; gap: 0 10px; margin: 0 0 12px; padding: 5px 18px 7px; border-radius: 999px; background: var(--navy); box-shadow: 0 3px 0 rgba(0, 15, 30, .22); color: var(--peach); }
-.hero-theme-label { color: var(--mist); font-size: 12px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
-.hero-theme-name { font-family: "Agbalumo", system-ui; font-size: clamp(19px, 1.9vw, 26px); line-height: 1.2; }
+.hero-theme { display: inline-block; margin: 0 0 12px; padding: 5px 18px 7px; border-radius: 999px; background: var(--navy); box-shadow: 0 3px 0 rgba(0, 15, 30, .22); color: var(--peach); font-family: "Agbalumo", system-ui; font-size: clamp(19px, 1.9vw, 26px); line-height: 1.2; }
 .intro h1 { position: relative; z-index: 1; max-width: 100%; margin: 0 0 12px; color: #233e56; font-family: 'Open Sans', sans-serif; font-size: clamp(28px, 2.9vw, 40px); font-weight: 800; line-height: 1.06; letter-spacing: -.04em; text-wrap: balance; overflow-wrap: break-word; text-align: center; }
 .intro-copy { max-width: 58ch; margin: 0; color: #233e56; font-size: 17px; line-height: 1.5; }
 .register-button { position: relative; z-index: 1; display: inline-flex; align-items: center; gap: 12px; margin-top: 20px; margin-bottom: 8px; padding: 15px 28px; border: 0; cursor: pointer; outline: 2px solid var(--navy); outline-offset: 5px; background: var(--peach); color: var(--navy); border-radius: 2px; font-family: "Agbalumo", system-ui; font-size: 20px; font-weight: 400; letter-spacing: 0; text-transform: none; -webkit-user-drag: none; transition: transform .2s, background .2s, box-shadow .2s; }
@@ -111,13 +109,10 @@ main:focus { outline: none; }
 .register-button:hover { background: #ffb341; transform: translateY(-3px) rotate(1deg); }
 .register-button:active { background: #f39612; transform: translateY(1px) scale(.98); transition-duration: .08s; }
 .register-button:focus-visible { outline: 4px solid var(--navy); outline-offset: 5px; box-shadow: 0 0 0 13px rgba(244, 246, 237, .9); }
-.hero-faq-link { display: inline-flex; align-items: center; min-height: 44px; padding: 0 8px; border-radius: 4px; color: #233e56; font-size: 14px; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; -webkit-user-drag: none; transition: color .2s ease; }
-.hero-faq-link:hover { color: var(--navy); }
-.hero-faq-link:focus-visible { outline: 2px solid var(--navy); outline-offset: 0; }
 .scroll-cue { display: flex; align-items: center; justify-content: center; min-width: 44px; min-height: 32px; margin: -6px 0 0; padding: 4px 18px 10px; border-radius: 4px; color: rgba(35, 62, 86, .7); -webkit-user-drag: none; transition: color .2s ease; }
 .scroll-cue:hover { color: var(--navy); }
 .scroll-cue:focus-visible { outline: 2px solid var(--navy); outline-offset: 2px; }
-.hero-tag.is-draggable .register-button, .hero-tag.is-draggable .hero-faq-link, .hero-tag.is-draggable .scroll-cue { cursor: pointer; }
+.hero-tag.is-draggable .register-button, .hero-tag.is-draggable .scroll-cue { cursor: pointer; }
 .scroll-cue-chevron { width: 11px; height: 11px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; rotate: 45deg; animation: cue-bounce 1.8s ease-in-out infinite; }
 
 .section-stars { position: absolute; z-index: 0; inset: 0; overflow: hidden; pointer-events: none; transform: translate3d(calc(var(--star-pointer-x, 0) * -4px), calc(var(--star-pointer-y, 0) * -3px), 0); transition: transform .6s cubic-bezier(.2, .8, .2, 1); }
@@ -300,7 +295,6 @@ main:focus { outline: none; }
   .intro h1 { margin-bottom: 8px; font-size: clamp(26px, 2.6vw, 34px); }
   .intro-copy { font-size: 16px; }
   .register-button { margin-top: 14px; margin-bottom: 2px; padding: 11px 24px; }
-  .hero-faq-link { min-height: 36px; }
 }
 
 .register-layer { --park-space: 172px; position: fixed; z-index: 70; top: 0; right: 0; left: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; height: var(--vv-height, 100%); padding: calc(var(--header-h) + 8px) var(--park-space) 28px clamp(24px, calc(50vw - 360px), var(--park-space)); pointer-events: none; visibility: hidden; transform: translateY(var(--vv-top, 0)); transition: visibility 0s .7s; }
