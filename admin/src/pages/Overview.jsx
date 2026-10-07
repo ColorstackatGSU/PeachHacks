@@ -1,32 +1,17 @@
 import { useState } from "react";
 import { BarList, DayChart, dayRange } from "../components/Charts.jsx";
 import { ShareBar } from "../components/HostShare.jsx";
-import { ErrorBlock, LoadingBlock, PageHeader, Spinner } from "../components/ui.jsx";
+import { ErrorBlock, LoadingBlock, PageHeader, Spinner, Tile } from "../components/ui.jsx";
 import { formatShare, formatTarget, gapText } from "../lib/acceptance.js";
 import { formatNumber, statusLabel } from "../lib/format.js";
 import { useAcceptanceSummary, useStats } from "../lib/hooks.js";
 import { href } from "../lib/router.js";
 
-function StatTile({ label, value, note, to }) {
-  return (
-    <div className="tile">
-      <span className="tile-label">{label}</span>
-      <strong className="tile-value">{formatNumber(value)}</strong>
-      {note && <span className="tile-note">{note}</span>}
-      {to && (
-        <a className="tile-link" href={href(to)}>
-          View list
-        </a>
-      )}
-    </div>
-  );
-}
-
 function HostShareTile({ summary }) {
   const share = summary.shares.accepted;
-  const state = share.total === 0 ? "is-empty" : share.met ? "is-met" : "is-short";
+  const state = share.total === 0 ? "" : share.met ? " is-met" : " is-short";
   return (
-    <div className={`tile share-tile ${state}`}>
+    <div className={`tile share-tile${state}`}>
       <span className="tile-label">Host-school share</span>
       <strong className="tile-value">{formatShare(share.share)}</strong>
       <ShareBar share={share} target={summary.hostSchool.target} />
@@ -83,7 +68,7 @@ export default function Overview() {
 
       {stats.error && <ErrorBlock title="Could not refresh; showing the last numbers loaded" error={stats.error} onRetry={stats.reload} />}
 
-      <section className={`gate-strip ${data.registrationOpen ? "is-open" : "is-closed"}`} aria-label="Registration status">
+      <section className={`gate-strip${data.registrationOpen ? " is-open" : ""}`} aria-label="Registration status">
         <span className="gate-dot" aria-hidden="true" />
         <div>
           <strong>Registration is {data.registrationOpen ? "open" : "closed"}</strong>
@@ -99,26 +84,26 @@ export default function Overview() {
       </section>
 
       <section className="tiles" aria-label="Headline numbers">
-        <StatTile label="Pre-registrations" value={preTotal} note={confirmedNote(pre, preTotal)} to="/pre-registrations" />
-        <StatTile label="Registrations" value={regTotal} note={confirmedNote(reg, regTotal)} to="/registrations" />
+        <Tile label="Pre-registrations" value={preTotal} note={confirmedNote(pre, preTotal)} to="/pre-registrations" />
+        <Tile label="Registrations" value={regTotal} note={confirmedNote(reg, regTotal)} to="/registrations" />
         {acceptance.data && <HostShareTile summary={acceptance.data} />}
-        <StatTile
+        <Tile
           label="Pre-registered, not registered"
           value={notRegistered}
           note={converted === null ? "No pre-registrations yet" : `${converted}% of pre-registrants have registered`}
         />
-        <StatTile
+        <Tile
           label="Checked in"
           value={checkedIn}
           note={regTotal > 0 ? `${Math.round((checkedIn / regTotal) * 100)}% of registrations, general check-in` : "General check-in"}
         />
-        <StatTile label="Resumes uploaded" value={reg.withResume || 0} note="Visible to organizers" />
-        <StatTile
+        <Tile label="Resumes uploaded" value={reg.withResume || 0} note="Visible to organizers" />
+        <Tile
           label="Resumes opted in"
           value={reg.resumeOptIn || 0}
           note="May go to sponsors once the person is accepted"
         />
-        <StatTile label="Unsubscribed" value={pre.unsubscribed || 0} note="Pre-registrants skipped by bulk email" />
+        <Tile label="Unsubscribed" value={pre.unsubscribed || 0} note="Pre-registrants skipped by bulk email" />
       </section>
 
       <section className="card" aria-labelledby="over-time-heading">

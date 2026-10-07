@@ -185,8 +185,8 @@ Mock mode cannot be turned on in production: it is gated on Vite's
   mode the frame holds a simplified stand-in.
 - **Email kinds**: the composer's first choice is the kind of email. An **event
   update** is logistics for people who are coming: it is always delivered, has no
-  unsubscribe link, and can only go to Registrants or Accepted hackers (accepted
-  and already sent their acceptance email). An **announcement** is news and
+  unsubscribe link, and can only go to Accepted hackers (accepted and already
+  sent their acceptance email), so its audience is fixed. An **announcement** is news and
   promotion: people who unsubscribed are skipped and it carries the unsubscribe
   link. The audience list shows only the audiences the kind allows, the live
   recipient count is asked for that kind (so the same audience can count
@@ -228,4 +228,8 @@ header and reading `Content-Disposition` on the CSV export responses if the
 server-chosen file names should be used.
 
 The page sends `<meta name="robots" content="noindex">`, and `vercel.json` adds
-a matching `X-Robots-Tag` header plus basic security headers.
+a matching `X-Robots-Tag` header plus security headers, including a
+`Content-Security-Policy`. It allows this site's own files, Google Fonts, the API
+at `https://api.peachhacks.com` and images from `https://www.peachhacks.com` (the
+logo in the email preview). If the API or the public site moves to another
+origin, update the policy in `vercel.json` to match.

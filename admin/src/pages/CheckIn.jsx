@@ -25,12 +25,14 @@ function initialMode() {
   return MOCK_MODE || (phone && cameraSupported()) ? "scan" : "search";
 }
 
+const isRefusal = (error) => error?.code === "NOT_ACCEPTED";
+
+// `status` is left out when the API refused a row that still read as accepted.
 function NotAccepted({ status }) {
-  if (status === "ACCEPTED") return null;
   return (
     <p className="checkin-warning">
-      <StatusBadge status={status} />
-      <span>Not accepted. Call an organizer before letting them in.</span>
+      {status && <StatusBadge status={status} />}
+      <span>Not accepted. They can’t be checked in until an organizer accepts them.</span>
     </p>
   );
 }
@@ -40,7 +42,7 @@ function MissingGeneral({ event, item }) {
   return <p className="checkin-note">Has not done general check-in yet. Send them to the front desk afterwards.</p>;
 }
 
-function ScanResult({ scan, event, busy, onOverride, onRetry, onDismiss }) {
+function ScanResult({ scan, event, busy, onRetry, onDismiss }) {
   const { outcome, item, error } = scan;
   let tone = "bad";
   let title = "Ticket not recognised";
@@ -67,7 +69,6 @@ function ScanResult({ scan, event, busy, onOverride, onRetry, onDismiss }) {
       <>
         <p className="scan-name">{fullName(item)}</p>
         <p>{item.school}</p>
-        <NotAccepted status={item.status} />
         <MissingGeneral event={event} item={item} />
       </>
     );
@@ -85,25 +86,20 @@ function ScanResult({ scan, event, busy, onOverride, onRetry, onDismiss }) {
       </>
     );
   } else if (outcome === "NOT_ACCEPTED") {
-    title = "Not accepted. Call an organizer";
+    title = "Not accepted";
     body = (
       <>
         <p className="scan-name">{fullName(item)}</p>
         <p>
           {item.school} · status: {statusLabel(item.status)}
         </p>
-        <p>They have not been checked in.</p>
+        <p>They have not been checked in, and can’t be until an organizer accepts them.</p>
       </>
     );
     actions = (
-      <>
-        <button type="button" className="btn btn-big" disabled={busy} onClick={onOverride}>
-          {busy ? "Checking in…" : "Check in anyway"}
-        </button>
-        <button type="button" className="btn btn-primary btn-big" disabled={busy} onClick={onDismiss}>
-          Next ticket
-        </button>
-      </>
+      <button type="button" className="btn btn-primary btn-big" disabled={busy} onClick={onDismiss}>
+        Next ticket
+      </button>
     );
   }
 
@@ -136,7 +132,7 @@ function ScanMode({ event, eventId, onCheckedIn, onUseSearch }) {
   }, []);
 
   const submit = useCallback(
-    async (code, override = false) => {
+    async (code) => {
       if (busyRef.current) return;
       busyRef.current = true;
       showingRef.current = true;
@@ -144,7 +140,7 @@ function ScanMode({ event, eventId, onCheckedIn, onUseSearch }) {
       last.current = { code, at: Date.now() };
       setBusy(true);
       try {
-        const result = await api.scanTicket({ code, eventId, override });
+        const result = await api.scanTicket({ code, eventId });
         const outcome = result?.result;
         setScan({ code, outcome, item: result?.item || null });
         signal(outcome === "CHECKED_IN" ? "success" : "problem");
@@ -210,7 +206,6 @@ function ScanMode({ event, eventId, onCheckedIn, onUseSearch }) {
           scan={scan}
           event={event}
           busy={busy}
-          onOverride={() => submit(scan.code, true)}
           onRetry={() => submit(scan.code)}
           onDismiss={clear}
         />
@@ -225,15 +220,17 @@ function ScanMode({ event, eventId, onCheckedIn, onUseSearch }) {
 
 function PersonRow({ item, event, pending, error, onCheckIn, onUndo }) {
   const checkedIn = Boolean(item.checkedInAt);
+  const accepted = item.status === "ACCEPTED";
   return (
     <li className={`person${checkedIn ? " is-in" : ""}`}>
       <div className="person-main">
         <strong className="person-name">{fullName(item)}</strong>
         <span className="person-school">{item.school}</span>
         <span className="person-email">{item.email}</span>
-        <NotAccepted status={item.status} />
+        {!accepted && <NotAccepted status={item.status} />}
+        {accepted && isRefusal(error) && <NotAccepted />}
         <MissingGeneral event={event} item={item} />
-        {error && (
+        {error && !isRefusal(error) && (
           <p className="inline-error" role="alert">
             {checkedIn ? "Could not undo" : "Could not check in"}: {errorText(error)}
           </p>
@@ -251,15 +248,17 @@ function PersonRow({ item, event, pending, error, onCheckIn, onUndo }) {
             </button>
           </>
         ) : (
-          <button
-            type="button"
-            className="btn btn-primary btn-big"
-            disabled={pending}
-            aria-label={`Check in ${fullName(item)}`}
-            onClick={onCheckIn}
-          >
-            {pending ? "Checking in…" : error ? "Try again" : "Check in"}
-          </button>
+          accepted && (
+            <button
+              type="button"
+              className="btn btn-primary btn-big"
+              disabled={pending}
+              aria-label={`Check in ${fullName(item)}`}
+              onClick={onCheckIn}
+            >
+              {pending ? "Checking in…" : error ? "Try again" : "Check in"}
+            </button>
+          )
         )}
       </div>
     </li>
@@ -292,6 +291,8 @@ function SearchMode({ event, list, search, setSearch, page, setPage, changes, on
     } catch (error) {
       setErrors((prev) => ({ ...prev, [item.id]: error }));
       if (!undo) signal("problem");
+      // The row was out of date; fetch its real status.
+      if (isRefusal(error)) list.reload();
     } finally {
       setPending((prev) => ({ ...prev, [item.id]: false }));
     }

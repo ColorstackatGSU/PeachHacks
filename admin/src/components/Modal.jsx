@@ -62,7 +62,6 @@ export function ConfirmDialog({
   title,
   children,
   confirmLabel = "Confirm",
-  cancelLabel = "Cancel",
   danger = false,
   busy = false,
   error = null,
@@ -77,7 +76,7 @@ export function ConfirmDialog({
       footer={
         <>
           <button type="button" className="btn" data-autofocus disabled={busy} onClick={onCancel}>
-            {cancelLabel}
+            Cancel
           </button>
           <button type="button" className={`btn ${danger ? "btn-danger" : "btn-primary"}`} disabled={busy} onClick={onConfirm}>
             {busy ? "Working…" : confirmLabel}

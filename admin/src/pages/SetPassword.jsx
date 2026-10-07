@@ -3,6 +3,7 @@ import { api } from "../api/client.js";
 import { href } from "../lib/router.js";
 
 export const MIN_PASSWORD_LENGTH = 10;
+export const MAX_PASSWORD_LENGTH = 72;
 
 export default function SetPassword({ token, onDone }) {
   const [link, setLink] = useState({ status: token ? "checking" : "invalid", account: null, error: null });
@@ -34,8 +35,8 @@ export default function SetPassword({ token, onDone }) {
       setError(`Use at least ${MIN_PASSWORD_LENGTH} characters.`);
       return;
     }
-    if (password.length > 72) {
-      setError("Use at most 72 characters.");
+    if (password.length > MAX_PASSWORD_LENGTH) {
+      setError(`Use at most ${MAX_PASSWORD_LENGTH} characters.`);
       return;
     }
     if (password !== repeat) {
@@ -105,7 +106,7 @@ export default function SetPassword({ token, onDone }) {
                   type={show ? "text" : "password"}
                   autoComplete="new-password"
                   minLength={MIN_PASSWORD_LENGTH}
-                  maxLength={72}
+                  maxLength={MAX_PASSWORD_LENGTH}
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}

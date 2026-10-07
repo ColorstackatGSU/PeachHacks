@@ -7,7 +7,7 @@ function subscribe(callback) {
 
 const getHash = () => window.location.hash;
 
-export function parseHash(hash) {
+function parseHash(hash) {
   const raw = hash.replace(/^#/, "") || "/";
   const [rawPath, search = ""] = raw.split("?");
   const trimmed = rawPath.replace(/\/+$/, "");

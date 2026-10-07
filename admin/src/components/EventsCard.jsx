@@ -1,9 +1,9 @@
 import { useId, useState } from "react";
 import { api } from "../api/client.js";
 import { ConfirmDialog, Modal } from "./Modal.jsx";
-import { ErrorBlock, InlineError, LoadingBlock, Tag, useToast } from "./ui.jsx";
-import { errorText, formatDateTime, formatNumber, plural } from "../lib/format.js";
-import { useEvents } from "../lib/hooks.js";
+import { ErrorBlock, FieldError, InlineError, LoadingBlock, Tag, errorProps, useToast } from "./ui.jsx";
+import { formatDateTime, formatNumber, plural } from "../lib/format.js";
+import { useEvents, useExport } from "../lib/hooks.js";
 
 const pad = (n) => String(n).padStart(2, "0");
 
@@ -34,14 +34,9 @@ function EventFields({ ids, form, setForm, fieldErrors }) {
           placeholder="Intro to React workshop"
           value={form.name}
           onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
-          aria-invalid={fieldErrors.name ? true : undefined}
-          aria-describedby={fieldErrors.name ? `${ids}-name-error` : undefined}
+          {...errorProps(fieldErrors.name, `${ids}-name-error`)}
         />
-        {fieldErrors.name && (
-          <p id={`${ids}-name-error`} className="inline-error">
-            {fieldErrors.name}
-          </p>
-        )}
+        <FieldError id={`${ids}-name-error`} message={fieldErrors.name} />
       </div>
       <div className="field">
         <label htmlFor={`${ids}-starts`}>Starts (optional)</label>
@@ -50,9 +45,9 @@ function EventFields({ ids, form, setForm, fieldErrors }) {
           type="datetime-local"
           value={form.startsAt}
           onChange={(e) => setForm((prev) => ({ ...prev, startsAt: e.target.value }))}
-          aria-invalid={fieldErrors.startsAt ? true : undefined}
+          {...errorProps(fieldErrors.startsAt, `${ids}-starts-error`)}
         />
-        {fieldErrors.startsAt && <p className="inline-error">{fieldErrors.startsAt}</p>}
+        <FieldError id={`${ids}-starts-error`} message={fieldErrors.startsAt} />
       </div>
     </>
   );
@@ -76,7 +71,7 @@ export function EventsCard() {
   const [removing, setRemoving] = useState(null);
   const [removeBusy, setRemoveBusy] = useState(false);
   const [removeError, setRemoveError] = useState(null);
-  const [exporting, setExporting] = useState(null);
+  const [exporting, runExport] = useExport();
 
   const rows = Array.isArray(events.data) ? events.data : [];
 
@@ -141,16 +136,7 @@ export function EventsCard() {
     }
   };
 
-  const exportAttendees = async (row) => {
-    setExporting(row.id);
-    try {
-      await api.exportEventAttendees(row.id);
-    } catch (error) {
-      notify(`Export failed: ${errorText(error)}`, "error");
-    } finally {
-      setExporting(null);
-    }
-  };
+  const exportAttendees = (row) => runExport(() => api.exportEventAttendees(row.id), row.id);
 
   return (
     <section className="card" aria-labelledby={`${ids}-title`}>
@@ -250,7 +236,7 @@ export function EventsCard() {
         <div className="admin-form-grid">
           <EventFields ids={`${ids}-new`} form={form} setForm={setForm} fieldErrors={fieldErrors} />
         </div>
-        <InlineError>{formError ? errorText(formError) : null}</InlineError>
+        <InlineError error={formError} />
         <button type="submit" className="btn btn-primary" disabled={adding}>
           {adding ? "Adding…" : "Add workshop"}
         </button>
