@@ -462,6 +462,83 @@ noscript {
   cursor: pointer;
 }
 
+.pf-file {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: center;
+}
+
+.pf-file-button {
+  display: inline-flex;
+  position: relative;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: 10px 18px;
+  border: 2px solid var(--pf-border);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--pf-navy);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.4;
+  cursor: pointer;
+  transition: background .15s, border-color .15s;
+}
+
+.pf-file-button:hover {
+  border-color: var(--pf-navy);
+  background: var(--pf-peach-light);
+}
+
+.pf-file-button:has(input[aria-invalid="true"]) {
+  border-color: var(--pf-error);
+  background-color: #fff8f7;
+}
+
+.pf-file-button:has(input:focus-visible) {
+  border-color: var(--pf-navy);
+  outline: 3px solid var(--pf-blue);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 8px rgb(252 163 36 / 45%);
+}
+
+/* Hidden from sight only: it must stay focusable and clickable through its label. */
+.pf-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.pf-file-chosen {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  align-items: center;
+  min-width: 0;
+  margin: 0;
+  color: var(--pf-navy);
+  font-size: 15px;
+  line-height: 1.4;
+}
+
+.pf-file-name {
+  min-width: 0;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.pf-file-size {
+  color: var(--pf-muted);
+}
+
 .pf-section {
   border: 2px solid rgb(35 62 86 / 28%);
   border-radius: 10px;
