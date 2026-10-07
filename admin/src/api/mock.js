@@ -167,7 +167,12 @@ const admins = [
 ];
 const MOCK_PASSWORD_URL = `${window.location.origin}/#/set-password?token=mock`;
 const settings = { registrationOpen: false, previewActive: false };
-const discord = { configured: true, verified: 12, messagePostedAt: null };
+const discord = {
+  configured: true,
+  verified: 12,
+  messagePostedAt: null,
+  message: "**Verify to get into PeachHacks**\nPress Verify to open the hacker channels.",
+};
 // One token per role so a reload keeps whichever account was signed in.
 const TOKENS = { "mock-token": admins[0], "mock-volunteer-token": admins[2] };
 const sessions = new Set(Object.keys(TOKENS));
@@ -806,6 +811,7 @@ function handle(method, path, params, body, token) {
   if (path === "/admin/discord") return respond(200, discord);
   if (path === "/admin/discord/verification-message" && method === "POST") {
     discord.messagePostedAt = new Date().toISOString();
+    if (body.message) discord.message = body.message;
     return respond(200, discord);
   }
 

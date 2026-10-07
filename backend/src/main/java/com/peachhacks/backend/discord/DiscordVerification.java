@@ -1,9 +1,5 @@
 package com.peachhacks.backend.discord;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.SecureRandom;
-import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.Collection;
@@ -13,11 +9,9 @@ import java.util.Optional;
 import java.util.UUID;
 
 import com.peachhacks.backend.common.ApiException;
-import com.peachhacks.backend.common.RateLimiter;
 import com.peachhacks.backend.common.Texts;
-import com.peachhacks.backend.common.Tokens;
 import com.peachhacks.backend.config.DiscordProperties;
-import com.peachhacks.backend.email.MailService;
+import com.peachhacks.backend.config.PlatformProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -34,49 +28,41 @@ import org.springframework.web.client.RestClientResponseException;
 
 /**
  * Gives the Hacker role in the PeachHacks Discord to people whose registration is
- * ACCEPTED. A person proves which registration is theirs by entering a code mailed to the
- * address they applied with. Entering a code from another Discord account moves the link:
- * whoever can read the inbox decides which account holds the role.
+ * ACCEPTED. A Discord account is tied to a registration in one place only: "Connect
+ * Discord" on the hacker platform, where the hacker is signed in and Discord vouches for
+ * the account. The Verify button in Discord looks that link up; it never creates one.
+ * Connecting a second Discord account moves the link, and the first account loses the role.
  */
 @Service
 public class DiscordVerification {
 
-	public enum Outcome {
+	public enum Check {
 
-		VERIFIED, ROLE_NOT_GIVEN, WRONG_CODE, NO_CODE, NOT_ACCEPTED
+		VERIFIED, NOT_ACCEPTED, NOT_CONNECTED
 
 	}
 
-	public record Status(boolean configured, long verified, Instant messagePostedAt) {
+	/** message is the text of the Verify message as it will be (or was) posted. */
+	public record Status(boolean configured, long verified, Instant messagePostedAt, String message) {
 	}
 
 	static final String VERIFY_BUTTON = "peachbot:verify";
 
-	static final int CODE_LENGTH = 6;
+	static final int MAX_MESSAGE_LENGTH = 900;
 
-	static final Duration CODE_VALID_FOR = Duration.ofMinutes(15);
+	static final String DEFAULT_MESSAGE = """
+			**Verify to get into PeachHacks**
+			Press Verify to open the hacker channels. If your Discord account is not connected to your \
+			application yet, the button shows you where to do that on the hacker platform.
 
-	private static final int MAX_ATTEMPTS = 5;
+			Verification is for accepted hackers. Acceptance emails come from PeachHacks; once you have \
+			yours, come back here and verify.""";
 
-	private static final int CODES_PER_ACCOUNT = 3;
+	private static final String POSTED_SETTING = "discord_verification_message";
 
-	private static final Duration ACCOUNT_WINDOW = Duration.ofMinutes(10);
-
-	private static final int CODES_PER_EMAIL = 3;
-
-	private static final Duration EMAIL_WINDOW = Duration.ofHours(1);
-
-	private static final String MESSAGE_SETTING = "discord_verification_message";
-
-	private static final SecureRandom RANDOM = new SecureRandom();
+	private static final String TEXT_SETTING = "discord_verification_text";
 
 	private static final Logger log = LoggerFactory.getLogger(DiscordVerification.class);
-
-	private record Accepted(UUID id, String firstName) {
-	}
-
-	private record Pending(UUID registrationId, String codeHash) {
-	}
 
 	private record Member(String userId, boolean accepted) {
 	}
@@ -87,22 +73,19 @@ public class DiscordVerification {
 
 	private final DiscordProperties properties;
 
-	private final MailService mailService;
-
-	private final RateLimiter rateLimiter;
+	private final PlatformProperties platform;
 
 	private final TaskExecutor executor;
 
 	private final TransactionTemplate transaction;
 
 	public DiscordVerification(JdbcClient jdbc, DiscordClient client, DiscordProperties properties,
-			MailService mailService, RateLimiter rateLimiter, @Qualifier("discordExecutor") TaskExecutor executor,
+			PlatformProperties platform, @Qualifier("discordExecutor") TaskExecutor executor,
 			PlatformTransactionManager transactionManager) {
 		this.jdbc = jdbc;
 		this.client = client;
 		this.properties = properties;
-		this.mailService = mailService;
-		this.rateLimiter = rateLimiter;
+		this.platform = platform;
 		this.executor = executor;
 		this.transaction = new TransactionTemplate(transactionManager);
 		if (properties.configured()) {
@@ -113,154 +96,113 @@ public class DiscordVerification {
 	public Status status() {
 		long verified = jdbc.sql("select count(*) from discord_links").query(Long.class).single();
 		Instant postedAt = jdbc.sql("select updated_at from settings where key = :key")
-			.param("key", MESSAGE_SETTING)
+			.param("key", POSTED_SETTING)
 			.query(OffsetDateTime.class)
 			.optional()
 			.map(OffsetDateTime::toInstant)
 			.orElse(null);
-		return new Status(properties.configured(), verified, postedAt);
+		return new Status(properties.configured(), verified, postedAt, setting(TEXT_SETTING).orElse(DEFAULT_MESSAGE));
 	}
 
-	/** Posts the message with the Verify button and takes down the one posted before it. */
-	public void postVerificationMessage() {
+	/** Where the Verify button sends someone whose Discord account is not connected yet. */
+	public String connectUrl() {
+		return platform.baseUrl() + "/#/discord";
+	}
+
+	/**
+	 * Saves the text and puts it in Discord: the message that is already up is edited in
+	 * place, so it keeps its position in the channel; if it is gone, a new one is posted.
+	 * A null text keeps the text as it is.
+	 */
+	public void publishVerificationMessage(String text) {
 		if (!properties.configured()) {
 			throw ApiException.validation("PeachBot is not set up on the server yet.", null);
 		}
+		if (text != null) {
+			String cleaned = Texts.clean(text.replace("\r\n", "\n"));
+			if (cleaned == null) {
+				throw ApiException.invalidField("message", "Write the message people will see above the Verify button.");
+			}
+			if (cleaned.length() > MAX_MESSAGE_LENGTH) {
+				throw ApiException.invalidField("message",
+						"The message can be at most " + MAX_MESSAGE_LENGTH + " characters.");
+			}
+			put(TEXT_SETTING, cleaned);
+		}
+		Map<String, Object> message = verificationMessage(setting(TEXT_SETTING).orElse(DEFAULT_MESSAGE));
 		String channel = properties.verificationChannelId();
-		Optional<String> previous = jdbc.sql("select value from settings where key = :key")
-			.param("key", MESSAGE_SETTING)
-			.query(String.class)
-			.optional();
-		String messageId;
+		String[] posted = setting(POSTED_SETTING).map(value -> value.split("/")).orElse(new String[0]);
 		try {
-			messageId = client.postMessage(channel, verificationMessage());
+			if (posted.length == 2 && posted[0].equals(channel) && edited(channel, posted[1], message)) {
+				put(POSTED_SETTING, channel + "/" + posted[1]);
+				return;
+			}
+			put(POSTED_SETTING, channel + "/" + client.postMessage(channel, message));
 		}
 		catch (RestClientException ex) {
 			throw new ApiException(HttpStatus.BAD_GATEWAY, "DISCORD_ERROR",
 					"Discord did not take the message: " + describe(ex));
 		}
-		jdbc.sql("""
-				insert into settings (key, value) values (:key, :value)
-				on conflict (key) do update set value = excluded.value, updated_at = now()
-				""").param("key", MESSAGE_SETTING).param("value", channel + "/" + messageId).update();
-		previous.map(value -> value.split("/")).filter(parts -> parts.length == 2).ifPresent(parts -> {
+		if (posted.length == 2 && !posted[0].equals(channel)) {
 			try {
-				client.deleteMessage(parts[0], parts[1]);
+				client.deleteMessage(posted[0], posted[1]);
 			}
 			catch (RestClientException ex) {
-				log.info("The previous verification message was not removed: {}", describe(ex));
+				log.info("The verification message in the previous channel was not removed: {}", describe(ex));
 			}
-		});
+		}
 	}
 
-	private static Map<String, Object> verificationMessage() {
-		return Map.of("content", """
-				**Verify to get into PeachHacks**
-				The hacker channels open once you verify. Press the button, enter the email you applied with, \
-				then type in the 6-digit code we send to that address.
+	/** False when the message no longer exists (someone deleted it in Discord). */
+	private boolean edited(String channel, String messageId, Map<String, Object> message) {
+		try {
+			client.editMessage(channel, messageId, message);
+			return true;
+		}
+		catch (RestClientResponseException ex) {
+			if (ex.getStatusCode().value() == HttpStatus.NOT_FOUND.value()) {
+				return false;
+			}
+			throw ex;
+		}
+	}
 
-				Verification is for accepted hackers. Acceptance emails come from PeachHacks; once you have \
-				yours, come back here and verify.""", "allowed_mentions", Map.of("parse", List.of()), "components",
+	private static Map<String, Object> verificationMessage(String text) {
+		return Map.of("content", text, "allowed_mentions", Map.of("parse", List.of()), "components",
 				List.of(Map.of("type", 1, "components", List.of(
 						Map.of("type", 2, "style", 1, "label", "Verify", "custom_id", VERIFY_BUTTON)))));
 	}
 
 	/**
-	 * For someone who verified before (and, say, left the server and came back): gives the
-	 * role again in the background, without a code. False when there is nothing to restore.
+	 * What the Verify button does: looks the Discord account up among the accounts hackers
+	 * connected on the platform. For an accepted hacker the role is given in the background
+	 * (again, if they left the server and came back).
 	 */
-	public boolean restore(String userId) {
-		boolean accepted = jdbc.sql("""
-				select exists (select 1 from discord_links l join registrations r on r.id = l.registration_id
-					where l.discord_user_id = :userId and r.status = 'ACCEPTED')
-				""").param("userId", userId).query(Boolean.class).single();
-		if (!accepted) {
-			return false;
+	public Check verify(String userId) {
+		Optional<Boolean> accepted = jdbc.sql("""
+				select r.status = 'ACCEPTED' from discord_links l
+				join registrations r on r.id = l.registration_id
+				where l.discord_user_id = :userId
+				""").param("userId", userId).query(Boolean.class).optional();
+		if (accepted.isEmpty()) {
+			return Check.NOT_CONNECTED;
+		}
+		if (!accepted.get()) {
+			return Check.NOT_ACCEPTED;
 		}
 		try {
 			executor.execute(() -> setRole(userId, true));
-			return true;
 		}
 		catch (TaskRejectedException ex) {
-			return false;
+			log.error("Discord queue is full; the Hacker role was not given to Discord user {}", userId);
 		}
-	}
-
-	/**
-	 * Mails a code when the email belongs to an accepted registration. The caller learns
-	 * only whether this Discord account has asked too often, never whether the email is known.
-	 */
-	public boolean requestCode(String userId, String username, String typedEmail) {
-		if (!rateLimiter.tryAcquire("discord-code:" + userId, CODES_PER_ACCOUNT, ACCOUNT_WINDOW)) {
-			return false;
-		}
-		String email = Texts.email(typedEmail);
-		if (email == null || email.length() > 255) {
-			return true;
-		}
-		Optional<Accepted> accepted = jdbc
-			.sql("select id, first_name from registrations where email = :email and status = 'ACCEPTED'")
-			.param("email", email)
-			.query((rs, rowNum) -> new Accepted(rs.getObject("id", UUID.class), rs.getString("first_name")))
-			.optional();
-		// The second limit stops the button being used to fill one person's inbox.
-		if (accepted.isEmpty() || !rateLimiter.tryAcquire("discord-code-email:" + email, CODES_PER_EMAIL, EMAIL_WINDOW)) {
-			return true;
-		}
-		String code = String.format("%0" + CODE_LENGTH + "d", RANDOM.nextInt(1_000_000));
-		jdbc.sql("""
-				insert into discord_verification_codes (discord_user_id, registration_id, code_hash, expires_at)
-				values (:userId, :registrationId, :codeHash, now() + make_interval(mins => cast(:minutes as integer)))
-				on conflict (discord_user_id) do update set registration_id = excluded.registration_id,
-					code_hash = excluded.code_hash, attempts = 0, expires_at = excluded.expires_at, created_at = now()
-				""")
-			.param("userId", userId)
-			.param("registrationId", accepted.get().id())
-			.param("codeHash", hash(userId, code))
-			.param("minutes", CODE_VALID_FOR.toMinutes())
-			.update();
-		mailService.sendDiscordCode(email, accepted.get().firstName(), code, username, CODE_VALID_FOR);
-		return true;
-	}
-
-	/** Calls Discord, so it belongs on the Discord executor, not on a request thread. */
-	public Outcome complete(String userId, String username, String typedCode) {
-		Optional<Pending> pending = jdbc.sql("""
-				update discord_verification_codes set attempts = attempts + 1
-				where discord_user_id = :userId and expires_at > now() and attempts < :maxAttempts
-				returning registration_id, code_hash
-				""")
-			.param("userId", userId)
-			.param("maxAttempts", MAX_ATTEMPTS)
-			.query((rs, rowNum) -> new Pending(rs.getObject("registration_id", UUID.class), rs.getString("code_hash")))
-			.optional();
-		if (pending.isEmpty()) {
-			return Outcome.NO_CODE;
-		}
-		String code = (typedCode != null) ? typedCode.replaceAll("\\s", "") : "";
-		if (!MessageDigest.isEqual(hash(userId, code).getBytes(StandardCharsets.UTF_8),
-				pending.get().codeHash().getBytes(StandardCharsets.UTF_8))) {
-			return Outcome.WRONG_CODE;
-		}
-		UUID registrationId = pending.get().registrationId();
-		jdbc.sql("delete from discord_verification_codes where discord_user_id = :userId")
-			.param("userId", userId)
-			.update();
-		List<String> displaced = link(registrationId, userId, username);
-		if (displaced == null) {
-			return Outcome.NOT_ACCEPTED;
-		}
-		for (String other : displaced) {
-			setRole(other, false);
-		}
-		log.info("Discord user {} verified as registration {}", userId, registrationId);
-		return setRole(userId, true) ? Outcome.VERIFIED : Outcome.ROLE_NOT_GIVEN;
+		return Check.VERIFIED;
 	}
 
 	/**
 	 * "Connect Discord" on the hacker platform: the person has just approved PeachBot in
-	 * their browser, so Discord vouches for the account and no emailed code is needed. Puts
-	 * them in the server with the role and returns their Discord username.
+	 * their browser, so Discord vouches for the account. Puts them in the server with the
+	 * role and returns their Discord username.
 	 */
 	public String connect(UUID registrationId, String code, String redirectUri) {
 		if (!properties.oauthConfigured()) {
@@ -294,7 +236,7 @@ public class DiscordVerification {
 					user.id(), registrationId, describe(ex));
 			throw new ApiException(HttpStatus.BAD_GATEWAY, "DISCORD_ERROR",
 					"Your Discord account is connected, but Discord would not add you to the server just now."
-							+ " Try Connect Discord again in a minute.");
+							+ " Join the server and press Verify there, or try Connect Discord again in a minute.");
 		}
 		log.info("Discord user {} connected as registration {}", user.id(), registrationId);
 		return username;
@@ -375,8 +317,15 @@ public class DiscordVerification {
 		}
 	}
 
-	private static String hash(String userId, String code) {
-		return Tokens.sha256(userId + ":" + code);
+	private Optional<String> setting(String key) {
+		return jdbc.sql("select value from settings where key = :key").param("key", key).query(String.class).optional();
+	}
+
+	private void put(String key, String value) {
+		jdbc.sql("""
+				insert into settings (key, value) values (:key, :value)
+				on conflict (key) do update set value = excluded.value, updated_at = now()
+				""").param("key", key).param("value", value).update();
 	}
 
 	private static String describe(RuntimeException ex) {

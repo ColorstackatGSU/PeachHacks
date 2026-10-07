@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { api, qrUrl } from "../api.js";
 import { href } from "../hooks.js";
 import { ErrorNote, FieldError, useToast } from "../ui.jsx";
@@ -39,9 +39,15 @@ function TicketCard({ me }) {
   );
 }
 
-function DiscordCard({ me, connectDiscord }) {
+function DiscordCard({ me, connectDiscord, focused }) {
+  const card = useRef(null);
+
+  useEffect(() => {
+    if (focused) card.current?.scrollIntoView({ block: "center" });
+  }, [focused]);
+
   return (
-    <section className="card" aria-labelledby="discord-title">
+    <section ref={card} className={`card${focused ? " card-focused" : ""}`} aria-labelledby="discord-title">
       <div className="card-head">
         <h2 id="discord-title">Discord</h2>
         {me.discordUsername && <span className="pill pill-good">Connected</span>}
@@ -77,10 +83,7 @@ function DiscordCard({ me, connectDiscord }) {
               </button>
             </div>
           ) : (
-            <p className="note">
-              Connecting from here is not switched on yet. <a href={DISCORD_INVITE}>Join the server</a> and press the
-              Verify button in the verification channel instead.
-            </p>
+            <p className="note">Connecting from here is not switched on yet. Check back soon.</p>
           )}
         </>
       )}
@@ -259,7 +262,7 @@ function PasswordCard({ me }) {
   );
 }
 
-export default function Home({ me, connectDiscord, reloadMe }) {
+export default function Home({ me, connectDiscord, reloadMe, focusDiscord }) {
   return (
     <>
       <header className="page-head">
@@ -270,7 +273,7 @@ export default function Home({ me, connectDiscord, reloadMe }) {
         </p>
       </header>
       <TicketCard me={me} />
-      <DiscordCard me={me} connectDiscord={connectDiscord} />
+      <DiscordCard me={me} connectDiscord={connectDiscord} focused={focusDiscord} />
       <ProfileCard me={me} reloadMe={reloadMe} />
       <PasswordCard me={me} />
     </>

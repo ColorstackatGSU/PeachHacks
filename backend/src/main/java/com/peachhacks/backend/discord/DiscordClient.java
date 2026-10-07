@@ -95,10 +95,10 @@ public class DiscordClient {
 		}
 	}
 
-	/** Replaces the "thinking" placeholder of a deferred interaction. The token is the credential. */
-	public void editInteractionReply(String interactionToken, Map<String, Object> message) {
+	public void editMessage(String channelId, String messageId, Map<String, Object> message) {
 		withRateLimit(() -> restClient.patch()
-			.uri("/webhooks/{application}/{token}/messages/@original", properties.applicationId(), interactionToken)
+			.uri("/channels/{channel}/messages/{message}", channelId, messageId)
+			.header(HttpHeaders.AUTHORIZATION, authorization())
 			.contentType(MediaType.APPLICATION_JSON)
 			.body(message)
 			.retrieve()

@@ -10,6 +10,9 @@ import { ErrorNote, ToastProvider, useToast } from "./ui.jsx";
 
 const DISCORD_STATE_KEY = "peachhacks.platform.discord-state";
 
+// Where PeachBot's Verify button sends people: Home, scrolled to the Discord card.
+const DISCORD_PATH = "/discord";
+
 const NAV = [
   { path: "/", label: "Home" },
   { path: "/hackers", label: "Hackers" },
@@ -117,7 +120,14 @@ function Shell({ onSignOut }) {
         {MOCK_MODE && <p className="note">Mock mode: this is sample data, and nothing is saved.</p>}
         {!me.data && <ErrorNote error={me.error} onRetry={me.reload} />}
         {!me.data && !me.error && <p className="muted">Loading…</p>}
-        {me.data && page === "/" && <Home me={me.data} connectDiscord={connectDiscord} reloadMe={me.reload} />}
+        {me.data && page === "/" && (
+          <Home
+            me={me.data}
+            connectDiscord={connectDiscord}
+            reloadMe={me.reload}
+            focusDiscord={route.path === DISCORD_PATH}
+          />
+        )}
         {me.data && page === "/hackers" && <Hackers me={me.data} />}
         {me.data && page === "/teams" && (
           <Teams me={me.data} maxTeamSize={config.data?.maxTeamSize} reloadMe={me.reload} />
@@ -144,7 +154,8 @@ export default function App() {
   const signIn = useCallback((session) => {
     setToken(session.token);
     setSignedIn(true);
-    navigate("/");
+    // Someone who arrived on a link into the platform lands where the link pointed.
+    if (window.location.hash.startsWith("#/set-password")) navigate("/");
   }, []);
 
   let view;

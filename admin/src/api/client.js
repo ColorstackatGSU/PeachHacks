@@ -254,7 +254,8 @@ export const api = {
   endPreview: () => json("DELETE", "/admin/settings/registration-preview"),
 
   discord: (signal) => json("GET", "/admin/discord", { signal }),
-  postDiscordVerification: () => json("POST", "/admin/discord/verification-message"),
+  // Saves the text and posts it, or edits the message that is already up.
+  publishDiscordVerification: (message) => json("POST", "/admin/discord/verification-message", { body: { message } }),
 
   recipientCount: (kind, audience, school, signal) =>
     json("POST", "/admin/emails/recipient-count", { body: { kind, audience, school: school || null }, signal }),

@@ -49,7 +49,7 @@ Without `RESEND_API_KEY` no email leaves the machine: every message (confirmatio
 ./mvnw test
 ```
 
-The integration tests run the real application against Testcontainers (`postgres:16-alpine`) and are skipped automatically when Docker is not available. They cover pre-registration, the registration gate, validation (including the phone, LinkedIn and name rules), duplicate sign-ups, admin authentication and roles, events and check-in (accepted registrations only), tickets and scanning, the acceptance bucket (accepting sends nothing, the send-all run, a provider failure, the host-school share, the age review flag, bulk status changes, and the V6 migration on rows accepted before it), the acceptance email and its idempotency key, Google Wallet links, CSV export and its log line, campaign kinds and audiences (who an event update and an announcement reach, their footers, and the V7 migration), campaign recipients (the per-person record, resuming after a restart, refusing an identical campaign), provider retries, request body limits, rate limits (`RateLimitApiTests`, which has its own context with low limits), resume upload, download, removal and the sponsor resume book, school email confirmation (the link, its expiry, the resend limit, carry-over from pre-registration to registration, and the admin filters and resend), PeachBot (`DiscordApiTests`: signatures, the code flow, role changes on a status change, moving a link) and the hacker platform (`PlatformApiTests`: both sign-ins, the profile and directory, teams, Connect Discord), the last two against a local stub standing in for Discord and Google.
+The integration tests run the real application against Testcontainers (`postgres:16-alpine`) and are skipped automatically when Docker is not available. They cover pre-registration, the registration gate, validation (including the phone, LinkedIn and name rules), duplicate sign-ups, admin authentication and roles, events and check-in (accepted registrations only), tickets and scanning, the acceptance bucket (accepting sends nothing, the send-all run, a provider failure, the host-school share, the age review flag, bulk status changes, and the V6 migration on rows accepted before it), the acceptance email and its idempotency key, Google Wallet links, CSV export and its log line, campaign kinds and audiences (who an event update and an announcement reach, their footers, and the V7 migration), campaign recipients (the per-person record, resuming after a restart, refusing an identical campaign), provider retries, request body limits, rate limits (`RateLimitApiTests`, which has its own context with low limits), resume upload, download, removal and the sponsor resume book, school email confirmation (the link, its expiry, the resend limit, carry-over from pre-registration to registration, and the admin filters and resend), PeachBot (`DiscordApiTests`: signatures, what the Verify button answers, role changes on a status change, writing and editing the Verify message) and the hacker platform (`PlatformApiTests`: both sign-ins, the profile and directory, teams, Connect Discord), the last two against a local stub standing in for Discord and Google.
 
 ## Container image
 
@@ -371,17 +371,17 @@ One-time setup in Google's consoles:
 
 Optional. PeachBot gives the Hacker role in the PeachHacks Discord server to people whose registration is `ACCEPTED`, and to nobody else. It is not a separately hosted bot: Discord calls this backend over HTTPS for every button press (`POST /discord/interactions`), and the backend calls Discord's REST API with the bot token. With any of `DISCORD_BOT_TOKEN`, `DISCORD_PUBLIC_KEY`, `DISCORD_APPLICATION_ID`, `DISCORD_GUILD_ID`, `DISCORD_HACKER_ROLE_ID` or `DISCORD_VERIFICATION_CHANNEL_ID` missing it is off and the endpoint answers 404.
 
-There are two ways in, and both end in the same record (`discord_links`: one Discord account per registration, one registration per Discord account):
+A Discord account is tied to a registration in one place only, and the Verify button in Discord reads that record (`discord_links`: one Discord account per registration, one registration per Discord account):
 
-- **Connect Discord on the hacker platform.** The hacker is already signed in, approves PeachBot in Discord (OAuth2, scopes `identify` and `guilds.join`), and the backend adds them to the server with the role. Needs `DISCORD_CLIENT_SECRET`.
-- **The Verify button in Discord.** An admin posts the message from Settings in the admin site (`POST /admin/discord/verification-message`; posting again removes the previous message). Pressing Verify asks for the email the person applied with. If that email belongs to an accepted registration, a 6-digit code is mailed to it; entering the code gives the role. The reply is the same whether or not the email is known, so the button cannot be used to find out who applied or was accepted.
+- **Connect Discord on the hacker platform** makes the link. The hacker is signed in, approves PeachBot in Discord (OAuth2, scopes `identify` and `guilds.join`), and the backend adds them to the server with the role. Needs `DISCORD_CLIENT_SECRET`. The account is matched by its Discord ID, not its username, so renaming the account changes nothing.
+- **The Verify button in Discord** looks the presser's account up. Connected to an accepted registration: the role is given (again, if they left the server and came back). Connected to a registration that is not accepted: told so. Not connected: an answer only they can see, with a button that opens the platform at its Discord section (`<PLATFORM_BASE_URL>/#/discord`), where signing in and pressing Connect Discord finishes the job.
 
-Rules that hold for both:
+An admin writes the text above the Verify button in Settings in the admin site and publishes it (`POST /admin/discord/verification-message` with `{ "message" }`, at most 900 characters; without a body the saved text is published as it is). The first publish posts the message; later ones edit it in place, and a message someone deleted in Discord is posted again. `GET /admin/discord` returns `{ configured, verified, messagePostedAt, message }`.
 
-- Only `ACCEPTED` registrations. When an admin moves a registration out of `ACCEPTED` (one at a time or in bulk) the role is removed right away; accepting it again gives the role back without another code.
-- Verifying the same registration from a second Discord account moves the link: the first account loses the role. Whoever can read the applicant's inbox (or sign in as them) decides which account holds it.
-- Someone who verified, left the server and came back presses Verify and gets the role straight away.
-- A code works for 15 minutes, for 5 guesses, once. One Discord account can ask for 3 codes in 10 minutes and one email address is sent at most 3 an hour (both in memory).
+Rules:
+
+- Only `ACCEPTED` registrations. When an admin moves a registration out of `ACCEPTED` (one at a time or in bulk) the role is removed right away; accepting it again gives the role back.
+- Connecting a second Discord account to the same registration moves the link: the first account loses the role.
 - Interactions are checked against the application's Ed25519 public key; anything unsigned is answered 401, which is also what Discord tests when the endpoint URL is saved.
 
 One-time setup:
@@ -392,7 +392,7 @@ One-time setup:
 4. With Developer Mode on in Discord, copy the server ID, the Hacker role ID and the verification channel ID.
 5. Set the seven `DISCORD_*` variables on the backend and redeploy. The log says `PeachBot: on`.
 6. Back in the Developer Portal, set **Interactions Endpoint URL** to `https://api.peachhacks.com/discord/interactions`. Discord checks it on save, so the backend must already be running with the public key.
-7. In the admin site, Settings > PeachBot, post the verification message.
+7. In the admin site, Settings > PeachBot, write and post the verification message.
 
 ## Hacker platform
 
@@ -430,7 +430,7 @@ Google sign-in setup: in the Google Cloud console create an OAuth client of type
 3. Set the datasource variables (below), `ADMIN_BOOTSTRAP_EMAIL` / `ADMIN_BOOTSTRAP_PASSWORD` / `ADMIN_BOOTSTRAP_NAME` for the first admin, `RESEND_API_KEY` (required: the service does not start without it), and optionally `EMAIL_FROM`, `WEB_BASE_URL`, `PLATFORM_BASE_URL`, `GOOGLE_CLIENT_ID`, the `DISCORD_*` variables, `CORS_ALLOWED_ORIGINS`, `HOST_SCHOOL_NAME`, `HOST_SCHOOL_TARGET`, `NON_HOST_MINIMUM_AGE` and the `GOOGLE_WALLET_*` variables. `PORT` is injected by Railway.
 4. Point `api.peachhacks.com` at the service under Settings > Networking > Custom Domain.
 
-Run a single instance: rate limiting, the sign-in throttle, PeachBot's code limits and the acceptance send (its progress and the guard against two runs at once) are kept in memory, and a campaign is resumed by whichever instance starts.
+Run a single instance: rate limiting, the sign-in throttle and the acceptance send (its progress and the guard against two runs at once) are kept in memory, and a campaign is resumed by whichever instance starts.
 
 Registrations with a resume are JSON bodies of up to 3 MB, and each one is held in memory a few times over while it is parsed and decoded (roughly 10 MB for a moment), so leave the instance some headroom.
 

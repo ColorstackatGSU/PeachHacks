@@ -228,28 +228,36 @@ function RegistrationGate() {
 
 const loadDiscord = (signal) => api.discord(signal);
 
+const MAX_DISCORD_MESSAGE = 900;
+
 function DiscordVerification() {
   const notify = useToast();
   const ids = useId();
   const discord = useAsync(loadDiscord);
-  const [posted, setPosted] = useState(null);
+  const [published, setPublished] = useState(null);
+  const [draft, setDraft] = useState(null);
   const [confirming, setConfirming] = useState(false);
-  const [posting, setPosting] = useState(false);
-  const [postError, setPostError] = useState(null);
+  const [publishing, setPublishing] = useState(false);
+  const [publishError, setPublishError] = useState(null);
 
-  const status = posted || discord.data;
+  const status = published || discord.data;
+  const text = draft ?? status?.message ?? "";
+  const tooLong = text.length > MAX_DISCORD_MESSAGE;
+  const changed = draft !== null && draft !== status?.message;
 
-  const post = async () => {
-    setPosting(true);
-    setPostError(null);
+  const publish = async () => {
+    setPublishing(true);
+    setPublishError(null);
     try {
-      setPosted(await api.postDiscordVerification());
+      const wasPosted = Boolean(status?.messagePostedAt);
+      setPublished(await api.publishDiscordVerification(text));
+      setDraft(null);
       setConfirming(false);
-      notify("The verification message is up in Discord.");
+      notify(wasPosted ? "The verification message in Discord was updated." : "The verification message is up in Discord.");
     } catch (error) {
-      setPostError(error);
+      setPublishError(error);
     } finally {
-      setPosting(false);
+      setPublishing(false);
     }
   };
 
@@ -273,44 +281,70 @@ function DiscordVerification() {
         <>
           <dl className="explain">
             <div>
-              <dt>Verified so far</dt>
+              <dt>Connected so far</dt>
               <dd>
-                {status.verified} {status.verified === 1 ? "hacker has" : "hackers have"} linked a Discord account.
+                {status.verified} {status.verified === 1 ? "hacker has" : "hackers have"} connected a Discord account.
               </dd>
             </div>
             <div>
               <dt>Verification message</dt>
-              <dd>{status.messagePostedAt ? `Posted ${formatDate(status.messagePostedAt)}.` : "Not posted yet."}</dd>
+              <dd>{status.messagePostedAt ? `Last published ${formatDate(status.messagePostedAt)}.` : "Not posted yet."}</dd>
             </div>
             <div>
               <dt>How hackers verify</dt>
-              <dd>With Connect Discord on the hacker platform, or with the Verify button in Discord and a code emailed to the address they applied with.</dd>
+              <dd>They press Connect Discord on the hacker platform. The Verify button in Discord gives the role to anyone who has done that, and points everyone else to the platform.</dd>
             </div>
           </dl>
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={() => {
-              setPostError(null);
-              setConfirming(true);
-            }}
-          >
-            {status.messagePostedAt ? "Post the message again" : "Post the verification message"}
-          </button>
+
+          <div className="field">
+            <label htmlFor={`${ids}-message`}>Message above the Verify button</label>
+            <textarea
+              id={`${ids}-message`}
+              className="discord-message"
+              value={text}
+              onChange={(event) => setDraft(event.target.value)}
+              {...errorProps(tooLong ? "too long" : null, `${ids}-message-hint`)}
+            />
+            <p id={`${ids}-message-hint`} className="hint">
+              {text.length} of {MAX_DISCORD_MESSAGE} characters. Discord formatting works: **bold**, *italic*, and a blank line for a new paragraph. Mentions such as @everyone do not ping anyone.
+            </p>
+          </div>
+
+          <p className="tag-row">
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={tooLong || text.trim() === ""}
+              onClick={() => {
+                setPublishError(null);
+                setConfirming(true);
+              }}
+            >
+              {status.messagePostedAt ? (changed ? "Save and update in Discord" : "Update in Discord") : "Post the verification message"}
+            </button>
+            {changed && (
+              <button type="button" className="btn" onClick={() => setDraft(null)}>
+                Discard changes
+              </button>
+            )}
+          </p>
         </>
       )}
 
       {confirming && (
         <ConfirmDialog
-          title="Post the verification message?"
-          confirmLabel="Post to Discord"
-          busy={posting}
-          error={postError}
-          onConfirm={post}
+          title={status?.messagePostedAt ? "Update the verification message?" : "Post the verification message?"}
+          confirmLabel={status?.messagePostedAt ? "Update in Discord" : "Post to Discord"}
+          busy={publishing}
+          error={publishError}
+          onConfirm={publish}
           onCancel={() => setConfirming(false)}
         >
-          <p>PeachBot posts a message with a Verify button in the verification channel. Everyone who can see that channel can press it.</p>
-          {status?.messagePostedAt && <p>The message posted before is removed, so there is only ever one.</p>}
+          {status?.messagePostedAt ? (
+            <p>The message that is already in the verification channel is edited in place, so it keeps its spot. If someone deleted it, a new one is posted.</p>
+          ) : (
+            <p>PeachBot posts this message with a Verify button in the verification channel. Everyone who can see that channel can press it.</p>
+          )}
         </ConfirmDialog>
       )}
     </section>

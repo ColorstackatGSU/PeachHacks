@@ -214,6 +214,7 @@ img { max-width: 100%; }
 .count { color: var(--text-2); font-size: 13px; font-weight: 700; }
 
 .card { display: grid; align-content: start; gap: 14px; min-width: 0; padding: 20px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); }
+.card-focused { border-color: var(--peach); box-shadow: 0 0 0 3px rgba(252, 163, 36, .3); scroll-margin: 80px; }
 .card-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 16px; }
 .card h2 { font-size: 18px; font-weight: 800; letter-spacing: -.01em; overflow-wrap: anywhere; }
 .card h3 { font-size: 13px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--peach); }
