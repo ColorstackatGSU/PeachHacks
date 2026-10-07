@@ -1,8 +1,10 @@
 // The label text is exactly what the MLH organizer guide specifies, and it is
 // also the value sent to the API.
 
-export const AGE_MIN = 13;
-export const AGE_MAX = 100;
+import { CODE_OF_CONDUCT_URL } from '../home/site.js';
+
+const AGE_MIN = 13;
+const AGE_MAX = 100;
 export const AGES = Array.from({ length: AGE_MAX - AGE_MIN + 1 }, (_, index) => String(AGE_MIN + index));
 
 export const LEVELS_OF_STUDY = [
@@ -99,9 +101,7 @@ export const MLH_DISCLAIMER =
   'We have applied to be a Major League Hacking (MLH) Member Event. The following checkboxes are only applicable if our application is accepted. Your information will not be shared if we do not become an MLH Member Event.';
 
 export const MLH_LINKS = {
-  codeOfConduct: 'https://github.com/MLH/mlh-policies/blob/main/code-of-conduct.md',
+  codeOfConduct: CODE_OF_CONDUCT_URL,
   contestTerms: 'https://github.com/MLH/mlh-policies/blob/main/contest-terms.md',
   privacyPolicy: 'https://github.com/MLH/mlh-policies/blob/main/privacy-policy.md',
 };
-
-export const CONTACT_EMAIL = 'hello@peachhacks.com';

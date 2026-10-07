@@ -1,5 +1,4 @@
-/* eslint-disable react/prop-types -- the project has no prop-types dependency and React 19 ignores propTypes */
-import { CONTACT_EMAIL } from './options.js';
+import { CONTACT_EMAIL } from '../home/site.js';
 
 export function PageShell({ children }) {
   return (

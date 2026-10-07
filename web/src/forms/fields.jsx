@@ -1,4 +1,3 @@
-/* eslint-disable react/prop-types -- the project has no prop-types dependency and React 19 ignores propTypes */
 import { useRef } from 'react';
 import { formatFileSize } from './validation.js';
 
@@ -96,7 +95,7 @@ export function CheckboxGroup({ name, legend, options, value, onChange, hint, er
     onChange(name, checked ? [...value, option] : value.filter((item) => item !== option));
   };
   return (
-    <fieldset className="pf-field pf-field-wide pf-group" aria-describedby={`${id}-msg`}>
+    <fieldset className="pf-field pf-field-wide" aria-describedby={`${id}-msg`}>
       <legend className="pf-label">
         {legend}
       </legend>
@@ -195,15 +194,17 @@ export function ResumeField({ name, file, onChoose, onRemove, error, hint }) {
   );
 }
 
-// Bots fill every input they find; people never see this one.
+// Bots fill every input they find; people never see this one. The API reads it
+// as `website`, which the forms set in their payload; the input itself has a
+// name that browser autofill has no reason to fill in.
 export function Honeypot({ value, onChange }) {
   return (
     <div className="pf-trap" aria-hidden="true">
-      <label htmlFor="pf-website">Leave this field empty</label>
+      <label htmlFor="pf-leave-blank">Leave this field empty</label>
       <input
         type="text"
-        id="pf-website"
-        name="website"
+        id="pf-leave-blank"
+        name="leave-blank"
         tabIndex={-1}
         autoComplete="off"
         value={value}
