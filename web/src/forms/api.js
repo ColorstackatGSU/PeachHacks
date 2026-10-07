@@ -72,3 +72,7 @@ export function submitRegistration(payload) {
 export function unsubscribe(token) {
   return request('/public/unsubscribe', { method: 'POST', body: { token } });
 }
+
+export function getTicket(token, signal) {
+  return request(`/public/tickets/${encodeURIComponent(token)}`, { signal });
+}
