@@ -10,5 +10,7 @@ app:
   email:
     web-base-url: ${WEB_BASE_URL:https://www.peachhacks.com}
     admin-base-url: ${ADMIN_BASE_URL:https://admin.peachhacks.com}
+  platform:
+    base-url: ${PLATFORM_BASE_URL:https://platform.peachhacks.com}
   rate-limit:
     trust-forwarded-for: true

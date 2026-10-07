@@ -47,7 +47,7 @@ public class RateLimitInterceptor implements HandlerInterceptor {
 		else if (!"POST".equalsIgnoreCase(request.getMethod())) {
 			return true;
 		}
-		else if (route.startsWith("/admin/auth/")) {
+		else if (route.startsWith("/admin/auth/") || route.startsWith("/platform/auth/")) {
 			acquire("login:" + client, properties.loginPerMinute());
 		}
 		else if (SIGN_UPS.contains(route)) {

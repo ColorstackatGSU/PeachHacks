@@ -40,7 +40,7 @@ public class WebConfig implements WebMvcConfigurer {
 	@Override
 	public void addInterceptors(InterceptorRegistry registry) {
 		registry.addInterceptor(rateLimitInterceptor)
-			.addPathPatterns("/public/**", "/admin/auth/change-password")
+			.addPathPatterns("/public/**", "/platform/**", "/admin/auth/change-password")
 			.addPathPatterns(AdminAuthController.UNAUTHENTICATED_PATHS);
 	}
 

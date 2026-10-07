@@ -36,7 +36,7 @@ management:
 
 app:
   cors:
-    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:5174,https://www.peachhacks.com,https://peachhacks.com,https://admin.peachhacks.com}
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:5174,http://localhost:5176,https://www.peachhacks.com,https://peachhacks.com,https://admin.peachhacks.com,https://platform.peachhacks.com}
   email:
     resend-api-key: ${RESEND_API_KEY:}
     resend-base-url: https://api.resend.com
@@ -49,6 +49,19 @@ app:
     service-account-email: ${GOOGLE_WALLET_SERVICE_ACCOUNT_EMAIL:}
     private-key: ${GOOGLE_WALLET_PRIVATE_KEY:}
     class-id: ${GOOGLE_WALLET_CLASS_ID:peachhacks_2027}
+  discord:
+    bot-token: ${DISCORD_BOT_TOKEN:}
+    public-key: ${DISCORD_PUBLIC_KEY:}
+    application-id: ${DISCORD_APPLICATION_ID:}
+    client-secret: ${DISCORD_CLIENT_SECRET:}
+    guild-id: ${DISCORD_GUILD_ID:}
+    hacker-role-id: ${DISCORD_HACKER_ROLE_ID:}
+    verification-channel-id: ${DISCORD_VERIFICATION_CHANNEL_ID:}
+  platform:
+    base-url: ${PLATFORM_BASE_URL:http://localhost:5176}
+    google-client-id: ${GOOGLE_CLIENT_ID:}
+    max-team-size: ${MAX_TEAM_SIZE:4}
+    session-ttl: 30d
   acceptance:
     host-school-name: ${HOST_SCHOOL_NAME:Georgia State University}
     host-school-target: ${HOST_SCHOOL_TARGET:0.70}

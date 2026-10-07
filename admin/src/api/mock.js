@@ -166,7 +166,8 @@ const admins = [
   { id: uuid(), email: "volunteer@peachhacks.local", name: "Door Volunteer", role: "VOLUNTEER", createdAt: new Date(now - 2 * DAY).toISOString() },
 ];
 const MOCK_PASSWORD_URL = `${window.location.origin}/#/set-password?token=mock`;
-const settings = { registrationOpen: false };
+const settings = { registrationOpen: false, previewActive: false };
+const discord = { configured: true, verified: 12, messagePostedAt: null };
 // One token per role so a reload keeps whichever account was signed in.
 const TOKENS = { "mock-token": admins[0], "mock-volunteer-token": admins[2] };
 const sessions = new Set(Object.keys(TOKENS));
@@ -794,7 +795,18 @@ function handle(method, path, params, body, token) {
 
   if (path === "/admin/settings") {
     if (method === "PUT") settings.registrationOpen = Boolean(body.registrationOpen);
-    return respond(200, { registrationOpen: settings.registrationOpen });
+    return respond(200, { ...settings });
+  }
+  if (path === "/admin/settings/registration-preview") {
+    settings.previewActive = method === "POST";
+    if (method === "POST") return respond(200, { url: "https://www.peachhacks.com/?preview=mock-preview-key#register" });
+    return respond(200, { ...settings });
+  }
+
+  if (path === "/admin/discord") return respond(200, discord);
+  if (path === "/admin/discord/verification-message" && method === "POST") {
+    discord.messagePostedAt = new Date().toISOString();
+    return respond(200, discord);
   }
 
   if (path === "/admin/emails/recipient-count" && method === "POST") {

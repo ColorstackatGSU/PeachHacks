@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import { API_BASE_URL } from '../forms/api.js';
+import { previewHeaders } from '../forms/preview.js';
 import { REGISTER_PANEL_HREF } from './site.js';
 
 const STATUS_TIMEOUT_MS = 5000;
@@ -48,7 +49,10 @@ function requestStatus() {
   requested = true;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), STATUS_TIMEOUT_MS);
-  fetch(`${API_BASE_URL}/public/status`, { headers: { Accept: 'application/json' }, signal: controller.signal })
+  fetch(`${API_BASE_URL}/public/status`, {
+    headers: { Accept: 'application/json', ...previewHeaders() },
+    signal: controller.signal,
+  })
     .then((response) => (response.ok ? response.json() : null))
     .then((data) => {
       if (typeof data?.registrationOpen !== 'boolean') settle('error');

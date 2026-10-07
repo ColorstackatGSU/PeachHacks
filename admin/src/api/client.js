@@ -249,6 +249,12 @@ export const api = {
 
   settings: (signal) => json("GET", "/admin/settings", { signal }),
   saveSettings: (registrationOpen) => json("PUT", "/admin/settings", { body: { registrationOpen } }),
+  // The link is only in this answer; making another one stops the previous link working.
+  createPreviewLink: () => json("POST", "/admin/settings/registration-preview"),
+  endPreview: () => json("DELETE", "/admin/settings/registration-preview"),
+
+  discord: (signal) => json("GET", "/admin/discord", { signal }),
+  postDiscordVerification: () => json("POST", "/admin/discord/verification-message"),
 
   recipientCount: (kind, audience, school, signal) =>
     json("POST", "/admin/emails/recipient-count", { body: { kind, audience, school: school || null }, signal }),

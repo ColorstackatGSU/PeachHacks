@@ -49,7 +49,7 @@ Without `RESEND_API_KEY` no email leaves the machine: every message (confirmatio
 ./mvnw test
 ```
 
-The integration tests run the real application against Testcontainers (`postgres:16-alpine`) and are skipped automatically when Docker is not available. They cover pre-registration, the registration gate, validation (including the phone, LinkedIn and name rules), duplicate sign-ups, admin authentication and roles, events and check-in (accepted registrations only), tickets and scanning, the acceptance bucket (accepting sends nothing, the send-all run, a provider failure, the host-school share, the age review flag, bulk status changes, and the V6 migration on rows accepted before it), the acceptance email and its idempotency key, Google Wallet links, CSV export and its log line, campaign kinds and audiences (who an event update and an announcement reach, their footers, and the V7 migration), campaign recipients (the per-person record, resuming after a restart, refusing an identical campaign), provider retries, request body limits, rate limits (`RateLimitApiTests`, which has its own context with low limits), resume upload, download, removal and the sponsor resume book, and school email confirmation (the link, its expiry, the resend limit, carry-over from pre-registration to registration, and the admin filters and resend).
+The integration tests run the real application against Testcontainers (`postgres:16-alpine`) and are skipped automatically when Docker is not available. They cover pre-registration, the registration gate, validation (including the phone, LinkedIn and name rules), duplicate sign-ups, admin authentication and roles, events and check-in (accepted registrations only), tickets and scanning, the acceptance bucket (accepting sends nothing, the send-all run, a provider failure, the host-school share, the age review flag, bulk status changes, and the V6 migration on rows accepted before it), the acceptance email and its idempotency key, Google Wallet links, CSV export and its log line, campaign kinds and audiences (who an event update and an announcement reach, their footers, and the V7 migration), campaign recipients (the per-person record, resuming after a restart, refusing an identical campaign), provider retries, request body limits, rate limits (`RateLimitApiTests`, which has its own context with low limits), resume upload, download, removal and the sponsor resume book, school email confirmation (the link, its expiry, the resend limit, carry-over from pre-registration to registration, and the admin filters and resend), PeachBot (`DiscordApiTests`: signatures, the code flow, role changes on a status change, moving a link) and the hacker platform (`PlatformApiTests`: both sign-ins, the profile and directory, teams, Connect Discord), the last two against a local stub standing in for Discord and Google.
 
 ## Container image
 
@@ -77,12 +77,22 @@ Standard Spring Boot environment variables; see `.env.example`.
 | `EMAIL_FROM` | Sender (default `PeachHacks <hello@peachhacks.com>`); the domain must be verified in Resend |
 | `WEB_BASE_URL` | Public site URL used for links in emails (unsubscribe, ticket, school email confirmation) and for the ticket URL inside every QR code (default `http://localhost:5173`, `https://www.peachhacks.com` in `prod`). Changing it changes what newly rendered QR codes contain; codes already sent keep working because the scanner only reads the token |
 | `ADMIN_BASE_URL` | Admin site URL used for the set-password links emailed to admins and volunteers (default `http://localhost:5174`, `https://admin.peachhacks.com` in `prod`) |
-| `CORS_ALLOWED_ORIGINS` | Comma-separated origins (default `http://localhost:5173`, `http://localhost:5174`, `https://www.peachhacks.com`, `https://peachhacks.com`, `https://admin.peachhacks.com`) |
+| `CORS_ALLOWED_ORIGINS` | Comma-separated origins (default `http://localhost:5173`, `http://localhost:5174`, `http://localhost:5176`, `https://www.peachhacks.com`, `https://peachhacks.com`, `https://admin.peachhacks.com`, `https://platform.peachhacks.com`) |
 | `SPRING_DATASOURCE_HIKARI_MAXIMUMPOOLSIZE` | Connection pool size (5 in `prod`) |
 | `GOOGLE_WALLET_ISSUER_ID` | Google Wallet issuer ID. Optional; see [Google Wallet](#google-wallet) |
 | `GOOGLE_WALLET_SERVICE_ACCOUNT_EMAIL` | Email of the service account whose key signs the passes. Optional |
 | `GOOGLE_WALLET_PRIVATE_KEY` | That service account's private key in PEM form (`-----BEGIN PRIVATE KEY-----`). Real line breaks or literal `\n` sequences both work. Optional |
 | `GOOGLE_WALLET_CLASS_ID` | Suffix of the event ticket class created in the Google Pay & Wallet Console (default `peachhacks_2027`, so the class is `<issuerId>.peachhacks_2027`) |
+| `DISCORD_BOT_TOKEN` | PeachBot's bot token. Optional; see [PeachBot](#peachbot). With any of the six `DISCORD_*` values other than the client secret missing, the bot is off |
+| `DISCORD_PUBLIC_KEY` | The Discord application's public key (hex), used to check that an interaction really came from Discord. A value that is not a valid key stops the application at startup |
+| `DISCORD_APPLICATION_ID` | The Discord application ID (also its OAuth2 client ID) |
+| `DISCORD_CLIENT_SECRET` | The application's OAuth2 client secret. Only needed for "Connect Discord" on the hacker platform |
+| `DISCORD_GUILD_ID` | ID of the PeachHacks Discord server |
+| `DISCORD_HACKER_ROLE_ID` | ID of the role accepted hackers get |
+| `DISCORD_VERIFICATION_CHANNEL_ID` | ID of the channel the Verify message is posted in |
+| `PLATFORM_BASE_URL` | Hacker platform URL, used for the links in its emails and as the Discord redirect (default `http://localhost:5176`, `https://platform.peachhacks.com` in `prod`) |
+| `GOOGLE_CLIENT_ID` | Google OAuth client ID for "Sign in with Google" on the hacker platform. Optional: empty leaves email and password only |
+| `MAX_TEAM_SIZE` | Most hackers on one team (default `4`) |
 | `HOST_SCHOOL_NAME` | The host school (default `Georgia State University`). A registration counts towards the host-school share when its school name equals or starts with this, case-insensitive, so `Georgia State University Perimeter College` counts too |
 | `HOST_SCHOOL_TARGET` | The share of accepted hackers that must come from the host school, as a fraction from 0 to 1 (default `0.70`). A value outside that range stops the application at startup |
 | `NON_HOST_MINIMUM_AGE` | The minimum age for students of other schools (default `18`); host-school students are eligible at any age. A registration under it from a school that is not the host school is flagged `ageReview` for organizers and is never refused. See [Age review](#age-review) |
@@ -188,7 +198,8 @@ Every account is an `ADMIN` (full access) or a `VOLUNTEER` (check-in only); the 
 | `GET /admin/registrations/{id}/resume` | The uploaded PDF as an attachment, whether or not the person opted in to sponsor sharing. 404 if there is none |
 | `DELETE /admin/registrations/{id}/resume` | Deletes the file and the opt-in, for a removal request; 204, or 404 if there is none. The registration stays |
 | `GET /admin/resumes/export.zip?checkedIn=` | The sponsor resume book, see [Resumes](#resumes) |
-| `GET`, `PUT /admin/settings` | The registration gate, `{ "registrationOpen": true }` |
+| `GET`, `PUT /admin/settings` | The registration gate, `{ "registrationOpen": true }`; the answer also carries `previewActive` |
+| `POST`, `DELETE /admin/settings/registration-preview` | Make (or end) the preview link, `{ "url" }`. A request that sends its key in `X-Registration-Preview` gets `registrationOpen: true` (with `preview: true`) from `GET /public/status` and may `POST /public/registrations` while the gate is closed, so organizers can try the whole flow before opening. Only the hash of the key is stored, the link is shown once, and a new link replaces the old one |
 | `POST /admin/emails/recipient-count` | `{ kind, audience, school? }`: how many people a campaign of that kind would reach. `kind` is required; see [Email](#email) |
 | `POST /admin/emails/test` | `{ kind?, subject, body }`: send one copy to the signed-in admin, with the footer of that kind (`ANNOUNCEMENT` when omitted) |
 | `POST /admin/emails/preview` | `{ kind?, subject, body }`: the draft rendered as the test copy would be, `{ subject, html, text }`. Sends nothing; the admin site shows `html` in a sandboxed frame |
@@ -356,14 +367,70 @@ One-time setup in Google's consoles:
 4. Back in the Google Pay & Wallet Console, under Users, invite the service account's email with the Developer access level.
 5. Until Google grants the issuer publishing access the account is in demo mode: only Google accounts that are admins or developers of the issuer account, or that were added as test accounts in the console, can save the pass, and it is marked as a test. Request publishing access from the console's Google Wallet API page once the business profile is complete.
 
+## PeachBot
+
+Optional. PeachBot gives the Hacker role in the PeachHacks Discord server to people whose registration is `ACCEPTED`, and to nobody else. It is not a separately hosted bot: Discord calls this backend over HTTPS for every button press (`POST /discord/interactions`), and the backend calls Discord's REST API with the bot token. With any of `DISCORD_BOT_TOKEN`, `DISCORD_PUBLIC_KEY`, `DISCORD_APPLICATION_ID`, `DISCORD_GUILD_ID`, `DISCORD_HACKER_ROLE_ID` or `DISCORD_VERIFICATION_CHANNEL_ID` missing it is off and the endpoint answers 404.
+
+There are two ways in, and both end in the same record (`discord_links`: one Discord account per registration, one registration per Discord account):
+
+- **Connect Discord on the hacker platform.** The hacker is already signed in, approves PeachBot in Discord (OAuth2, scopes `identify` and `guilds.join`), and the backend adds them to the server with the role. Needs `DISCORD_CLIENT_SECRET`.
+- **The Verify button in Discord.** An admin posts the message from Settings in the admin site (`POST /admin/discord/verification-message`; posting again removes the previous message). Pressing Verify asks for the email the person applied with. If that email belongs to an accepted registration, a 6-digit code is mailed to it; entering the code gives the role. The reply is the same whether or not the email is known, so the button cannot be used to find out who applied or was accepted.
+
+Rules that hold for both:
+
+- Only `ACCEPTED` registrations. When an admin moves a registration out of `ACCEPTED` (one at a time or in bulk) the role is removed right away; accepting it again gives the role back without another code.
+- Verifying the same registration from a second Discord account moves the link: the first account loses the role. Whoever can read the applicant's inbox (or sign in as them) decides which account holds it.
+- Someone who verified, left the server and came back presses Verify and gets the role straight away.
+- A code works for 15 minutes, for 5 guesses, once. One Discord account can ask for 3 codes in 10 minutes and one email address is sent at most 3 an hour (both in memory).
+- Interactions are checked against the application's Ed25519 public key; anything unsigned is answered 401, which is also what Discord tests when the endpoint URL is saved.
+
+One-time setup:
+
+1. In the [Discord Developer Portal](https://discord.com/developers/applications) create an application named PeachBot. From General Information copy the **Application ID** and **Public Key**. Under Bot, reset and copy the **token**. Under OAuth2 copy the **client secret** and add `<PLATFORM_BASE_URL>/` (for production `https://platform.peachhacks.com/`, with the trailing slash) as a redirect.
+2. Invite the bot to the server with the `bot` scope and the **Manage Roles** permission. For "Connect Discord" it also needs **Create Invite** (Discord requires it to add members).
+3. In the server, create the Hacker role and drag PeachBot's own role above it; a bot can only give roles below its own. Make the verification channel visible to everyone and the hacker channels visible to the Hacker role only. PeachBot needs to be able to send messages in the verification channel.
+4. With Developer Mode on in Discord, copy the server ID, the Hacker role ID and the verification channel ID.
+5. Set the seven `DISCORD_*` variables on the backend and redeploy. The log says `PeachBot: on`.
+6. Back in the Developer Portal, set **Interactions Endpoint URL** to `https://api.peachhacks.com/discord/interactions`. Discord checks it on save, so the backend must already be running with the public key.
+7. In the admin site, Settings > PeachBot, post the verification message.
+
+## Hacker platform
+
+The API behind `platform/` (platform.peachhacks.com), for accepted hackers only. There is no sign-up: the account is the registration. A hacker signs in with the email they applied with and a password they choose through an emailed link (`POST /platform/auth/password-link`, valid for an hour, one use), or with a Google account whose address is the one they applied with (or their school address, once confirmed). A session token lasts 30 days and stops working the moment the registration leaves `ACCEPTED`. Passwords are stored as bcrypt hashes and session tokens as SHA-256 hashes, like the admin ones.
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /platform/config` | Public. `{ googleClientId, discordClientId, discordRedirectUri, maxTeamSize }`; the two IDs are null when that sign-in is not configured |
+| `POST /platform/auth/login` | `{ email, password }` to `{ token, expiresAt }`. 401 `INVALID_CREDENTIALS`; failed attempts are throttled per email like admin sign-ins |
+| `POST /platform/auth/password-link` | `{ email }`. Always 204; mails a link only to an accepted registration, at most one every 2 minutes |
+| `POST /platform/auth/set-password` | `{ token, password }` (10 to 72 characters) to a session. Signs out the account's other sessions |
+| `POST /platform/auth/google` | `{ credential }` (the ID token from Google's button) to a session. 403 `NOT_ACCEPTED` when no accepted registration has that address |
+| `POST /platform/auth/logout` | Ends the session |
+| `GET`, `PATCH /platform/me` | The hacker's own record: name, school, profile (`bio`, `githubUrl`, `linkedinUrl`, `lookingForTeam`, `listed`), Discord username, ticket (token, URL, Google Wallet link, checked in) and team |
+| `POST /platform/discord` | `{ code }` from Discord's OAuth2 redirect; see [PeachBot](#peachbot) |
+| `GET /platform/hackers` | The directory: accepted hackers who have signed in to the platform and left `listed` on |
+| `GET`, `POST /platform/teams` | Every team with its members and open spots, the caller's own team first (with its join requests); create a team |
+| `PATCH /platform/teams/mine`, `POST /platform/teams/mine/leave`, `DELETE /platform/teams/mine/members/{id}` | Rename, leave, and (team lead only) remove a member |
+| `POST`, `DELETE /platform/teams/{id}/requests` | Ask to join a team (optional `{ message }`), withdraw the request |
+| `POST /platform/teams/mine/requests/{id}/accept`, `.../decline` | Team lead only |
+
+Everything except `config` and `auth` needs `Authorization: Bearer <token>`.
+
+- A hacker is on at most one team, and a team has at most `MAX_TEAM_SIZE` members. 409 `ALREADY_ON_TEAM`, `TEAM_FULL` or `TOO_MANY_REQUESTS` (5 open requests per hacker) say why a team action was refused.
+- The hacker who creates a team leads it. When the lead leaves, the member who joined first takes over; when the last member leaves, the team is removed.
+- Joining a team withdraws the hacker's other requests and switches off their "looking for a team" flag.
+- The directory never includes someone who has not signed in to the platform, and `listed: false` takes a hacker out of it again. Teammates always see each other.
+
+Google sign-in setup: in the Google Cloud console create an OAuth client of type Web application, add the platform's origins (`https://platform.peachhacks.com`, and `http://localhost:5176` for local work) as Authorized JavaScript origins, and set its client ID as `GOOGLE_CLIENT_ID`. The consent screen shows the app name configured there.
+
 ## Deploy to Railway
 
 1. Create a service from this repo and set **Root Directory** to `/backend`.
 2. Set the config-as-code path to `/backend/railway.toml` (Railway resolves it from the repo root). It builds with the `Dockerfile`, health-checks `/actuator/health` and only redeploys for commits that touch `backend/**` (`watchPatterns`), so a change to the web or admin site does not restart the API in the middle of a send.
-3. Set the datasource variables (below), `ADMIN_BOOTSTRAP_EMAIL` / `ADMIN_BOOTSTRAP_PASSWORD` / `ADMIN_BOOTSTRAP_NAME` for the first admin, `RESEND_API_KEY` (required: the service does not start without it), and optionally `EMAIL_FROM`, `WEB_BASE_URL`, `CORS_ALLOWED_ORIGINS`, `HOST_SCHOOL_NAME`, `HOST_SCHOOL_TARGET`, `NON_HOST_MINIMUM_AGE` and the `GOOGLE_WALLET_*` variables. `PORT` is injected by Railway.
+3. Set the datasource variables (below), `ADMIN_BOOTSTRAP_EMAIL` / `ADMIN_BOOTSTRAP_PASSWORD` / `ADMIN_BOOTSTRAP_NAME` for the first admin, `RESEND_API_KEY` (required: the service does not start without it), and optionally `EMAIL_FROM`, `WEB_BASE_URL`, `PLATFORM_BASE_URL`, `GOOGLE_CLIENT_ID`, the `DISCORD_*` variables, `CORS_ALLOWED_ORIGINS`, `HOST_SCHOOL_NAME`, `HOST_SCHOOL_TARGET`, `NON_HOST_MINIMUM_AGE` and the `GOOGLE_WALLET_*` variables. `PORT` is injected by Railway.
 4. Point `api.peachhacks.com` at the service under Settings > Networking > Custom Domain.
 
-Run a single instance: rate limiting, the sign-in throttle and the acceptance send (its progress and the guard against two runs at once) are kept in memory, and a campaign is resumed by whichever instance starts.
+Run a single instance: rate limiting, the sign-in throttle, PeachBot's code limits and the acceptance send (its progress and the guard against two runs at once) are kept in memory, and a campaign is resumed by whichever instance starts.
 
 Registrations with a resume are JSON bodies of up to 3 MB, and each one is held in memory a few times over while it is parsed and decoded (roughly 10 MB for a moment), so leave the instance some headroom.
 

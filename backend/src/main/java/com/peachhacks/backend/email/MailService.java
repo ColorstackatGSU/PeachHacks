@@ -173,6 +173,42 @@ public class MailService {
 					new EmailMessage.Attachment("peachhacks-ticket.png", "image/png", qrPng, TICKET_CONTENT_ID)));
 	}
 
+	/**
+	 * The code is the only proof that the Discord account belongs to the applicant, so the
+	 * email names the account that asked for it.
+	 */
+	public void sendDiscordCode(String email, String firstName, String code, String discordUsername,
+			Duration validFor) {
+		String account = (discordUsername != null && !discordUsername.isBlank())
+				? "the Discord account " + discordUsername.strip() : "a Discord account";
+		Content content = Content
+			.of("Your PeachHacks Discord verification code is inside.", "Your Discord verification code",
+					List.of(greeting(firstName),
+							"Someone using " + account + " asked to verify as you in the PeachHacks Discord. If"
+									+ " that was you, enter this code in Discord:",
+							code))
+			.withClosing(List.of("The code works for " + validity(validFor) + " and can be used once.",
+					"If this was not you, ignore this email and do not share the code. Nobody is verified"
+							+ " without it.",
+					"The PeachHacks team"));
+		sendInBackground(
+				composer.compose(email, "Your PeachHacks Discord verification code", content, Footer.REGISTERED));
+	}
+
+	public void sendPlatformPasswordLink(String email, String firstName, String url, Duration validFor) {
+		Content content = Content
+			.of("Use this link to choose a password for the PeachHacks hacker platform.", "Choose your password",
+					List.of(greeting(firstName),
+							"Here is your link to the PeachHacks hacker platform, where you can find a team, connect"
+									+ " your Discord and pull up your ticket. Choose a password to sign in:"))
+			.withPrimary("Choose a password", url)
+			.withClosing(List.of("The link works for " + validity(validFor) + " and can be used once.",
+					"If you did not ask for this, you can ignore this email and nothing changes.",
+					"The PeachHacks team"));
+		sendInBackground(
+				composer.compose(email, "Your PeachHacks platform sign-in link", content, Footer.REGISTERED));
+	}
+
 	public String adminPasswordUrl(String token) {
 		return properties.adminBaseUrl() + "/#/set-password?token=" + token;
 	}

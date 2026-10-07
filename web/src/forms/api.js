@@ -1,3 +1,5 @@
+import { previewHeaders } from './preview.js';
+
 const DEFAULT_BASE_URL = import.meta.env.DEV ? 'http://localhost:8080' : 'https://api.peachhacks.com';
 
 export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || DEFAULT_BASE_URL).replace(/\/+$/, '');
@@ -22,7 +24,7 @@ class ApiError extends Error {
 
 // A request that passes `timeoutMs` gives up after that long and fails as NETWORK;
 // one that passes its own `signal` rethrows the AbortError for the caller to ignore.
-async function request(path, { method = 'GET', body, signal, timeoutMs } = {}) {
+async function request(path, { method = 'GET', body, signal, timeoutMs, headers } = {}) {
   const timeout = timeoutMs ? new AbortController() : null;
   const timer = timeout ? setTimeout(() => timeout.abort(), timeoutMs) : undefined;
   let response;
@@ -33,6 +35,7 @@ async function request(path, { method = 'GET', body, signal, timeoutMs } = {}) {
       headers: {
         Accept: 'application/json',
         ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+        ...headers,
       },
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: timeout ? timeout.signal : signal,
@@ -66,8 +69,8 @@ async function request(path, { method = 'GET', body, signal, timeoutMs } = {}) {
   return data;
 }
 
-function submit(path, body, timeoutMs = SUBMIT_TIMEOUT_MS) {
-  return request(path, { method: 'POST', body, timeoutMs });
+function submit(path, body, timeoutMs = SUBMIT_TIMEOUT_MS, headers = undefined) {
+  return request(path, { method: 'POST', body, timeoutMs, headers });
 }
 
 export function submitPreRegistration(payload) {
@@ -75,7 +78,7 @@ export function submitPreRegistration(payload) {
 }
 
 export function submitRegistration(payload) {
-  return submit('/public/registrations', payload, REGISTRATION_TIMEOUT_MS);
+  return submit('/public/registrations', payload, REGISTRATION_TIMEOUT_MS, previewHeaders());
 }
 
 export function unsubscribe(token) {

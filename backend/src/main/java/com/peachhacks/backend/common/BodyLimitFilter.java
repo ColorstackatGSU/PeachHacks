@@ -51,7 +51,8 @@ public class BodyLimitFilter extends OncePerRequestFilter {
 			chain.doFilter(new LimitedRequest(request, REGISTRATION_MAX_BYTES,
 					() -> ApiException.invalidField("resume", ResumeUpload.TOO_LARGE)), response);
 		}
-		else if (path.startsWith("/public/") || path.startsWith("/admin/auth/")) {
+		else if (path.startsWith("/public/") || path.startsWith("/admin/auth/") || path.startsWith("/discord/")
+				|| path.startsWith("/platform/")) {
 			chain.doFilter(new LimitedRequest(request, DEFAULT_MAX_BYTES,
 					() -> new ApiException(HttpStatus.valueOf(413), "PAYLOAD_TOO_LARGE",
 							"The request is too large.")),

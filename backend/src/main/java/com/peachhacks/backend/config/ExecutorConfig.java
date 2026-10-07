@@ -31,6 +31,18 @@ public class ExecutorConfig {
 		return executor;
 	}
 
+	/** Single threaded so role changes reach Discord in the order they were decided. */
+	@Bean
+	ThreadPoolTaskExecutor discordExecutor() {
+		ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+		executor.setThreadNamePrefix("discord-");
+		executor.setCorePoolSize(1);
+		executor.setMaxPoolSize(1);
+		executor.setQueueCapacity(2000);
+		finishQueuedWorkOnShutdown(executor);
+		return executor;
+	}
+
 	/**
 	 * A redeploy must not drop a confirmation that is already queued. The long runs on the
 	 * campaign executor stop themselves after the email in hand when the context closes,

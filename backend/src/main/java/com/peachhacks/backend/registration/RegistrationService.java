@@ -14,6 +14,7 @@ import com.peachhacks.backend.common.ApiException;
 import com.peachhacks.backend.common.RateLimiter;
 import com.peachhacks.backend.common.RequestValidator;
 import com.peachhacks.backend.common.Texts;
+import com.peachhacks.backend.discord.DiscordVerification;
 import com.peachhacks.backend.email.MailService;
 import com.peachhacks.backend.registration.ResumeUpload.ResumeFile;
 import com.peachhacks.backend.schoolemail.SchoolEmailService;
@@ -56,12 +57,15 @@ public class RegistrationService {
 
 	private final RateLimiter rateLimiter;
 
+	private final DiscordVerification discord;
+
 	private final TransactionTemplate transaction;
 
 	public RegistrationService(RegistrationRepository repository, SettingsService settings,
 			RequestValidator validator, MailService mailService, ResumeService resumes,
 			SchoolEmailService schoolEmails, AgeReview ageReview, RateLimiter rateLimiter,
-			PlatformTransactionManager transactionManager) {
+			DiscordVerification discord, PlatformTransactionManager transactionManager) {
+		this.discord = discord;
 		this.ageReview = ageReview;
 		this.rateLimiter = rateLimiter;
 		this.repository = repository;
@@ -79,7 +83,12 @@ public class RegistrationService {
 	 * has registered. Nothing is stored from it; the address's owner is told by email.
 	 */
 	public UUID submit(RegistrationRequest request) {
-		if (!settings.isRegistrationOpen()) {
+		return submit(request, null);
+	}
+
+	/** previewKey lets an organizer with the preview link register while the gate is closed. */
+	public UUID submit(RegistrationRequest request, String previewKey) {
+		if (!settings.isRegistrationOpenFor(previewKey)) {
 			throw new ApiException(HttpStatus.FORBIDDEN, "REGISTRATION_CLOSED",
 					"Registration is not open yet. Pre-register to hear from us when it opens.");
 		}
@@ -152,19 +161,24 @@ public class RegistrationService {
 	public record BulkStatusResult(int changed, int unchanged, int notFound, int acceptedAgeReview) {
 	}
 
-	/** Nothing is emailed here: an accepted registration waits until the acceptance emails are sent. */
+	/**
+	 * Nothing is emailed here: an accepted registration waits until the acceptance emails are
+	 * sent. A linked Discord account gains or loses the Hacker role right away.
+	 */
 	public Registration updateStatus(UUID id, RegistrationStatus status) {
-		return transaction.execute(tx -> {
+		Registration updated = transaction.execute(tx -> {
 			Registration registration = get(id);
 			registration.changeStatus(status, Instant.now());
 			return registration;
 		});
+		discord.syncRoles(List.of(id));
+		return updated;
 	}
 
 	/** Ids that no longer exist are counted, not refused, so one deleted row does not block the rest. */
 	public BulkStatusResult updateStatuses(List<UUID> ids, RegistrationStatus status) {
 		Set<UUID> distinct = new LinkedHashSet<>(ids);
-		return transaction.execute(tx -> {
+		BulkStatusResult result = transaction.execute(tx -> {
 			Instant now = Instant.now();
 			List<Registration> found = repository.findAllById(distinct);
 			List<UUID> changed = new ArrayList<>();
@@ -177,6 +191,8 @@ public class RegistrationService {
 			return new BulkStatusResult(changed.size(), found.size() - changed.size(),
 					distinct.size() - found.size(), acceptedAgeReview);
 		});
+		discord.syncRoles(distinct);
+		return result;
 	}
 
 	public void resendSchoolEmailConfirmation(UUID id) {

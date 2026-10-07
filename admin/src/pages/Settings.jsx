@@ -22,6 +22,80 @@ const EMAIL_SHORTCUT = "/email?template=registration-open&audience=PRE_REGISTRAN
 
 const loadSettings = (signal) => api.settings(signal);
 
+function RegistrationPreview({ initiallyActive }) {
+  const notify = useToast();
+  const [active, setActive] = useState(initiallyActive);
+  const [link, setLink] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const run = async (action) => {
+    setBusy(true);
+    try {
+      await action();
+    } catch (error) {
+      notify(errorText(error), "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const create = () =>
+    run(async () => {
+      const result = await api.createPreviewLink();
+      setLink(result?.url || null);
+      setActive(true);
+    });
+
+  const end = () =>
+    run(async () => {
+      await api.endPreview();
+      setLink(null);
+      setActive(false);
+      notify("Preview ended. The link no longer works.");
+    });
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(link);
+      notify("Link copied.");
+    } catch {
+      notify("Could not copy. Select the link and copy it yourself.", "error");
+    }
+  };
+
+  return (
+    <div className="notice">
+      <p>
+        <strong>Try registration before it opens.</strong> A preview link shows the Register button and the full form on
+        the device that opens it, while everyone else still sees pre-registration. Registrations made through it are
+        real: you can accept them, send their ticket and sign in to the hacker platform with them.
+      </p>
+      {link && (
+        <>
+          <p>Open this link, or send it to another organizer. It will not be shown again.</p>
+          <div className="input-with-button">
+            <input type="text" readOnly value={link} aria-label="Registration preview link" onFocus={(e) => e.target.select()} />
+            <button type="button" className="btn btn-small" onClick={copy}>
+              Copy
+            </button>
+          </div>
+        </>
+      )}
+      {active && !link && <p>A preview link is active. Making a new one stops the old link working.</p>}
+      <p className="tag-row">
+        <button type="button" className="btn btn-small" onClick={create} disabled={busy}>
+          {active ? "Make a new preview link" : "Make a preview link"}
+        </button>
+        {active && (
+          <button type="button" className="btn btn-small btn-danger-quiet" onClick={end} disabled={busy}>
+            End preview
+          </button>
+        )}
+      </p>
+    </div>
+  );
+}
+
 function RegistrationGate() {
   const notify = useToast();
   const ids = useId();
@@ -109,6 +183,8 @@ function RegistrationGate() {
             </div>
           </dl>
 
+          {!open && <RegistrationPreview initiallyActive={Boolean(settings.data?.previewActive)} />}
+
           {justOpened && open && (
             <div className="callout" role="status">
               <div>
@@ -144,6 +220,97 @@ function RegistrationGate() {
               <p>Registrations already submitted are not affected. You can reopen at any time.</p>
             </>
           )}
+        </ConfirmDialog>
+      )}
+    </section>
+  );
+}
+
+const loadDiscord = (signal) => api.discord(signal);
+
+function DiscordVerification() {
+  const notify = useToast();
+  const ids = useId();
+  const discord = useAsync(loadDiscord);
+  const [posted, setPosted] = useState(null);
+  const [confirming, setConfirming] = useState(false);
+  const [posting, setPosting] = useState(false);
+  const [postError, setPostError] = useState(null);
+
+  const status = posted || discord.data;
+
+  const post = async () => {
+    setPosting(true);
+    setPostError(null);
+    try {
+      setPosted(await api.postDiscordVerification());
+      setConfirming(false);
+      notify("The verification message is up in Discord.");
+    } catch (error) {
+      setPostError(error);
+    } finally {
+      setPosting(false);
+    }
+  };
+
+  return (
+    <section className="card" aria-labelledby={`${ids}-title`}>
+      <div className="card-head">
+        <h2 id={`${ids}-title`}>PeachBot</h2>
+        <span className="muted">Gives the Hacker role in Discord to accepted hackers, and takes it away when they are no longer accepted.</span>
+      </div>
+
+      {!status && discord.error && <ErrorBlock error={discord.error} onRetry={discord.reload} />}
+      {!status && !discord.error && <LoadingBlock label="Checking PeachBot…" />}
+
+      {status && !status.configured && (
+        <p className="notice">
+          PeachBot is not set up on the server yet. Add the <code>DISCORD_*</code> values to the backend (see its README, “PeachBot”) and redeploy.
+        </p>
+      )}
+
+      {status?.configured && (
+        <>
+          <dl className="explain">
+            <div>
+              <dt>Verified so far</dt>
+              <dd>
+                {status.verified} {status.verified === 1 ? "hacker has" : "hackers have"} linked a Discord account.
+              </dd>
+            </div>
+            <div>
+              <dt>Verification message</dt>
+              <dd>{status.messagePostedAt ? `Posted ${formatDate(status.messagePostedAt)}.` : "Not posted yet."}</dd>
+            </div>
+            <div>
+              <dt>How hackers verify</dt>
+              <dd>With Connect Discord on the hacker platform, or with the Verify button in Discord and a code emailed to the address they applied with.</dd>
+            </div>
+          </dl>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => {
+              setPostError(null);
+              setConfirming(true);
+            }}
+          >
+            {status.messagePostedAt ? "Post the message again" : "Post the verification message"}
+          </button>
+        </>
+      )}
+
+      {confirming && (
+        <ConfirmDialog
+          title="Post the verification message?"
+          confirmLabel="Post to Discord"
+          busy={posting}
+          error={postError}
+          onConfirm={post}
+          onCancel={() => setConfirming(false)}
+        >
+          <p>PeachBot posts a message with a Verify button in the verification channel. Everyone who can see that channel can press it.</p>
+          {status?.messagePostedAt && <p>The message posted before is removed, so there is only ever one.</p>}
         </ConfirmDialog>
       )}
     </section>
@@ -476,6 +643,7 @@ export default function Settings({ admin }) {
       <PageHeader title="Settings" description="Open or close registration, set up check-in events and manage who can sign in." />
       <RegistrationGate />
       <EventsCard />
+      <DiscordVerification />
       <AdminAccounts admin={admin} />
       <ChangePassword />
     </>

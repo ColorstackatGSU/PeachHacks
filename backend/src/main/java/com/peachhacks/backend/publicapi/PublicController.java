@@ -16,6 +16,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -58,9 +59,14 @@ public class PublicController {
 		this.schoolEmails = schoolEmails;
 	}
 
+	static final String PREVIEW_HEADER = "X-Registration-Preview";
+
+	/** With a valid preview key the answer is "open" although the gate is closed; preview says so. */
 	@GetMapping("/status")
-	Map<String, Boolean> status() {
-		return Map.of("registrationOpen", settings.isRegistrationOpen());
+	Map<String, Boolean> status(@RequestHeader(name = PREVIEW_HEADER, required = false) String previewKey) {
+		boolean open = settings.isRegistrationOpen();
+		boolean preview = !open && settings.previewAllows(previewKey);
+		return Map.of("registrationOpen", open || preview, "preview", preview);
 	}
 
 	@PostMapping("/pre-registrations")
@@ -69,8 +75,10 @@ public class PublicController {
 	}
 
 	@PostMapping("/registrations")
-	ResponseEntity<Map<String, UUID>> register(@RequestBody RegistrationRequest request) {
-		return ResponseEntity.status(HttpStatus.CREATED).body(Map.of("id", registrations.submit(request)));
+	ResponseEntity<Map<String, UUID>> register(@RequestBody RegistrationRequest request,
+			@RequestHeader(name = PREVIEW_HEADER, required = false) String previewKey) {
+		return ResponseEntity.status(HttpStatus.CREATED)
+			.body(Map.of("id", registrations.submit(request, previewKey)));
 	}
 
 	@PostMapping("/unsubscribe")
