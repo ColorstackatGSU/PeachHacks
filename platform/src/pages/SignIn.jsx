@@ -17,13 +17,6 @@ const STARS = [
   { x: "95%", y: "8%", size: 9 },
 ];
 
-const INSIDE = [
-  "Your ticket and its QR code, ready for check-in",
-  "The other hackers, and who is looking for a team",
-  "Teams: start one, or ask to join one with room",
-  "The PeachHacks Discord, with your Hacker role",
-];
-
 let googleScript = null;
 function loadGoogle() {
   if (!googleScript) {
@@ -58,9 +51,9 @@ function GoogleButton({ clientId, onCredential }) {
           callback: (response) => onCredential(response.credential),
         });
         window.google.accounts.id.renderButton(holder.current, {
-          theme: "outline",
+          theme: "filled_blue",
           size: "large",
-          shape: "rectangular",
+          shape: "pill",
           text: "continue_with",
           logo_alignment: "center",
           width: Math.min(GOOGLE_MAX_WIDTH, Math.floor(holder.current.clientWidth)),
@@ -119,7 +112,6 @@ export function AuthFrame({ title, intro, children }) {
             style={{ left: star.x, top: star.y, width: star.size, height: star.size }}
           />
         ))}
-        <img className="auth-moon" src="/assets/moon.svg" alt="" />
         <img className="auth-cloud auth-cloud-a" src="/assets/Cloud.svg" alt="" />
         <img className="auth-cloud auth-cloud-b" src="/assets/Cloud.svg" alt="" />
         <img className="auth-skyline" src="/assets/Hero.svg" alt="" />
@@ -127,29 +119,23 @@ export function AuthFrame({ title, intro, children }) {
 
       <div className="auth-layout">
         <header className="auth-brand">
-          <img className="auth-logo" src="/assets/logo.svg" alt="PeachHacks" />
+          <div className="auth-mark">
+            <span className="auth-moon" aria-hidden="true" />
+            <img className="auth-logo" src="/assets/logo.svg" alt="PeachHacks" />
+          </div>
+          <p className="auth-theme">Midnight in the City</p>
           <p className="auth-kicker">
             February 5–7, 2027 <span aria-hidden="true">·</span> Georgia State University, Atlanta
           </p>
-          <p className="auth-theme">Midnight in the City</p>
-          <p className="auth-lead">The hacker platform, for everyone who got in.</p>
-          <ul className="auth-inside">
-            {INSIDE.map((line) => (
-              <li key={line}>
-                <img src="/assets/star.svg" alt="" width="12" height="12" />
-                {line}
-              </li>
-            ))}
-          </ul>
         </header>
 
-        <main className="tag-card">
-          <div className="tag-head">
-            <span className="tag-eyelet" aria-hidden="true" />
+        <main className="auth-card">
+          <div className="auth-card-head">
+            <p className="auth-eyebrow">Hacker Platform</p>
             <h1>{title}</h1>
-            {intro && <p>{intro}</p>}
+            {intro && <p className="auth-intro">{intro}</p>}
           </div>
-          <div className="tag-body">{children}</div>
+          {children}
         </main>
       </div>
     </div>
@@ -223,7 +209,7 @@ export default function SignIn({ onSignedIn }) {
         autoComplete="username"
         autoCapitalize="none"
         spellCheck="false"
-        placeholder="The one you applied with"
+        placeholder="The email you applied with"
         value={email}
         onChange={(event) => setEmail(event.target.value)}
       />
