@@ -53,7 +53,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest(properties = { "app.admin.bootstrap-email=acceptances@test.local",
 		"app.admin.bootstrap-password=correct-horse-battery", "app.admin.bootstrap-name=Test Organizer",
-		"app.rate-limit.public-per-minute=100000", "app.rate-limit.login-per-minute=100000",
+		"app.rate-limit.public-per-minute=100000", "app.rate-limit.login-per-minute=100000", "app.rate-limit.sign-up-per-window=100000",
+		"app.rate-limit.sign-up-global-per-hour=100000",
 		"app.email.campaign-delay=0ms" })
 @AutoConfigureMockMvc
 @Testcontainers(disabledWithoutDocker = true)
@@ -205,20 +206,22 @@ class AcceptanceApiTests {
 			.andExpect(jsonPath("$.send.startedBy").value("acceptances@test.local"));
 		awaitIdle();
 
+		summary().andExpect(jsonPath("$.send.state").value("IDLE"))
+			.andExpect(jsonPath("$.send.queued").value(3))
+			.andExpect(jsonPath("$.send.sent").value(3))
+			.andExpect(jsonPath("$.send.failed").value(0))
+			.andExpect(jsonPath("$.send.skipped").value(0))
+			.andExpect(jsonPath("$.send.startedAt").isNotEmpty())
+			.andExpect(jsonPath("$.send.finishedAt").isNotEmpty());
 		mockMvc.perform(get("/admin/acceptances/send").header("Authorization", admin))
-			.andExpect(status().isOk())
-			.andExpect(jsonPath("$.state").value("IDLE"))
-			.andExpect(jsonPath("$.queued").value(3))
-			.andExpect(jsonPath("$.sent").value(3))
-			.andExpect(jsonPath("$.failed").value(0))
-			.andExpect(jsonPath("$.skipped").value(0))
-			.andExpect(jsonPath("$.startedAt").isNotEmpty())
-			.andExpect(jsonPath("$.finishedAt").isNotEmpty());
+			.andExpect(status().isMethodNotAllowed());
 		for (Hacker hacker : List.of(ada, grace, linus)) {
 			List<EmailMessage> emails = ticketEmails(hacker);
 			assertThat(emails).as(hacker.email()).hasSize(1);
 			assertThat(emails.get(0).subject()).contains("You're in");
 			assertThat(emails.get(0).text()).contains("/ticket?t=");
+			assertThat(emails.get(0).idempotencyKey()).as("the provider can tell a repeat of this acceptance")
+				.matches("acceptance-" + hacker.id() + "-\\d+");
 			mockMvc.perform(get("/admin/registrations/" + hacker.id()).header("Authorization", admin))
 				.andExpect(jsonPath("$.acceptanceNotifiedAt").isNotEmpty());
 		}
@@ -335,6 +338,8 @@ class AcceptanceApiTests {
 			Thread.sleep(100);
 		}
 		assertThat(ticketEmails(ada)).hasSize(2);
+		assertThat(ticketEmails(ada).get(0).idempotencyKey()).startsWith("acceptance-" + ada.id() + "-");
+		assertThat(ticketEmails(ada).get(1).idempotencyKey()).as("a copy an admin asked for always goes out").isNull();
 
 		send().andExpect(status().isAccepted()).andExpect(jsonPath("$.queued").value(1));
 		awaitIdle();
@@ -363,14 +368,14 @@ class AcceptanceApiTests {
 
 		List<Hacker> host = new ArrayList<>();
 		for (int i = 0; i < 4; i++) {
-			host.add(register("Main" + i, GSU));
+			host.add(register("Main" + (char) ('A' + i), GSU));
 		}
-		host.add(register("Perimeter0", PERIMETER));
-		host.add(register("Perimeter1", PERIMETER));
+		host.add(register("PerimeterA", PERIMETER));
+		host.add(register("PerimeterB", PERIMETER));
 		host.add(register("Shouting", "  GEORGIA STATE UNIVERSITY "));
 		List<Hacker> others = new ArrayList<>();
 		for (int i = 0; i < 4; i++) {
-			others.add(register("Tech" + i, TECH));
+			others.add(register("Tech" + (char) ('A' + i), TECH));
 		}
 		Hacker lookalike = register("Lookalike", "Georgia State");
 		Hacker hostPending = register("Later", GSU);
@@ -424,6 +429,9 @@ class AcceptanceApiTests {
 		mockMvc.perform(post("/admin/check-in/" + host.get(4).id()).header("Authorization", admin))
 			.andExpect(status().isOk());
 		mockMvc.perform(post("/admin/check-in/" + others.get(3).id()).header("Authorization", admin))
+			.andExpect(status().isConflict())
+			.andExpect(jsonPath("$.code").value("NOT_ACCEPTED"));
+		mockMvc.perform(post("/admin/check-in/" + others.get(0).id()).header("Authorization", admin))
 			.andExpect(status().isOk());
 		summary().andExpect(jsonPath("$.shares.checkedIn.total").value(2))
 			.andExpect(jsonPath("$.shares.checkedIn.host").value(1))
@@ -625,7 +633,7 @@ class AcceptanceApiTests {
 		String volunteer = "Bearer " + JsonPath.read(session, "$.token");
 
 		MockHttpServletRequestBuilder[] adminOnly = { get("/admin/acceptances/summary"),
-				get("/admin/acceptances/waiting"), get("/admin/acceptances/send"), post("/admin/acceptances/send"),
+				get("/admin/acceptances/waiting"), post("/admin/acceptances/send"),
 				post("/admin/registrations/status").contentType(MediaType.APPLICATION_JSON)
 					.content("{\"ids\":[\"%s\"],\"status\":\"REJECTED\"}".formatted(ada.id())),
 				post("/admin/registrations/" + ada.id() + "/ticket-email") };
@@ -730,12 +738,8 @@ class AcceptanceApiTests {
 
 	private void awaitIdle() throws Exception {
 		for (int attempt = 0; attempt < 200; attempt++) {
-			String body = mockMvc.perform(get("/admin/acceptances/send").header("Authorization", admin))
-				.andExpect(status().isOk())
-				.andReturn()
-				.getResponse()
-				.getContentAsString();
-			if ("IDLE".equals(JsonPath.read(body, "$.state"))) {
+			String body = summary().andReturn().getResponse().getContentAsString();
+			if ("IDLE".equals(JsonPath.read(body, "$.send.state"))) {
 				return;
 			}
 			Thread.sleep(50);

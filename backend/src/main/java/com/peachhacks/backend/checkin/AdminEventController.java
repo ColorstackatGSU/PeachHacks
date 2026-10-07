@@ -7,12 +7,16 @@ import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import com.peachhacks.backend.admin.AdminPrincipal;
 import com.peachhacks.backend.common.Csv;
 import com.peachhacks.backend.registration.Registration;
 import com.peachhacks.backend.registration.RegistrationRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -26,6 +30,8 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/admin/events")
 public class AdminEventController {
+
+	private static final Logger log = LoggerFactory.getLogger(AdminEventController.class);
 
 	private final EventService events;
 
@@ -61,7 +67,7 @@ public class AdminEventController {
 	}
 
 	@GetMapping("/{id}/export.csv")
-	ResponseEntity<byte[]> export(@PathVariable UUID id) {
+	ResponseEntity<byte[]> export(@PathVariable UUID id, @AuthenticationPrincipal AdminPrincipal admin) {
 		Event event = events.get(id);
 		List<CheckIn> attendees = checkIns.attendees(id);
 		Map<UUID, Registration> byId = registrations
@@ -77,6 +83,8 @@ public class AdminEventController {
 						r.getSchool(), r.getStatus(), checkIn.getCheckedInAt(), checkIn.getCheckedInBy()));
 			}
 		}
+		log.info("Attendees CSV of {} rows for event {} (\"{}\") exported by {}", csv.rows(), id, event.getName(),
+				admin.email());
 		return csv.toResponse("peachhacks-attendees-" + slug(event.getName()));
 	}
 

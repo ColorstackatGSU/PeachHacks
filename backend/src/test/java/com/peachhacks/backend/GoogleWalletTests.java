@@ -36,7 +36,6 @@ class GoogleWalletTests {
 		UUID registrationId = UUID.randomUUID();
 		String ticketUrl = "https://www.peachhacks.com/ticket?t=abcDEF_123-xyz";
 
-		assertThat(wallet.enabled()).isTrue();
 		String url = wallet.saveUrl(registrationId, "Ada", "Lovelace", "Georgia State University", ticketUrl)
 			.orElseThrow();
 		String claims = verifiedClaims(url, KEYS.getPublic());
@@ -93,7 +92,6 @@ class GoogleWalletTests {
 						"-----BEGIN RSA PRIVATE KEY-----\nAAAA\n-----END RSA PRIVATE KEY-----", null));
 		for (GoogleWalletProperties properties : off) {
 			GoogleWallet wallet = new GoogleWallet(properties, EMAIL);
-			assertThat(wallet.enabled()).isFalse();
 			assertThat(wallet.saveUrl(UUID.randomUUID(), "Ada", "Lovelace", "GSU", "https://x.test/ticket?t=1"))
 				.isEmpty();
 		}

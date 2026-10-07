@@ -58,8 +58,4 @@ public class Event {
 		return general;
 	}
 
-	public Instant getCreatedAt() {
-		return createdAt;
-	}
-
 }

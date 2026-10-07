@@ -12,6 +12,7 @@ import org.springframework.core.task.TaskExecutor;
 import org.springframework.core.task.TaskRejectedException;
 import org.springframework.stereotype.Service;
 
+import com.peachhacks.backend.admin.AdminRole;
 import com.peachhacks.backend.config.EmailProperties;
 import com.peachhacks.backend.email.EmailComposer.Content;
 import com.peachhacks.backend.email.EmailComposer.Footer;
@@ -75,6 +76,23 @@ public class MailService {
 				composer.compose(email, "We received your PeachHacks registration", content, Footer.REGISTERED));
 	}
 
+	/**
+	 * To the owner of an address that someone tried to register a second time. It carries
+	 * nothing from the new submission.
+	 */
+	public void sendAlreadyRegistered(String email) {
+		Content content = Content.of("You are already registered for PeachHacks. Nothing was changed.",
+				"You're already registered",
+				List.of(greeting(null),
+						"Someone just filled in the PeachHacks registration form with this email address. You are"
+								+ " already registered, so nothing was changed and your registration stands as it"
+								+ " was.",
+						"If that was you, there is nothing more to do. If it was not, you can ignore this email.",
+						"The PeachHacks team"));
+		sendInBackground(
+				composer.compose(email, "You're already registered for PeachHacks", content, Footer.REGISTERED));
+	}
+
 	private static void addSchoolInboxParagraph(List<String> paragraphs, String schoolEmail) {
 		if (schoolEmail != null) {
 			paragraphs.add("One more step: look in your school inbox (" + schoolEmail
@@ -128,8 +146,9 @@ public class MailService {
 	 * @throws RuntimeException when it did not
 	 */
 	public void sendTicketNow(String email, String firstName, String ticketUrl, byte[] qrPng,
-			String googleWalletUrl) {
-		sender.send(ticketMessage(email, firstName, ticketUrl, qrPng, googleWalletUrl));
+			String googleWalletUrl, String idempotencyKey) {
+		sender.send(ticketMessage(email, firstName, ticketUrl, qrPng, googleWalletUrl)
+			.withIdempotencyKey(idempotencyKey));
 	}
 
 	private EmailMessage ticketMessage(String email, String firstName, String ticketUrl, byte[] qrPng,
@@ -158,32 +177,28 @@ public class MailService {
 		return properties.adminBaseUrl() + "/#/set-password?token=" + token;
 	}
 
-	public void sendAdminInvite(String email, String name, String addedBy, String token, Duration validFor) {
+	/** The email says which kind of account it is; a volunteer is also told what the account is for. */
+	public void sendInvite(String email, String name, AdminRole role, String addedBy, String token,
+			Duration validFor) {
+		boolean volunteer = role == AdminRole.VOLUNTEER;
+		String account = volunteer ? "a check-in volunteer" : "an admin";
+		List<String> paragraphs = new ArrayList<>();
+		paragraphs.add(greeting(name));
+		paragraphs.add(addedBy + " added you as " + account + " for PeachHacks.");
+		if (volunteer) {
+			paragraphs.add("On the day, you can look hackers up by name or email and check them in as they"
+					+ " arrive. Your account only opens the check-in screen; if someone is not on"
+					+ " the list or something looks wrong, ask an organizer.");
+		}
+		paragraphs.add("Choose a password to finish setting up your account. You will sign in with this"
+				+ " email address.");
 		Content content = Content
-			.of(addedBy + " added you as an admin for PeachHacks. Choose a password to finish.",
-					"You're a PeachHacks admin",
-					List.of(greeting(name), addedBy + " added you as an admin for PeachHacks.",
-							"Choose a password to finish setting up your account. You will sign in with this"
-									+ " email address."))
+			.of(addedBy + " added you as " + account + " for PeachHacks. Choose a password to finish.",
+					volunteer ? "You're a check-in volunteer" : "You're a PeachHacks admin", paragraphs)
 			.withPrimary("Set your password", adminPasswordUrl(token))
 			.withClosing(inviteClosing(validFor, addedBy));
-		sendInBackground(
-				composer.compose(email, "You've been added as a PeachHacks admin", content, Footer.ADMIN_ACCOUNT));
-	}
-
-	public void sendVolunteerInvite(String email, String name, String addedBy, String token, Duration validFor) {
-		Content content = Content
-			.of(addedBy + " added you as a check-in volunteer for PeachHacks. Choose a password to finish.",
-					"You're a check-in volunteer",
-					List.of(greeting(name), addedBy + " added you as a check-in volunteer for PeachHacks.",
-							"On the day, you can look hackers up by name or email and check them in as they"
-									+ " arrive. Your account only opens the check-in screen; if someone is not on"
-									+ " the list or something looks wrong, ask an organizer.",
-							"Choose a password to finish setting up your account. You will sign in with this"
-									+ " email address."))
-			.withPrimary("Set your password", adminPasswordUrl(token))
-			.withClosing(inviteClosing(validFor, addedBy));
-		sendInBackground(composer.compose(email, "You've been added as a PeachHacks check-in volunteer", content,
+		sendInBackground(composer.compose(email,
+				"You've been added as a PeachHacks " + (volunteer ? "check-in volunteer" : "admin"), content,
 				Footer.ADMIN_ACCOUNT));
 	}
 

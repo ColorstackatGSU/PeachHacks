@@ -3,13 +3,18 @@ package com.peachhacks.backend;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -29,14 +34,21 @@ import com.peachhacks.backend.admin.AdminRole;
 import com.peachhacks.backend.admin.AuthService;
 import com.peachhacks.backend.common.ApiException;
 import com.peachhacks.backend.common.Tokens;
+import com.peachhacks.backend.email.CampaignService;
 import com.peachhacks.backend.email.EmailMessage;
 import com.peachhacks.backend.email.EmailSender;
+import com.peachhacks.backend.registration.Registration;
+import com.peachhacks.backend.registration.RegistrationRepository;
+import com.peachhacks.backend.registration.RegistrationStatus;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
@@ -47,6 +59,9 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -69,7 +84,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest(properties = { "app.admin.bootstrap-email=Organizer@Test.local",
 		"app.admin.bootstrap-password=correct-horse-battery", "app.admin.bootstrap-name=Test Organizer",
-		"app.rate-limit.public-per-minute=100000", "app.rate-limit.login-per-minute=100000",
+		"app.rate-limit.public-per-minute=100000", "app.rate-limit.login-per-minute=100000", "app.rate-limit.sign-up-per-window=100000",
+		"app.rate-limit.sign-up-global-per-hour=100000",
 		"app.email.campaign-delay=0ms" })
 @AutoConfigureMockMvc
 @Testcontainers(disabledWithoutDocker = true)
@@ -86,6 +102,11 @@ class RegistrationApiTests {
 
 	private static final List<EmailMessage> sentEmails = new CopyOnWriteArrayList<>();
 
+	private static final Set<String> rejectedByProvider = ConcurrentHashMap.newKeySet();
+
+	/** While set, the provider holds every message whose subject starts with "Held". */
+	private static volatile CountDownLatch providerGate;
+
 	private static final Pattern CONFIRM_LINK = Pattern.compile("/confirm-email\\?token=([A-Za-z0-9_-]+)");
 
 	private static final Pattern PASSWORD_LINK = Pattern.compile("/#/set-password\\?token=([A-Za-z0-9_-]+)");
@@ -96,7 +117,21 @@ class RegistrationApiTests {
 		@Bean
 		@Primary
 		EmailSender recordingEmailSender() {
-			return sentEmails::add;
+			return message -> {
+				CountDownLatch gate = providerGate;
+				if (gate != null && message.subject().startsWith("Held")) {
+					try {
+						gate.await(10, TimeUnit.SECONDS);
+					}
+					catch (InterruptedException ex) {
+						Thread.currentThread().interrupt();
+					}
+				}
+				if (rejectedByProvider.contains(message.to())) {
+					throw new IllegalStateException("provider said no");
+				}
+				sentEmails.add(message);
+			};
 		}
 
 	}
@@ -110,8 +145,17 @@ class RegistrationApiTests {
 	@Autowired
 	private DataSource dataSource;
 
+	@Autowired
+	private CampaignService campaignService;
+
+	@Autowired
+	private RegistrationRepository registrationRepository;
+
+	@Autowired
+	private PlatformTransactionManager transactionManager;
+
 	@Test
-	void preRegistrationIsIdempotentOnEmail() throws Exception {
+	void aRepeatedPreRegistrationKeepsTheFirstSubmissionAndIsAnsweredLikeANewOne() throws Exception {
 		String school = uniqueSchool();
 		String email = unique() + "@example.com";
 
@@ -119,21 +163,32 @@ class RegistrationApiTests {
 			.andReturn()
 			.getResponse()
 			.getContentAsString();
-		String second = preRegister("Augusta", "King", email.toUpperCase(), school, "ada@school.edu")
+		String second = preRegister("Augusta", "King", email.toUpperCase(), uniqueSchool(), "someone-else@school.edu")
 			.andExpect(status().isCreated())
 			.andReturn()
 			.getResponse()
 			.getContentAsString();
 
-		assertThat((String) JsonPath.read(second, "$.id")).isEqualTo(JsonPath.read(first, "$.id"));
+		String id = JsonPath.read(first, "$.id");
+		assertThat((String) JsonPath.read(second, "$.id")).as("an id that belongs to nothing").isNotEqualTo(id);
+		assertThat(jdbc.sql("select count(*) from pre_registrations where id = :id")
+			.param("id", UUID.fromString(JsonPath.read(second, "$.id")))
+			.query(Long.class)
+			.single()).isZero();
+		assertThat(emailsTo(email, "You're pre-registered", 1)).hasSize(1);
+		assertThat(emailsTo("someone-else@school.edu", "Confirm", 0))
+			.as("the repeat's school address is never written to")
+			.isEmpty();
 		mockMvc.perform(get("/admin/pre-registrations").param("school", school).header("Authorization", bearer()))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.total").value(1))
 			.andExpect(jsonPath("$.page").value(0))
 			.andExpect(jsonPath("$.size").value(25))
-			.andExpect(jsonPath("$.items[0].firstName").value("Augusta"))
+			.andExpect(jsonPath("$.items[0].id").value(id))
+			.andExpect(jsonPath("$.items[0].firstName").value("Ada"))
+			.andExpect(jsonPath("$.items[0].lastName").value("Lovelace"))
 			.andExpect(jsonPath("$.items[0].email").value(email))
-			.andExpect(jsonPath("$.items[0].schoolEmail").value("ada@school.edu"))
+			.andExpect(jsonPath("$.items[0].schoolEmail").value("a.lovelace@school.edu"))
 			.andExpect(jsonPath("$.items[0].registered").value(false))
 			.andExpect(jsonPath("$.items[0].unsubscribed").value(false));
 	}
@@ -186,8 +241,25 @@ class RegistrationApiTests {
 			.getContentAsString();
 		String id = JsonPath.read(created, "$.id");
 
-		register(registrationJson(email.toUpperCase(), school, true, true)).andExpect(status().isConflict())
-			.andExpect(jsonPath("$.code").value("ALREADY_REGISTERED"));
+		String again = register(named(registrationJson(email.toUpperCase(), school, true, true), "Mallory", "Impostor"))
+			.andExpect(status().isCreated())
+			.andReturn()
+			.getResponse()
+			.getContentAsString();
+		assertThat((String) JsonPath.read(again, "$.id")).as("a duplicate is answered like a new registration")
+			.isNotEqualTo(id);
+		register(registrationJson(email, school, true, true)).andExpect(status().isCreated());
+		assertThat(jdbc.sql("select first_name from registrations where email = :email")
+			.param("email", email)
+			.query(String.class)
+			.list()).as("nothing from the duplicate is stored").containsExactly("Ada");
+		List<EmailMessage> notices = emailsTo(email, "You're already registered", 1);
+		Thread.sleep(300);
+		assertThat(emailsTo(email, "You're already registered", 1)).as("at most one notice an hour").hasSize(1);
+		assertThat(notices.get(0).text()).contains("nothing was changed")
+			.contains("You are receiving this because you registered for PeachHacks.")
+			.doesNotContain("Mallory")
+			.doesNotContainIgnoringCase("unsubscribe");
 
 		mockMvc.perform(get("/admin/registrations").param("school", school).header("Authorization", token))
 			.andExpect(status().isOk())
@@ -210,7 +282,7 @@ class RegistrationApiTests {
 			.andExpect(jsonPath("$.mlhEmailOptIn").value(false))
 			.andExpect(jsonPath("$.dietaryRestrictions", hasSize(2)))
 			.andExpect(jsonPath("$.raceEthnicity", hasSize(0)))
-			.andExpect(jsonPath("$.shippingAddress.city").value("Atlanta"))
+			.andExpect(jsonPath("$.shippingAddress").doesNotExist())
 			.andExpect(jsonPath("$.unsubscribeToken").doesNotExist())
 			.andExpect(jsonPath("$.website").doesNotExist());
 		mockMvc
@@ -341,10 +413,20 @@ class RegistrationApiTests {
 				.content("{\"email\":\"%s\",\"name\":\"\"}".formatted(email)))
 			.andExpect(status().isBadRequest())
 			.andExpect(jsonPath("$.fieldErrors.name").isNotEmpty());
-		String created = mockMvc
+		mockMvc
 			.perform(post("/admin/admins").header("Authorization", token)
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("{\"email\":\"%s\",\"name\":\"Second\"}".formatted(email)))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.fieldErrors.role").value("Choose a role"));
+		assertThat(jdbc.sql("select count(*) from admins where email = :email")
+			.param("email", email)
+			.query(Long.class)
+			.single()).as("an account is never created with a role nobody chose").isZero();
+		String created = mockMvc
+			.perform(post("/admin/admins").header("Authorization", token)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"email\":\"%s\",\"name\":\"Second\",\"role\":\"ADMIN\"}".formatted(email)))
 			.andExpect(status().isCreated())
 			.andExpect(jsonPath("$.email").value(email))
 			.andExpect(jsonPath("$.role").value("ADMIN"))
@@ -557,7 +639,7 @@ class RegistrationApiTests {
 			.andExpect(jsonPath("$.items[0].checkedInBy").value(nullValue()))
 			.andExpect(jsonPath("$.items[0].generalCheckedIn").value(false))
 			.andExpect(content().string(not(containsString("404 555"))))
-			.andExpect(content().string(not(containsString("Peachtree"))))
+
 			.andExpect(content().string(not(containsString("Vegetarian"))))
 			.andExpect(content().string(not(containsString(ticketToken(firstId)))))
 			.andReturn()
@@ -574,6 +656,23 @@ class RegistrationApiTests {
 			.andExpect(jsonPath("$.items", hasSize(0)));
 
 		long checkedInBefore = count(GENERAL_COUNT);
+		for (String caller : List.of(volunteer.token(), admin)) {
+			mockMvc.perform(post("/admin/check-in/" + firstId).header("Authorization", caller))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.code").value("NOT_ACCEPTED"))
+				.andExpect(jsonPath("$.message").value(containsString("An organizer has to accept them first")));
+			mockMvc
+				.perform(post("/admin/check-in/" + firstId).param("override", "true").header("Authorization", caller))
+				.andExpect(status().isConflict());
+		}
+		for (String status : List.of("WAITLISTED", "REJECTED")) {
+			setStatus(admin, firstId, status);
+			mockMvc.perform(post("/admin/check-in/" + firstId).header("Authorization", admin))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.code").value("NOT_ACCEPTED"));
+		}
+		assertThat(count(GENERAL_COUNT)).as("nobody who is not accepted was checked in").isEqualTo(checkedInBefore);
+		setStatus(admin, firstId, "ACCEPTED");
 		String first = mockMvc.perform(post("/admin/check-in/" + firstId).header("Authorization", volunteer.token()))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.id").value(firstId))
@@ -674,6 +773,7 @@ class RegistrationApiTests {
 		String admin = bearer();
 		String prefix = unique();
 		String registrationId = registerHacker(admin, prefix + "@example.com", uniqueSchool());
+		setStatus(admin, registrationId, "ACCEPTED");
 		String name = "Workshop " + unique();
 
 		String created = mockMvc.perform(eventRequest(post("/admin/events"), admin,
@@ -803,7 +903,7 @@ class RegistrationApiTests {
 	}
 
 	@Test
-	void ticketsCanBeScannedByTokenOrUrlAndNonAcceptedTicketsNeedAnOverride() throws Exception {
+	void ticketsCanBeScannedByTokenOrUrlAndNonAcceptedTicketsAreNeverCheckedIn() throws Exception {
 		String admin = bearer();
 		String acceptedId = registerHacker(admin, unique() + "@example.com", uniqueSchool());
 		String pendingId = registerHacker(admin, unique() + "@example.com", uniqueSchool());
@@ -811,7 +911,7 @@ class RegistrationApiTests {
 		Volunteer volunteer = createVolunteer(admin, "Scanner");
 		String token = ticketToken(acceptedId);
 
-		String first = scan(volunteer.token(), token, null, false).andExpect(jsonPath("$.result").value("CHECKED_IN"))
+		String first = scan(volunteer.token(), token, null).andExpect(jsonPath("$.result").value("CHECKED_IN"))
 			.andExpect(jsonPath("$.event.general").value(true))
 			.andExpect(jsonPath("$.item.id").value(acceptedId))
 			.andExpect(jsonPath("$.item.status").value("ACCEPTED"))
@@ -821,16 +921,16 @@ class RegistrationApiTests {
 			.getResponse()
 			.getContentAsString();
 		String checkedInAt = JsonPath.read(first, "$.item.checkedInAt");
-		scan(admin, "http://localhost:5173/ticket?t=" + token, null, false)
+		scan(admin, "http://localhost:5173/ticket?t=" + token, null)
 			.andExpect(jsonPath("$.result").value("ALREADY_CHECKED_IN"))
 			.andExpect(jsonPath("$.item.checkedInAt").value(checkedInAt))
 			.andExpect(jsonPath("$.item.checkedInBy").value("Scanner"));
-		scan(volunteer.token(), "  https://www.peachhacks.com/ticket?utm=x&t=" + token + "#top ", null, false)
+		scan(volunteer.token(), "  https://www.peachhacks.com/ticket?utm=x&t=" + token + "#top ", null)
 			.andExpect(jsonPath("$.result").value("ALREADY_CHECKED_IN"));
 
 		for (String unknown : new String[] { com.peachhacks.backend.common.Tokens.random(), "hello",
 				"https://example.com/ticket?t=nope", "https://example.com/menu" }) {
-			scan(volunteer.token(), unknown, null, false).andExpect(jsonPath("$.result").value("NOT_RECOGNISED"))
+			scan(volunteer.token(), unknown, null).andExpect(jsonPath("$.result").value("NOT_RECOGNISED"))
 				.andExpect(jsonPath("$.item").value(nullValue()));
 		}
 		mockMvc
@@ -841,16 +941,19 @@ class RegistrationApiTests {
 			.andExpect(jsonPath("$.fieldErrors.code").isNotEmpty());
 
 		String pendingToken = ticketToken(pendingId);
-		scan(volunteer.token(), pendingToken, null, false).andExpect(jsonPath("$.result").value("NOT_ACCEPTED"))
+		scan(volunteer.token(), pendingToken, null).andExpect(jsonPath("$.result").value("NOT_ACCEPTED"))
 			.andExpect(jsonPath("$.item.id").value(pendingId))
 			.andExpect(jsonPath("$.item.firstName").value("Ada"))
 			.andExpect(jsonPath("$.item.status").value("PENDING"))
 			.andExpect(jsonPath("$.item.checkedInAt").value(nullValue()));
 		assertThat(checkInCount(pendingId)).isZero();
-		scan(volunteer.token(), pendingToken, null, true).andExpect(jsonPath("$.result").value("CHECKED_IN"))
-			.andExpect(jsonPath("$.item.status").value("PENDING"))
-			.andExpect(jsonPath("$.item.checkedInAt").isNotEmpty());
-		assertThat(checkInCount(pendingId)).isEqualTo(1);
+		mockMvc
+			.perform(post("/admin/check-in/scan").header("Authorization", admin)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"code\":\"%s\",\"override\":true}".formatted(pendingToken)))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.result").value("NOT_ACCEPTED"));
+		assertThat(checkInCount(pendingId)).as("there is no override, for an admin either").isZero();
 
 		String event = mockMvc
 			.perform(eventRequest(post("/admin/events"), admin, "{\"name\":\"Workshop %s\"}".formatted(unique())))
@@ -861,14 +964,14 @@ class RegistrationApiTests {
 		String eventId = JsonPath.read(event, "$.id");
 		mockMvc.perform(delete("/admin/check-in/" + acceptedId).header("Authorization", admin))
 			.andExpect(status().isOk());
-		scan(volunteer.token(), token, eventId, false).andExpect(jsonPath("$.result").value("CHECKED_IN"))
+		scan(volunteer.token(), token, eventId).andExpect(jsonPath("$.result").value("CHECKED_IN"))
 			.andExpect(jsonPath("$.event.id").value(eventId))
 			.andExpect(jsonPath("$.event.general").value(false))
 			.andExpect(jsonPath("$.item.generalCheckedIn").value(false));
-		scan(volunteer.token(), token, null, false).andExpect(jsonPath("$.result").value("CHECKED_IN"));
-		scan(volunteer.token(), token, eventId, false).andExpect(jsonPath("$.result").value("ALREADY_CHECKED_IN"))
+		scan(volunteer.token(), token, null).andExpect(jsonPath("$.result").value("CHECKED_IN"));
+		scan(volunteer.token(), token, eventId).andExpect(jsonPath("$.result").value("ALREADY_CHECKED_IN"))
 			.andExpect(jsonPath("$.item.generalCheckedIn").value(true));
-		scan(volunteer.token(), token, UUID.randomUUID().toString(), false).andExpect(status().isNotFound());
+		scan(volunteer.token(), token, UUID.randomUUID().toString()).andExpect(status().isNotFound());
 
 		mockMvc.perform(delete("/admin/admins/" + volunteer.id()).header("Authorization", admin))
 			.andExpect(status().isNoContent());
@@ -1003,7 +1106,7 @@ class RegistrationApiTests {
 				post("/admin/registrations/status").contentType(MediaType.APPLICATION_JSON)
 					.content("{\"ids\":[\"%s\"],\"status\":\"REJECTED\"}".formatted(registrationId)),
 				get("/admin/acceptances/summary"), get("/admin/acceptances/waiting"),
-				get("/admin/acceptances/send"), post("/admin/acceptances/send"),
+				post("/admin/acceptances/send"),
 				post("/admin/registrations/" + registrationId + "/school-email/resend"),
 				post("/admin/pre-registrations/" + UUID.randomUUID() + "/school-email/resend"),
 				get("/admin/registrations/" + registrationId + "/resume"),
@@ -1015,6 +1118,7 @@ class RegistrationApiTests {
 				get("/admin/emails"), post("/admin/emails").contentType(MediaType.APPLICATION_JSON).content(json),
 				post("/admin/emails/test").contentType(MediaType.APPLICATION_JSON).content(json),
 				post("/admin/emails/recipient-count").contentType(MediaType.APPLICATION_JSON).content(json),
+				get("/admin/emails/" + UUID.randomUUID() + "/recipients"),
 				get("/admin/admins"),
 				post("/admin/admins").contentType(MediaType.APPLICATION_JSON)
 					.content("{\"email\":\"%s@test.local\",\"name\":\"Sneaky\",\"password\":\"another-long-password\"}"
@@ -1172,7 +1276,7 @@ class RegistrationApiTests {
 	}
 
 	@Test
-	void eventUpdatesReachUnsubscribedRegistrantsAndAnnouncementsSkipThem() throws Exception {
+	void eventUpdatesGoOnlyToAcceptedHackersEvenUnsubscribedOnesAndAnnouncementsSkipThose() throws Exception {
 		String token = bearer();
 		String school = uniqueSchool();
 		String staysEmail = unique() + "@example.com";
@@ -1192,12 +1296,16 @@ class RegistrationApiTests {
 					.single())))
 			.andExpect(status().isNoContent());
 
+		tellAccepted(token, stays);
+		tellAccepted(token, unsubscribed);
+
 		recipientCount(token, "ANNOUNCEMENT", "REGISTRANTS", school).andExpect(jsonPath("$.recipientCount").value(1));
-		recipientCount(token, "EVENT_UPDATE", "REGISTRANTS", school).andExpect(jsonPath("$.recipientCount").value(2));
+		recipientCount(token, "ANNOUNCEMENT", "ACCEPTED", school).andExpect(jsonPath("$.recipientCount").value(1));
+		recipientCount(token, "EVENT_UPDATE", "ACCEPTED", school).andExpect(jsonPath("$.recipientCount").value(2));
 		recipientCount(token, "ANNOUNCEMENT", "PRE_REGISTRANTS", school)
 			.andExpect(jsonPath("$.recipientCount").value(1));
 
-		for (String audience : List.of("PRE_REGISTRANTS", "PRE_REGISTRANTS_NOT_REGISTERED")) {
+		for (String audience : List.of("PRE_REGISTRANTS", "PRE_REGISTRANTS_NOT_REGISTERED", "REGISTRANTS")) {
 			String json = """
 					{"kind":"EVENT_UPDATE","audience":"%s","school":"%s","subject":"Doors open at 9","body":"Bring a laptop."}
 					""".formatted(audience, school);
@@ -1208,7 +1316,7 @@ class RegistrationApiTests {
 						.content(json))
 					.andExpect(status().isBadRequest())
 					.andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
-					.andExpect(jsonPath("$.fieldErrors.audience").isNotEmpty());
+					.andExpect(jsonPath("$.fieldErrors.audience").value(containsString("accepted hackers")));
 			}
 		}
 		mockMvc
@@ -1218,7 +1326,7 @@ class RegistrationApiTests {
 			.andExpect(status().isBadRequest())
 			.andExpect(jsonPath("$.fieldErrors.kind").isNotEmpty());
 
-		sendCampaign(token, "EVENT_UPDATE", "REGISTRANTS", school, "Doors open at 9", 2);
+		sendCampaign(token, "EVENT_UPDATE", "ACCEPTED", school, "Doors open at 9", 2);
 		for (String email : List.of(staysEmail, unsubscribedEmail)) {
 			EmailMessage update = emailsTo(email, "Doors open at 9", 1).get(0);
 			assertThat(update.headers()).doesNotContainKey("List-Unsubscribe");
@@ -1293,7 +1401,7 @@ class RegistrationApiTests {
 
 		recipientCount(token, "EVENT_UPDATE", "ACCEPTED", school).andExpect(jsonPath("$.recipientCount").value(1));
 		recipientCount(token, "ANNOUNCEMENT", "ACCEPTED", school).andExpect(jsonPath("$.recipientCount").value(1));
-		recipientCount(token, "EVENT_UPDATE", "REGISTRANTS", school).andExpect(jsonPath("$.recipientCount").value(3));
+		recipientCount(token, "ANNOUNCEMENT", "REGISTRANTS", school).andExpect(jsonPath("$.recipientCount").value(3));
 
 		sendCampaign(token, "EVENT_UPDATE", "ACCEPTED", school, "Where to park", 1);
 		assertThat(emailsTo(toldEmail, "Where to park", 1)).hasSize(1);
@@ -1959,6 +2067,421 @@ class RegistrationApiTests {
 			.content("{\"email\":\"%s\",\"password\":\"%s\"}".formatted(email, password)));
 	}
 
+	@Test
+	void eventUpdatesNeverReachRejectedWaitlistedPendingOrNotYetToldRegistrants() throws Exception {
+		String token = bearer();
+		String school = uniqueSchool();
+		String acceptedEmail = unique() + "@example.com";
+		List<String> others = List.of(unique() + "@example.com", unique() + "@example.com",
+				unique() + "@example.com", unique() + "@example.com");
+		setRegistrationOpen(token, true);
+		String accepted = registeredId(acceptedEmail, school);
+		String notTold = registeredId(others.get(0), school);
+		String pending = registeredId(others.get(1), school);
+		String waitlisted = registeredId(others.get(2), school);
+		String rejected = registeredId(others.get(3), school);
+		setRegistrationOpen(token, false);
+		tellAccepted(token, accepted);
+		setStatus(token, notTold, "ACCEPTED");
+		setStatus(token, waitlisted, "WAITLISTED");
+		setStatus(token, rejected, "REJECTED");
+
+		recipientCount(token, "EVENT_UPDATE", "ACCEPTED", school).andExpect(jsonPath("$.recipientCount").value(1));
+		startCampaign(token, "EVENT_UPDATE", "REGISTRANTS", school, "Parking map").andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.fieldErrors.audience").isNotEmpty());
+		sendCampaign(token, "EVENT_UPDATE", "ACCEPTED", school, "Parking map", 1);
+
+		assertThat(emailsTo(acceptedEmail, "Parking map", 1)).hasSize(1);
+		for (String email : others) {
+			assertThat(emailsTo(email, "Parking map", 0)).as(email).isEmpty();
+		}
+		assertThat(sentEmails.stream().filter(message -> message.subject().startsWith("Parking map")).toList())
+			.hasSize(1);
+		deleteRegistrations(accepted, notTold, pending, waitlisted, rejected);
+	}
+
+	@Test
+	void campaignRecipientsAreRecordedWithWhatHappenedToEach() throws Exception {
+		String token = bearer();
+		String school = uniqueSchool();
+		String reachedEmail = unique() + "@example.com";
+		String refusedEmail = unique() + "@example.com";
+		preRegister("Grace", "Hopper", reachedEmail, school, "grace@school.edu").andExpect(status().isCreated());
+		preRegister("Dorothy", "Vaughan", refusedEmail, school, "dorothy@school.edu").andExpect(status().isCreated());
+		String subject = "Recorded " + unique();
+
+		rejectedByProvider.add(refusedEmail);
+		String campaign = startCampaign(token, "ANNOUNCEMENT", "PRE_REGISTRANTS", school, subject)
+			.andExpect(status().isAccepted())
+			.andExpect(jsonPath("$.recipientCount").value(2))
+			.andReturn()
+			.getResponse()
+			.getContentAsString();
+		String id = JsonPath.read(campaign, "$.id");
+		awaitCampaign(UUID.fromString(id), "SENT");
+		rejectedByProvider.remove(refusedEmail);
+
+		String recipients = "/admin/emails/" + id + "/recipients";
+		mockMvc.perform(get(recipients).header("Authorization", token))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.total").value(2))
+			.andExpect(jsonPath("$.page").value(0))
+			.andExpect(jsonPath("$.size").value(25))
+			.andExpect(jsonPath("$.items", hasSize(2)))
+			.andExpect(jsonPath("$.items[0].email").value(reachedEmail))
+			.andExpect(jsonPath("$.items[0].firstName").value("Grace"))
+			.andExpect(jsonPath("$.items[0].lastName").value("Hopper"))
+			.andExpect(jsonPath("$.items[0].status").value("SENT"))
+			.andExpect(jsonPath("$.items[0].sentAt").isNotEmpty())
+			.andExpect(jsonPath("$.items[0].unsubscribeToken").doesNotExist())
+			.andExpect(jsonPath("$.items[1].email").value(refusedEmail))
+			.andExpect(jsonPath("$.items[1].status").value("FAILED"))
+			.andExpect(jsonPath("$.items[1].sentAt").value(nullValue()));
+		mockMvc.perform(get(recipients).param("status", "FAILED").header("Authorization", token))
+			.andExpect(jsonPath("$.total").value(1))
+			.andExpect(jsonPath("$.items[0].email").value(refusedEmail));
+		mockMvc.perform(get(recipients).param("status", "SENT").param("size", "1").header("Authorization", token))
+			.andExpect(jsonPath("$.total").value(1))
+			.andExpect(jsonPath("$.size").value(1))
+			.andExpect(jsonPath("$.items[0].email").value(reachedEmail));
+		mockMvc.perform(get(recipients).param("size", "1").param("page", "1").header("Authorization", token))
+			.andExpect(jsonPath("$.total").value(2))
+			.andExpect(jsonPath("$.page").value(1))
+			.andExpect(jsonPath("$.items[0].email").value(refusedEmail));
+		mockMvc.perform(get(recipients).param("status", "PENDING").header("Authorization", token))
+			.andExpect(jsonPath("$.total").value(0))
+			.andExpect(jsonPath("$.items", hasSize(0)));
+		mockMvc.perform(get(recipients).param("status", "").header("Authorization", token))
+			.andExpect(jsonPath("$.total").value(2));
+		mockMvc.perform(get(recipients).param("status", "BOUNCED").header("Authorization", token))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.fieldErrors.status").isNotEmpty());
+		mockMvc.perform(get("/admin/emails/" + UUID.randomUUID() + "/recipients").header("Authorization", token))
+			.andExpect(status().isNotFound())
+			.andExpect(jsonPath("$.code").value("NOT_FOUND"));
+		mockMvc.perform(get(recipients)).andExpect(status().isUnauthorized());
+
+		mockMvc.perform(get("/admin/emails").header("Authorization", token))
+			.andExpect(jsonPath("$[0].id").value(id))
+			.andExpect(jsonPath("$[0].status").value("SENT"))
+			.andExpect(jsonPath("$[0].recipientCount").value(2))
+			.andExpect(jsonPath("$[0].sentCount").value(1))
+			.andExpect(jsonPath("$[0].failedCount").value(1));
+		assertThat(jdbc.sql("select error from campaign_recipients where email = :email")
+			.param("email", refusedEmail)
+			.query(String.class)
+			.single()).contains("provider said no");
+		assertThat(emailsTo(reachedEmail, subject, 1).get(0).idempotencyKey()).startsWith("campaign-" + id + "-");
+	}
+
+	@Test
+	void aCampaignInterruptedByARestartCarriesOnWithThePeopleStillPending() throws Exception {
+		String token = bearer();
+		UUID id = UUID.randomUUID();
+		UUID legacy = UUID.randomUUID();
+		String subject = "Resumed " + unique();
+		String alreadySent = unique() + "@example.com";
+		String alreadyFailed = unique() + "@example.com";
+		String stillPending = unique() + "@example.com";
+		jdbc.sql("""
+				insert into email_campaigns (id, kind, subject, body, audience, recipient_count, sent_count, status,
+					created_by)
+				values (:id, 'ANNOUNCEMENT', :subject, 'Hi {{firstName}} {{lastName}}', 'PRE_REGISTRANTS', 3, 1,
+					'SENDING', 'someone@peachhacks.com'),
+					(:legacy, 'ANNOUNCEMENT', :subject, 'Hi', 'PRE_REGISTRANTS', 9, 4, 'QUEUED',
+					'someone@peachhacks.com')
+				""").param("id", id).param("legacy", legacy).param("subject", subject).update();
+		jdbc.sql("""
+				insert into campaign_recipients (campaign_id, email, first_name, last_name, unsubscribe_token, status,
+					sent_at, error)
+				values (:id, :sent, 'Sam', 'Sent', 'tok-sent', 'SENT', now(), null),
+					(:id, :failed, 'Fay', 'Failed', 'tok-failed', 'FAILED', null, 'provider said no'),
+					(:id, :pending, 'Pat', 'Pending', 'tok-pending', 'PENDING', null, null)
+				""")
+			.param("id", id)
+			.param("sent", alreadySent)
+			.param("failed", alreadyFailed)
+			.param("pending", stillPending)
+			.update();
+
+		campaignService.resumeInterrupted();
+		awaitCampaign(id, "SENT");
+
+		List<EmailMessage> resumed = emailsTo(stillPending, subject, 1);
+		assertThat(resumed).hasSize(1);
+		assertThat(resumed.get(0).text()).startsWith("Hi Pat Pending");
+		assertThat(resumed.get(0).headers().get("List-Unsubscribe")).contains("token=tok-pending");
+		assertThat(emailsTo(alreadySent, subject, 0)).as("marked SENT before the restart").isEmpty();
+		assertThat(emailsTo(alreadyFailed, subject, 0)).as("a failure is not retried by a resume").isEmpty();
+		mockMvc.perform(get("/admin/emails/" + id + "/recipients").header("Authorization", token))
+			.andExpect(jsonPath("$.total").value(3))
+			.andExpect(jsonPath("$.items[2].status").value("SENT"));
+		assertThat(jdbc.sql("select sent_count || '/' || failed_count from email_campaigns where id = :id")
+			.param("id", id)
+			.query(String.class)
+			.single()).isEqualTo("2/1");
+
+		assertThat(
+				jdbc.sql("select status || ' ' || sent_count || ' ' || (completed_at is not null) from email_campaigns"
+						+ " where id = :id")
+					.param("id", legacy)
+					.query(String.class)
+					.single())
+			.as("a campaign from before recipients were recorded cannot be resumed")
+			.isEqualTo("FAILED 4 true");
+		mockMvc.perform(get("/admin/emails/" + legacy + "/recipients").header("Authorization", token))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.total").value(0))
+			.andExpect(jsonPath("$.items", hasSize(0)));
+		jdbc.sql("delete from email_campaigns where id in (:id, :legacy)")
+			.param("id", id)
+			.param("legacy", legacy)
+			.update();
+	}
+
+	@Test
+	void anIdenticalCampaignIsRefusedWhileTheFirstIsStillSending() throws Exception {
+		String token = bearer();
+		String school = uniqueSchool();
+		preRegister("Grace", "Hopper", unique() + "@example.com", school, "grace@school.edu")
+			.andExpect(status().isCreated());
+		String subject = "Held " + unique();
+		CountDownLatch gate = new CountDownLatch(1);
+		providerGate = gate;
+		UUID first;
+		UUID different;
+		try {
+			first = UUID.fromString(JsonPath.read(
+					startCampaign(token, "ANNOUNCEMENT", "PRE_REGISTRANTS", school, subject)
+						.andExpect(status().isAccepted())
+						.andReturn()
+						.getResponse()
+						.getContentAsString(),
+					"$.id"));
+			startCampaign(token, "ANNOUNCEMENT", "PRE_REGISTRANTS", school, "  " + subject + " ")
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.code").value("CAMPAIGN_ALREADY_SENDING"))
+				.andExpect(jsonPath("$.message").value(containsString("already being sent")));
+			different = UUID.fromString(JsonPath.read(
+					startCampaign(token, "ANNOUNCEMENT", "PRE_REGISTRANTS", school, subject + " again")
+						.andExpect(status().isAccepted())
+						.andReturn()
+						.getResponse()
+						.getContentAsString(),
+					"$.id"));
+		}
+		finally {
+			providerGate = null;
+			gate.countDown();
+		}
+		awaitCampaign(first, "SENT");
+		awaitCampaign(different, "SENT");
+		assertThat(jdbc.sql("select count(*) from email_campaigns where subject = :subject")
+			.param("subject", subject)
+			.query(Long.class)
+			.single()).isEqualTo(1);
+
+		sendCampaign(token, "ANNOUNCEMENT", "PRE_REGISTRANTS", school, subject, 1);
+	}
+
+	@Test
+	void registrationAppliesTheFormsRulesToPhoneLinkedinAndNames() throws Exception {
+		String token = bearer();
+		String school = uniqueSchool();
+		String json = registrationJson(unique() + "@example.com", school, true, true);
+		setRegistrationOpen(token, true);
+
+		for (String phone : List.of("12345", "call 404 555 0100", "1234567890123456", "404-555-0100; now")) {
+			register(json.replace("\"phone\": \"+1 404 555 0100\"", "\"phone\": \"" + phone + "\""))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.fieldErrors.phone").value("Enter a valid phone number, with area code"));
+		}
+		for (String url : List.of("https://evil.example/in/ada", "https://linkedin.com.evil.example/in/ada",
+				"https://evil.example/linkedin.com", "https://linkedin.com@evil.example/", "javascript:alert(1)",
+				"ftp://linkedin.com/in/ada", "linkedin.com/in/ada")) {
+			register(json.replace("\"linkedinUrl\": \"\"", "\"linkedinUrl\": \"" + url + "\""))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.fieldErrors.linkedinUrl").value(containsString("LinkedIn")));
+		}
+		for (String name : List.of("https://evil.example", "www.evil.example/x", "Ada2", "ada@example.com", "a:b")) {
+			register(named(json, name, "Lovelace")).andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.fieldErrors.firstName")
+					.value("Use letters, spaces, apostrophes, periods and hyphens only"));
+			register(named(json, "Ada", name)).andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.fieldErrors.lastName").isNotEmpty());
+			preRegister(name, "Lovelace", unique() + "@example.com", school, "ada@school.edu")
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.fieldErrors.firstName").isNotEmpty());
+		}
+		preRegister("Ada", "Lovelace", "ada lovelace@example.com", school, "ada@school.edu")
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.fieldErrors.email").value("Must be a valid email"));
+		assertThat(jdbc.sql("select count(*) from registrations where school = :school")
+			.param("school", school)
+			.query(Long.class)
+			.single()).isZero();
+
+		String created = register(named(json, "José María", "O’Neil-St. John")
+			.replace("\"phone\": \"+1 404 555 0100\"", "\"phone\": \"(404) 555-0100 x12\"")
+			.replace("\"linkedinUrl\": \"\"", "\"linkedinUrl\": \"HTTPS://uk.LinkedIn.com/in/ada?trk=x\""))
+			.andExpect(status().isCreated())
+			.andReturn()
+			.getResponse()
+			.getContentAsString();
+		setRegistrationOpen(token, false);
+		deleteRegistrations(JsonPath.<String>read(created, "$.id"));
+	}
+
+	@Test
+	void aPasswordOfMoreThan72BytesIsAFieldErrorNotAServerError() throws Exception {
+		String admin = bearer();
+		String email = unique() + "@test.local";
+		String fits = "é".repeat(36);
+		String tooLong = "é".repeat(40);
+		String created = mockMvc
+			.perform(post("/admin/admins").header("Authorization", admin)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"email\":\"%s\",\"name\":\"Bytes\",\"role\":\"VOLUNTEER\"}".formatted(email)))
+			.andExpect(status().isCreated())
+			.andReturn()
+			.getResponse()
+			.getContentAsString();
+		String linkToken = passwordToken(JsonPath.read(created, "$.setPasswordUrl"));
+
+		setPassword(linkToken, tooLong).andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+			.andExpect(jsonPath("$.fieldErrors.password").value(containsString("too long")));
+		setPassword(linkToken, fits).andExpect(status().isNoContent());
+		String session = "Bearer "
+				+ JsonPath.read(login(email, fits).andExpect(status().isOk()).andReturn().getResponse().getContentAsString(),
+						"$.token");
+		mockMvc
+			.perform(post("/admin/auth/change-password").header("Authorization", session)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"currentPassword\":\"%s\",\"newPassword\":\"%s\"}".formatted(fits, tooLong)))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.fieldErrors.newPassword").value(containsString("too long")));
+		login(email, tooLong).andExpect(status().isUnauthorized());
+		login(email, fits).andExpect(status().isOk());
+
+		mockMvc.perform(delete("/admin/admins/" + JsonPath.read(created, "$.id")).header("Authorization", admin))
+			.andExpect(status().isNoContent());
+	}
+
+	@Test
+	void oversizedBodiesAreRefusedOnThePublicAndSignInRoutes() throws Exception {
+		String filler = "a".repeat(70_000);
+
+		preRegister(filler, "Lovelace", unique() + "@example.com", uniqueSchool(), "ada@school.edu")
+			.andExpect(status().is(413))
+			.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+			.andExpect(jsonPath("$.code").value("PAYLOAD_TOO_LARGE"))
+			.andExpect(jsonPath("$.message").value("The request is too large."));
+		login(unique() + "@test.local", filler).andExpect(status().is(413))
+			.andExpect(jsonPath("$.code").value("PAYLOAD_TOO_LARGE"));
+		mockMvc
+			.perform(post("/public/unsubscribe").contentType(MediaType.APPLICATION_JSON)
+				.content("{\"token\":\"%s\"}".formatted(filler)))
+			.andExpect(status().is(413));
+		preRegister("a".repeat(60_000), "Lovelace", unique() + "@example.com", uniqueSchool(), "ada@school.edu")
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.fieldErrors.firstName").isNotEmpty());
+	}
+
+	@Test
+	@ExtendWith(OutputCaptureExtension.class)
+	void everyCsvExportIsLoggedWithWhoRanItAndHowManyRowsButNothingFromTheRows(CapturedOutput output)
+			throws Exception {
+		String admin = bearer();
+		String school = uniqueSchool();
+		String email = unique() + "@example.com";
+		preRegister("Ada", "Lovelace", email, school, "ada@school.edu").andExpect(status().isCreated());
+		String registrationId = registerHacker(admin, email, school);
+		setStatus(admin, registrationId, "ACCEPTED");
+		mockMvc.perform(post("/admin/check-in/" + registrationId).header("Authorization", admin))
+			.andExpect(status().isOk());
+		String generalId = jdbc.sql("select id from events where general").query(UUID.class).single().toString();
+
+		mockMvc
+			.perform(get("/admin/registrations/export.csv").param("school", school)
+				.param("status", "ACCEPTED")
+				.param("checkedIn", "true")
+				.header("Authorization", admin))
+			.andExpect(status().isOk())
+			.andExpect(content().string(containsString(email)));
+		mockMvc
+			.perform(get("/admin/pre-registrations/export.csv").param("school", school).header("Authorization", admin))
+			.andExpect(status().isOk());
+		mockMvc.perform(get("/admin/pre-registrations/export.csv").param("q", "no-such-person-" + unique())
+			.header("Authorization", admin)).andExpect(status().isOk());
+		mockMvc.perform(get("/admin/events/" + generalId + "/export.csv").header("Authorization", admin))
+			.andExpect(status().isOk());
+
+		assertThat(output.getOut())
+			.contains("Registrations CSV of 1 rows (school=" + school + ", status=ACCEPTED, checkedIn=true)"
+					+ " exported by " + ADMIN_EMAIL)
+			.contains("Pre-registrations CSV of 1 rows (school=" + school + ") exported by " + ADMIN_EMAIL)
+			.containsPattern("Pre-registrations CSV of 0 rows \\(q=no-such-person-\\w+\\) exported by " + ADMIN_EMAIL)
+			.containsPattern("Attendees CSV of \\d+ rows for event " + generalId
+					+ " \\(\"General check-in\"\\) exported by " + ADMIN_EMAIL);
+		assertThat(output.getOut().lines().filter(line -> line.contains(" CSV of ")).toList()).hasSize(4)
+			.noneMatch(line -> line.contains(email) || line.contains("Lovelace"));
+		deleteRegistrations(registrationId);
+	}
+
+	@Test
+	void aStatusChangeDoesNotUndoAnUnsubscribeMadeWhileTheRowWasLoaded() throws Exception {
+		String admin = bearer();
+		UUID id = UUID.fromString(registerHacker(admin, unique() + "@example.com", uniqueSchool()));
+		TransactionTemplate transaction = new TransactionTemplate(transactionManager);
+		TransactionTemplate separate = new TransactionTemplate(transactionManager);
+		separate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+
+		transaction.executeWithoutResult(status -> {
+			Registration registration = registrationRepository.findById(id).orElseThrow();
+			separate.executeWithoutResult(inner -> jdbc
+				.sql("update registrations set unsubscribed = true where id = :id")
+				.param("id", id)
+				.update());
+			registration.changeStatus(RegistrationStatus.WAITLISTED, Instant.now());
+		});
+
+		assertThat(jdbc.sql("select status || ' ' || unsubscribed from registrations where id = :id")
+			.param("id", id)
+			.query(String.class)
+			.single()).isEqualTo("WAITLISTED true");
+		deleteRegistrations(id.toString());
+	}
+
+	private void tellAccepted(String adminToken, String registrationId) throws Exception {
+		setStatus(adminToken, registrationId, "ACCEPTED");
+		mockMvc
+			.perform(post("/admin/registrations/" + registrationId + "/ticket-email").header("Authorization",
+					adminToken))
+			.andExpect(status().isNoContent());
+	}
+
+	private ResultActions startCampaign(String token, String kind, String audience, String school, String subject)
+			throws Exception {
+		return mockMvc.perform(post("/admin/emails").header("Authorization", token)
+			.contentType(MediaType.APPLICATION_JSON)
+			.content("""
+					{"kind":"%s","audience":"%s","school":"%s","subject":"%s","body":"Hi {{firstName}},\\n\\nDetails inside."}
+					""".formatted(kind, audience, school, subject)));
+	}
+
+	private void awaitCampaign(UUID id, String expected) throws InterruptedException {
+		String status = null;
+		for (int attempt = 0; attempt < 100 && !expected.equals(status); attempt++) {
+			Thread.sleep(100);
+			status = jdbc.sql("select status from email_campaigns where id = :id")
+				.param("id", id)
+				.query(String.class)
+				.single();
+		}
+		assertThat(status).isEqualTo(expected);
+	}
+
 	private static String passwordToken(String link) {
 		Matcher matcher = PASSWORD_LINK.matcher(link);
 		assertThat(matcher.find()).as("a set-password link in: " + link).isTrue();
@@ -2044,11 +2567,11 @@ class RegistrationApiTests {
 			.andExpect(jsonPath("$.status").value(status));
 	}
 
-	private ResultActions scan(String token, String code, String eventId, boolean override) throws Exception {
+	private ResultActions scan(String token, String code, String eventId) throws Exception {
 		String event = (eventId != null) ? "\"" + eventId + "\"" : "null";
 		return mockMvc.perform(post("/admin/check-in/scan").header("Authorization", token)
 			.contentType(MediaType.APPLICATION_JSON)
-			.content("{\"code\":\"%s\",\"eventId\":%s,\"override\":%s}".formatted(code, event, override)));
+			.content("{\"code\":\"%s\",\"eventId\":%s}".formatted(code, event)));
 	}
 
 	private static MockHttpServletRequestBuilder eventRequest(MockHttpServletRequestBuilder request, String token,
@@ -2152,7 +2675,6 @@ class RegistrationApiTests {
 				  "mlhCodeOfConduct": %s, "mlhDataSharing": %s, "mlhEmailOptIn": false,
 				  "dietaryRestrictions": ["Vegetarian", "Halal"], "dietaryDetails": "",
 				  "gender": "", "raceEthnicity": [], "tshirtSize": "M",
-				  "shippingAddress": { "line1": "1 Peachtree St", "line2": "", "city": "Atlanta", "state": "GA", "country": "US", "postalCode": "30303" },
 				  "linkedinUrl": "", "website": ""
 				}
 				""".formatted(email, school, codeOfConduct, dataSharing);

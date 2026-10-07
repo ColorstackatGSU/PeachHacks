@@ -151,7 +151,7 @@ public class EmailComposer {
 			.append(escape(content.heading()))
 			.append("</h1>");
 		for (String paragraph : content.opening()) {
-			appendParagraph(html, text, paragraph, false);
+			appendParagraph(html, text, escape(paragraph), paragraph);
 		}
 		if (content.primary() != null) {
 			appendAction(html, text, content.primary(), true);
@@ -172,7 +172,7 @@ public class EmailComposer {
 			appendAction(html, text, content.secondary(), false);
 		}
 		for (String paragraph : content.closing()) {
-			appendParagraph(html, text, paragraph, false);
+			appendParagraph(html, text, escape(paragraph), paragraph);
 		}
 		return message(to, subject.strip(), content.preheader(), html, text, footer);
 	}
@@ -180,17 +180,22 @@ public class EmailComposer {
 	/**
 	 * An organizer-written campaign. The body is plain text: blank lines separate
 	 * paragraphs, {{firstName}} and {{lastName}} are filled in, and bare http(s) URLs
-	 * become links. Nothing else is markup.
+	 * become links. Nothing else is markup. Links are made from the organizer's text
+	 * before the names go in, so a name can never become a link.
 	 */
 	public EmailMessage composeCampaign(String to, String subject, String body, String firstName, String lastName,
 			Footer footer) {
 		String personalSubject = personalize(subject, firstName, lastName).replaceAll("[\\r\\n]+", " ").strip();
-		String personalBody = personalize(body, firstName, lastName).replace("\r\n", "\n").replace('\r', '\n').strip();
+		String template = body.replace("\r\n", "\n").replace('\r', '\n').strip();
+		String personalBody = personalize(template, firstName, lastName);
 		StringBuilder html = new StringBuilder();
 		StringBuilder text = new StringBuilder();
-		for (String paragraph : PARAGRAPH_BREAK.split(personalBody)) {
+		for (String paragraph : PARAGRAPH_BREAK.split(template)) {
 			if (!paragraph.isBlank()) {
-				appendParagraph(html, text, paragraph.strip(), true);
+				String linked = linkify(paragraph.strip());
+				appendParagraph(html, text,
+						personalize(linked, escapeOrNull(firstName), escapeOrNull(lastName)),
+						personalize(paragraph.strip(), firstName, lastName));
 			}
 		}
 		String flat = personalBody.replaceAll("\\s+", " ");
@@ -319,10 +324,9 @@ public class EmailComposer {
 		return new EmailMessage(to, subject, html.toString(), text.toString(), headers);
 	}
 
-	private static void appendParagraph(StringBuilder html, StringBuilder text, String paragraph, boolean linkUrls) {
-		String escaped = linkUrls ? linkify(paragraph) : escape(paragraph);
+	private static void appendParagraph(StringBuilder html, StringBuilder text, String escaped, String plain) {
 		html.append("<p style=\"").append(PARAGRAPH_STYLE).append("\">").append(escaped.replace("\n", "<br>")).append("</p>");
-		text.append(paragraph).append("\n\n");
+		text.append(plain).append("\n\n");
 	}
 
 	/**
@@ -422,6 +426,10 @@ public class EmailComposer {
 
 	private static String escape(String value) {
 		return HtmlUtils.htmlEscape(value, "UTF-8");
+	}
+
+	private static String escapeOrNull(String value) {
+		return (value != null) ? escape(value) : null;
 	}
 
 	private static String personalize(String template, String firstName, String lastName) {

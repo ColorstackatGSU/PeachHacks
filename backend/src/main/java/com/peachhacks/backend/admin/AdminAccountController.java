@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.peachhacks.backend.common.Patterns;
 import com.peachhacks.backend.email.MailService;
 
 @RestController
@@ -50,12 +51,12 @@ public class AdminAccountController {
 	}
 
 	public record CreateAdminRequest(
-			@NotBlank(message = "Email is required") @Email(regexp = ".+@.+\\..+",
+			@NotBlank(message = "Email is required") @Email(regexp = Patterns.EMAIL,
 					message = "Must be a valid email") @Size(max = 255,
 							message = "Email must be at most 255 characters") String email,
 			@NotBlank(message = "Name is required") @Size(max = 100,
 					message = "Name must be at most 100 characters") String name,
-			String role) {
+			@NotBlank(message = "Choose a role") String role) {
 	}
 
 	private final AuthService authService;
@@ -75,7 +76,7 @@ public class AdminAccountController {
 	@PostMapping
 	ResponseEntity<AdminItem> create(@Valid @RequestBody CreateAdminRequest request,
 			@AuthenticationPrincipal AdminPrincipal current) {
-		AdminRole role = AdminRole.parseOrDefault(request.role());
+		AdminRole role = AdminRole.parse(request.role());
 		return ResponseEntity.status(HttpStatus.CREATED)
 			.body(sendInvite(authService.invite(request.email(), request.name(), role), current));
 	}
@@ -87,14 +88,8 @@ public class AdminAccountController {
 
 	private AdminItem sendInvite(AuthService.PasswordLink link, AdminPrincipal current) {
 		Admin admin = link.admin();
-		if (admin.getRole() == AdminRole.VOLUNTEER) {
-			mailService.sendVolunteerInvite(admin.getEmail(), admin.getName(), current.name(), link.token(),
-					link.validFor());
-		}
-		else {
-			mailService.sendAdminInvite(admin.getEmail(), admin.getName(), current.name(), link.token(),
-					link.validFor());
-		}
+		mailService.sendInvite(admin.getEmail(), admin.getName(), admin.getRole(), current.name(), link.token(),
+				link.validFor());
 		return AdminItem.from(admin, mailService.adminPasswordUrl(link.token()));
 	}
 

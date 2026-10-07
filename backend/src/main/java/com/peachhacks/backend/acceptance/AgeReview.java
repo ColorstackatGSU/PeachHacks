@@ -66,7 +66,7 @@ public class AgeReview {
 				bind(jdbc.sql("select r.id from registrations r where " + NEEDED)).query(UUID.class).list());
 	}
 
-	private JdbcClient.StatementSpec bind(JdbcClient.StatementSpec statement) {
+	JdbcClient.StatementSpec bind(JdbcClient.StatementSpec statement) {
 		return statement.param("minimumAge", minimumAge).param("host", host).param("hostLength", host.length());
 	}
 

@@ -7,6 +7,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import com.peachhacks.backend.config.EmailProperties;
+import com.peachhacks.backend.registration.Registration;
 
 import org.springframework.stereotype.Component;
 
@@ -17,10 +18,26 @@ public class Tickets {
 
 	private static final Pattern TOKEN_PARAMETER = Pattern.compile("[?&]t=([^&#\\s]+)");
 
+	/** googleWalletUrl is null while Google Wallet is not configured. */
+	public record Links(String url, String googleWalletUrl) {
+	}
+
 	private final EmailProperties properties;
 
-	public Tickets(EmailProperties properties) {
+	private final GoogleWallet googleWallet;
+
+	public Tickets(EmailProperties properties, GoogleWallet googleWallet) {
 		this.properties = properties;
+		this.googleWallet = googleWallet;
+	}
+
+	public Links links(Registration registration) {
+		String url = url(registration.getTicketToken());
+		return new Links(url,
+				googleWallet
+					.saveUrl(registration.getId(), registration.getFirstName(), registration.getLastName(),
+							registration.getSchool(), url)
+					.orElse(null));
 	}
 
 	/** What the QR code encodes: a page on the public site, so any phone camera can open it. */

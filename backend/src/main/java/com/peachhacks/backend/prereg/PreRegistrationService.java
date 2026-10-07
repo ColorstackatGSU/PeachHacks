@@ -18,23 +18,14 @@ import org.springframework.stereotype.Service;
 @Service
 public class PreRegistrationService {
 
-	private record Upserted(UUID id, boolean inserted) {
+	private record Stored(String firstName, String schoolEmail) {
 	}
 
-	/**
-	 * One statement so concurrent submissions for the same email cannot race. xmax is 0
-	 * only for a freshly inserted row, which tells an insert from an update.
-	 */
-	private static final String UPSERT = """
+	/** One statement, so concurrent submissions for the same email cannot both insert. */
+	private static final String INSERT = """
 			insert into pre_registrations (id, first_name, last_name, email, school, school_email, unsubscribe_token)
 			values (:id, :firstName, :lastName, :email, :school, :schoolEmail, :unsubscribeToken)
-			on conflict (lower(email)) do update set
-				first_name = excluded.first_name,
-				last_name = excluded.last_name,
-				school = excluded.school,
-				school_email = excluded.school_email,
-				updated_at = now()
-			returning id, (xmax = 0) as inserted
+			on conflict (lower(email)) do nothing
 			""";
 
 	private final JdbcClient jdbc;
@@ -57,34 +48,43 @@ public class PreRegistrationService {
 	}
 
 	/**
-	 * Idempotent on email: a repeat submission updates the existing row and returns its
-	 * id, so the response is the same whether or not the email was already known. Every
-	 * submission asks for the school email to be confirmed; SchoolEmailService decides
-	 * whether that mails a link, so repeats do not fill the school inbox.
+	 * The first submission for an email is the one that is kept: a repeat changes nothing in
+	 * the stored row, because whoever sends it has not shown that the address is theirs.
+	 * It is answered like a new sign-up, with an id that belongs to nothing, so the
+	 * response does not say whether the email was already known. A repeat asks again for
+	 * the stored school email to be confirmed; SchoolEmailService decides whether that
+	 * mails a link, so repeats do not fill the school inbox.
 	 */
 	public UUID submit(PreRegistrationRequest request) {
 		if (Texts.clean(request.website()) != null) {
 			return UUID.randomUUID();
 		}
 		validator.validate(request);
+		UUID id = UUID.randomUUID();
 		String firstName = request.firstName().strip();
 		String email = Texts.email(request.email());
 		String schoolEmail = Texts.email(request.schoolEmail());
-		Upserted row = jdbc.sql(UPSERT)
-			.param("id", UUID.randomUUID())
+		boolean inserted = jdbc.sql(INSERT)
+			.param("id", id)
 			.param("firstName", firstName)
 			.param("lastName", request.lastName().strip())
 			.param("email", email)
 			.param("school", request.school().strip())
 			.param("schoolEmail", schoolEmail)
 			.param("unsubscribeToken", Tokens.random())
-			.query((rs, rowNum) -> new Upserted(rs.getObject("id", UUID.class), rs.getBoolean("inserted")))
-			.single();
-		boolean unconfirmed = schoolEmails.requestConfirmation(email, schoolEmail, firstName);
-		if (row.inserted()) {
+			.update() == 1;
+		if (inserted) {
+			boolean unconfirmed = schoolEmails.requestConfirmation(email, schoolEmail, firstName);
 			mailService.sendPreRegistrationConfirmation(email, firstName, unconfirmed ? schoolEmail : null);
+			return id;
 		}
-		return row.id();
+		jdbc.sql("select first_name, school_email from pre_registrations where email = :email")
+			.param("email", email)
+			.query((rs, rowNum) -> new Stored(rs.getString("first_name"), rs.getString("school_email")))
+			.optional()
+			.filter(stored -> stored.schoolEmail() != null)
+			.ifPresent(stored -> schoolEmails.requestConfirmation(email, stored.schoolEmail(), stored.firstName()));
+		return UUID.randomUUID();
 	}
 
 	public Page<PreRegistrationView> search(String q, String school, Boolean schoolEmailConfirmed,
