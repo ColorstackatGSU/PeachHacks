@@ -9,6 +9,7 @@ Reference: [MLH Guide - Registrations](https://guide.mlh.com/general-information
 | `/pre-register.html` | Pre-registration form. Posts to `POST /public/pre-registrations`. |
 | `/register.html` | Full registration form, shown only while `GET /public/status` reports `registrationOpen: true`. Posts to `POST /public/registrations`. |
 | `/unsubscribe.html?token=...` | Confirms, then posts the token to `POST /public/unsubscribe`. |
+| `/confirm-email?token=...` | School email confirmation, reached from the link mailed to the school address. See [School email confirmation](#school-email-confirmation). |
 | `/interest-form.html` | Redirects to `/pre-register.html` so old links keep working. |
 
 The code lives in `src/forms/`; styles are in `src/forms/forms.css` (these pages do not load `src/styles.css`). The API base URL comes from `VITE_API_BASE_URL`, falling back to `http://localhost:8080` in dev and `https://api.peachhacks.com` in production builds.
@@ -23,6 +24,8 @@ The code lives in `src/forms/`; styles are in `src/forms/forms.css` (these pages
 
 If the school email matches the personal email the form says so in the field's hint and still submits.
 
+The success message names the school address and tells the person to open the confirmation link sent there.
+
 ### Registration: required fields
 
 - First Name and Last Name (collected separately)
@@ -33,6 +36,17 @@ If the school email matches the personal email the form says so in the field's h
 - Country of Residence (dropdown of ISO 3166-1 countries, United States pinned first; the alpha-2 code is submitted)
 - School (school picker)
 - Level of Study
+
+The success message names the personal address the confirmation went to and the school address, and tells the person to open the confirmation link in their school inbox unless they already confirmed it (the API does not tell the form whether they did).
+
+### School email confirmation
+
+PeachHacks is for current students, so the API mails a link to the school address after a pre-registration, and after a registration whose school email is not already confirmed for that personal email. The link opens `/confirm-email?token=...` (`confirm-email.html`, `src/forms/ConfirmEmailPage.jsx`), built from the same shell and card as the unsubscribe page:
+
+- **Confirm**: one button that posts the token to `POST /public/school-email/confirm`. Opening the page confirms nothing, because mail scanners open links; the click is what counts.
+- **Confirmed**: names the address the API returned. Using the same link again shows this state again.
+- **Link didn't work** (no token, or the API answered 404 for an unknown or expired one; links last 14 days): a one-field form asking for the personal email, which posts to `POST /public/school-email/resend` and then always says "If that email is registered, we sent a new link to its school address." The API answers the same way for every email, so the page cannot reveal who is registered.
+- **Network or server error**: the message appears under the button, which becomes "Try again".
 
 ### Registration: MLH checkboxes
 

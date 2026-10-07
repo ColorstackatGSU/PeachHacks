@@ -167,7 +167,7 @@ function Section({ id, title, summary, open, onToggle, children }) {
   );
 }
 
-// onSuccess(email), onClosed() when the gate turns out to be shut at submit.
+// onSuccess(email, schoolEmail), onClosed() when the gate turns out to be shut at submit.
 export default function RegisterForm({ titleId, onSuccess, onClosed }) {
   const formRef = useRef(null);
   const [values, setValues] = useState(INITIAL_VALUES);
@@ -257,7 +257,7 @@ export default function RegisterForm({ titleId, onSuccess, onClosed }) {
 
     try {
       await submitRegistration(buildPayload(values, resume));
-      onSuccess(values.email.trim());
+      onSuccess(values.email.trim(), values.schoolEmail.trim());
     } catch (error) {
       if (error?.code === 'REGISTRATION_CLOSED') {
         onClosed();

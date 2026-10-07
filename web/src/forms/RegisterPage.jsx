@@ -12,6 +12,7 @@ export default function RegisterPage() {
   const [view, setView] = useState('checking');
   const [attempt, setAttempt] = useState(0);
   const [registeredEmail, setRegisteredEmail] = useState('');
+  const [schoolEmail, setSchoolEmail] = useState('');
   const headingRef = useRef(null);
   const moveFocus = useRef(false);
 
@@ -40,9 +41,10 @@ export default function RegisterPage() {
     setAttempt((count) => count + 1);
   };
 
-  const handleSuccess = useCallback((email) => {
+  const handleSuccess = useCallback((email, registeredSchoolEmail) => {
     moveFocus.current = true;
     setRegisteredEmail(email);
+    setSchoolEmail(registeredSchoolEmail);
     setView('success');
   }, []);
 
@@ -101,7 +103,11 @@ export default function RegisterPage() {
           <p>
             We got your registration and sent a confirmation to <strong>{registeredEmail}</strong>.
           </p>
-          <p className="pf-muted">If you don&apos;t see it, check your spam folder. We&apos;ll be in touch with next steps.</p>
+          <p>
+            One more step: unless you already confirmed it, check your school inbox (<strong>{schoolEmail}</strong>)
+            for a confirmation link and open it, so we know you&apos;re a current student.
+          </p>
+          <p className="pf-muted">If you don&apos;t see our emails, check your spam folders. We&apos;ll be in touch with next steps.</p>
           <a className="pf-button" href="/">Back to PeachHacks</a>
         </div>
       </Card>

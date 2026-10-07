@@ -73,6 +73,15 @@ export function unsubscribe(token) {
   return request('/public/unsubscribe', { method: 'POST', body: { token } });
 }
 
+export function confirmSchoolEmail(token) {
+  return request('/public/school-email/confirm', { method: 'POST', body: { token } });
+}
+
+// Resolves whether or not the email is known; the API does not say which.
+export function resendSchoolEmailConfirmation(email) {
+  return request('/public/school-email/resend', { method: 'POST', body: { email } });
+}
+
 export function getTicket(token, signal) {
   return request(`/public/tickets/${encodeURIComponent(token)}`, { signal });
 }
