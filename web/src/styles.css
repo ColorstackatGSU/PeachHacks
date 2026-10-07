@@ -80,6 +80,7 @@ main:focus { outline: none; }
 .hero-stack { --hero-top: clamp(48px, 7.8vh, 64px); --hero-bottom: clamp(28px, 4.5vh, 48px); position: relative; z-index: 3; display: grid; grid-template-rows: auto minmax(8px, clamp(0px, 20vw, 200px)) auto; align-content: start; justify-items: center; height: var(--screen-h); padding: var(--hero-top) 24px var(--hero-bottom); }
 .hero-logo-shell { grid-row: 1; display: grid; transform-origin: 50% 20%; }
 .hero-logo-circle { grid-row: 1; grid-column: 1; align-self: center; justify-self: center; z-index: 1; width: calc(var(--hero-logo-w) * .32); aspect-ratio: 1; border-radius: 50%; background: #fff; box-shadow: 0 0 24px rgba(255, 255, 255, .35); pointer-events: none; }
+.hero-logo-picture { grid-row: 1; grid-column: 1; display: grid; }
 .hero-logo { grid-row: 1; grid-column: 1; position: relative; z-index: 1; display: block; width: var(--hero-logo-w); height: auto; margin: 0; object-fit: contain; clip-path: inset(15% 0); filter: drop-shadow(0 8px 0 rgba(0,31,58,.18)); }
 .hero-card-shell { grid-row: 3; position: relative; z-index: 5; display: grid; justify-items: center; width: 100%; }
 .hero-tag { position: relative; transform-origin: -40px 47%; }
@@ -275,15 +276,22 @@ html.assets-pending .tracks-content, html.assets-pending .tracks-backdrop { opac
 }
 
 @media (max-width: 620px) {
-  .intro { --hero-logo-w: min(76vw, 300px); }
+  .intro { --hero-logo-w: min(76vw, 320px); }
+  .hero-logo { clip-path: none; }
+  .hero-logo-circle { width: calc(var(--hero-logo-w) * .4); }
   .hero-scene { left: -18%; width: 136%; }
-  .hero-stack { padding-right: 16px; padding-left: 16px; }
+  .hero-stack { grid-template-rows: auto clamp(20px, 7vw, 36px) auto; padding-right: 16px; padding-left: 16px; }
   .hero-card { width: min(77vw, 410px); min-height: 0; margin-left: 24px; aspect-ratio: auto; border-radius: 3px; }
   .hero-card::before { left: -40px; width: 52px; }
   .hero-card::after { inset: 9px; }
-  .hero-card .window-content { padding: 26px 20px 24px; }
-  .intro-copy { font-size: 15px; }
-  .register-button { margin-top: 20px; padding: 13px 22px; }
+  .hero-card .window-content { padding: 22px 18px 20px; }
+  .hero-kicker { margin-bottom: 8px; font-size: 10.5px; letter-spacing: .1em; white-space: nowrap; }
+  .intro h1 { margin-bottom: 10px; font-size: 29px; }
+  .intro-copy { font-size: 14px; line-height: 1.45; }
+  .register-button { margin-top: 14px; margin-bottom: 4px; padding: 10px 20px; font-size: 18px; }
+  .scroll-cue { display: none; }
+  .sponsor-email { font-size: 13px; letter-spacing: .04em; }
+  .sponsor-email-arrow { margin-left: 3px; }
   .partners-moon { width: clamp(52px, 14vw, 72px); top: calc(var(--divider-h) * .75); right: 34px; }
   .partners-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
   .partner-box { min-height: 76px; padding: 12px; }

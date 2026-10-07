@@ -554,7 +554,10 @@ function App() {
             <div className="hero-stack">
               <div className="hero-logo-shell hero-fx">
                 <div className="hero-logo-circle" aria-hidden="true" />
-                <img className="hero-logo" src="/assets/logo.svg" alt="PeachHacks" width="210" height="79" />
+                <picture className="hero-logo-picture">
+                  <source media="(max-width: 620px)" srcSet="/assets/logo-stacked.svg" width="78" height="46" />
+                  <img className="hero-logo" src="/assets/logo.svg" alt="PeachHacks" width="210" height="79" />
+                </picture>
               </div>
               <div className="hero-card-shell hero-fx" ref={cardShellRef}>
                 <HeroTag registerButtonRef={registerButtonRef} tagCloseRef={tagCloseRef} />
