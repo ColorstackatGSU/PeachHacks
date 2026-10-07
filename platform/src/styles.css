@@ -174,7 +174,9 @@ img { max-width: 100%; }
 .tag-link { padding: 0; border: 0; background: none; color: var(--peach); font-size: inherit; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .tag-link:hover { color: var(--peach-hover); }
 
-.google-button { display: flex; justify-content: center; min-height: 44px; color-scheme: light; }
+.google-button { display: flex; align-items: center; justify-content: center; gap: 12px; min-height: 52px; padding: 10px 20px; border: 1px solid #dadce0; border-radius: 999px; background: #fff; color: #1f1f1f; font-size: 16px; font-weight: 700; text-decoration: none; }
+.google-button:hover { background: #f1f3f4; color: #1f1f1f; }
+.google-button:focus-visible { outline: 3px solid var(--peach); outline-offset: 3px; }
 .tag-divider { display: flex; align-items: center; gap: 12px; color: var(--mist); font-size: 12px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
 .tag-divider::before, .tag-divider::after { content: ""; flex: 1; height: 1px; background: rgba(244, 246, 237, .18); }
 

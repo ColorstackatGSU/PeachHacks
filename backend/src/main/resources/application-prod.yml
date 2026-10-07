@@ -12,5 +12,6 @@ app:
     admin-base-url: ${ADMIN_BASE_URL:https://admin.peachhacks.com}
   platform:
     base-url: ${PLATFORM_BASE_URL:https://platform.peachhacks.com}
+    api-base-url: ${API_BASE_URL:https://api.peachhacks.com}
   rate-limit:
     trust-forwarded-for: true

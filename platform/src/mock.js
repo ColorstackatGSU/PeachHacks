@@ -67,7 +67,7 @@ export async function mockFetch(url, init = {}) {
   const body = init.body ? JSON.parse(init.body) : {};
 
   if (path === "/platform/config") {
-    return respond(200, { googleClientId: null, discordClientId: null, discordRedirectUri: `${window.location.origin}/`, maxTeamSize: MAX_TEAM_SIZE });
+    return respond(200, { googleSignIn: true, discordClientId: null, discordRedirectUri: `${window.location.origin}/`, maxTeamSize: MAX_TEAM_SIZE });
   }
   if (path === "/platform/auth/login" || path === "/platform/auth/set-password") {
     return respond(200, { token: "mock-session", expiresAt: new Date(Date.now() + 864e5).toISOString() });

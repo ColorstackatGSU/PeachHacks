@@ -91,7 +91,8 @@ Standard Spring Boot environment variables; see `.env.example`.
 | `DISCORD_HACKER_ROLE_ID` | ID of the role accepted hackers get |
 | `DISCORD_VERIFICATION_CHANNEL_ID` | ID of the channel the Verify message is posted in |
 | `PLATFORM_BASE_URL` | Hacker platform URL, used for the links in its emails and as the Discord redirect (default `http://localhost:5176`, `https://platform.peachhacks.com` in `prod`) |
-| `GOOGLE_CLIENT_ID` | Google OAuth client ID for "Sign in with Google" on the hacker platform. Optional: empty leaves email and password only |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | The Google OAuth client for "Continue with Google" on the hacker platform. Optional: without both there is email and password only |
+| `API_BASE_URL` | This backend's public address (default `http://localhost:8080`, `https://api.peachhacks.com` in `prod`). Google sends the browser back to `<API_BASE_URL>/platform/auth/google/callback` |
 | `MAX_TEAM_SIZE` | Most hackers on one team (default `4`) |
 | `HOST_SCHOOL_NAME` | The host school (default `Georgia State University`). A registration counts towards the host-school share when its school name equals or starts with this, case-insensitive, so `Georgia State University Perimeter College` counts too |
 | `HOST_SCHOOL_TARGET` | The share of accepted hackers that must come from the host school, as a fraction from 0 to 1 (default `0.70`). A value outside that range stops the application at startup |
@@ -400,11 +401,13 @@ The API behind `platform/` (platform.peachhacks.com), for accepted hackers only.
 
 | Endpoint | Purpose |
 | --- | --- |
-| `GET /platform/config` | Public. `{ googleClientId, discordClientId, discordRedirectUri, maxTeamSize }`; the two IDs are null when that sign-in is not configured |
+| `GET /platform/config` | Public. `{ googleSignIn, discordClientId, discordRedirectUri, maxTeamSize }`; `googleSignIn` is false and `discordClientId` null when that sign-in is not configured |
 | `POST /platform/auth/login` | `{ email, password }` to `{ token, expiresAt }`. 401 `INVALID_CREDENTIALS`; failed attempts are throttled per email like admin sign-ins |
 | `POST /platform/auth/password-link` | `{ email }`. Always 204; mails a link only to an accepted registration, at most one every 2 minutes |
 | `POST /platform/auth/set-password` | `{ token, password }` (10 to 72 characters) to a session. Signs out the account's other sessions |
-| `POST /platform/auth/google` | `{ credential }` (the ID token from Google's button) to a session. 403 `NOT_ACCEPTED` when no accepted registration has that address |
+| `GET /platform/auth/google/start` | A page navigation, not an API call: redirects the browser to Google |
+| `GET /platform/auth/google/callback` | Where Google sends the browser back. Redirects to the platform with `?google=<handoff>`, or `?google_error=cancelled`, `expired` or `failed` |
+| `POST /platform/auth/google/claim` | `{ handoff }` to a session; the handoff works once, for two minutes. 403 `NOT_ACCEPTED` (naming the address) when no accepted registration has that Google account's address |
 | `POST /platform/auth/logout` | Ends the session |
 | `GET`, `PATCH /platform/me` | The hacker's own record: name, school, profile (`bio`, `githubUrl`, `linkedinUrl`, `lookingForTeam`, `listed`), Discord username, ticket (token, URL, Google Wallet link, checked in) and team |
 | `POST /platform/discord` | `{ code }` from Discord's OAuth2 redirect; see [PeachBot](#peachbot) |
@@ -421,7 +424,7 @@ Everything except `config` and `auth` needs `Authorization: Bearer <token>`.
 - Joining a team withdraws the hacker's other requests and switches off their "looking for a team" flag.
 - The directory never includes someone who has not signed in to the platform, and `listed: false` takes a hacker out of it again. Teammates always see each other.
 
-Google sign-in setup: in the Google Cloud console create an OAuth client of type Web application, add the platform's origins (`https://platform.peachhacks.com`, and `http://localhost:5176` for local work) as Authorized JavaScript origins, and set its client ID as `GOOGLE_CLIENT_ID`. The consent screen shows the app name configured there.
+Google sign-in is the authorization-code flow run by this backend, so the consent screen shows the PeachHacks app name and no session token ever appears in an address. The state and nonce of a sign-in in progress, and the one-time handoff that carries its result back to the platform page, live in `google_sign_ins`. Setup: in the Google Cloud console create an OAuth client of type Web application, add `https://api.peachhacks.com/platform/auth/google/callback` (and `http://localhost:8080/platform/auth/google/callback` for local work) as Authorized redirect URIs, and set its client ID and secret as `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`.
 
 ## Deploy to Railway
 

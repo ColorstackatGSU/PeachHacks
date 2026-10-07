@@ -37,6 +37,25 @@ function takeDiscordReturn() {
 }
 
 const discordReturn = takeDiscordReturn();
+
+const GOOGLE_ERRORS = {
+  cancelled: "You cancelled the Google sign-in. Nothing has changed.",
+  expired: "That sign-in took too long and expired. Press Continue with Google again.",
+  failed: "We could not finish signing you in with Google. Try again, or use your email and password.",
+};
+
+// The API sends the browser back from Google with ?google=<one-time handoff>, or with
+// ?google_error= when the sign-in did not happen.
+function takeGoogleReturn() {
+  const params = new URLSearchParams(window.location.search);
+  if (!params.has("google") && !params.has("google_error")) return null;
+  window.history.replaceState(null, "", `${window.location.pathname}${window.location.hash}`);
+  if (params.has("google")) return { handoff: params.get("google") };
+  return { error: { message: GOOGLE_ERRORS[params.get("google_error")] || GOOGLE_ERRORS.failed } };
+}
+
+const googleReturn = takeGoogleReturn();
+let googleClaimStarted = false;
 let discordReturnHandled = false;
 
 // The state value ties the answer from Discord to this browser: only a connection that
@@ -158,9 +177,22 @@ export default function App() {
     if (window.location.hash.startsWith("#/set-password")) navigate("/");
   }, []);
 
+  const [googleError, setGoogleError] = useState(googleReturn?.error || null);
+  const [finishingGoogle, setFinishingGoogle] = useState(Boolean(googleReturn?.handoff));
+
+  useEffect(() => {
+    if (!googleReturn?.handoff || googleClaimStarted) return;
+    googleClaimStarted = true;
+    api
+      .googleClaim(googleReturn.handoff)
+      .then(signIn)
+      .catch(setGoogleError)
+      .finally(() => setFinishingGoogle(false));
+  }, [signIn]);
+
   let view;
   if (route.path === "/set-password") view = <SetPassword token={route.query.get("token") || ""} onSignedIn={signIn} />;
-  else if (!signedIn) view = <SignIn onSignedIn={signIn} />;
+  else if (!signedIn) view = <SignIn onSignedIn={signIn} googleError={googleError} finishingGoogle={finishingGoogle} />;
   else view = <Shell onSignOut={signOut} />;
 
   return <ToastProvider>{view}</ToastProvider>;

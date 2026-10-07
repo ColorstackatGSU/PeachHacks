@@ -59,7 +59,9 @@ app:
     verification-channel-id: ${DISCORD_VERIFICATION_CHANNEL_ID:}
   platform:
     base-url: ${PLATFORM_BASE_URL:http://localhost:5176}
+    api-base-url: ${API_BASE_URL:http://localhost:8080}
     google-client-id: ${GOOGLE_CLIENT_ID:}
+    google-client-secret: ${GOOGLE_CLIENT_SECRET:}
     max-team-size: ${MAX_TEAM_SIZE:4}
     session-ttl: 30d
   acceptance:

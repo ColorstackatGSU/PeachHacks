@@ -1,9 +1,6 @@
-import { useEffect, useId, useRef, useState } from "react";
-import { api } from "../api.js";
+import { useId, useState } from "react";
+import { api, GOOGLE_START_URL, MOCK_MODE } from "../api.js";
 import { useLoad } from "../hooks.js";
-
-const GOOGLE_SCRIPT = "https://accounts.google.com/gsi/client";
-const GOOGLE_MAX_WIDTH = 400;
 
 const STARS = [
   { x: "6%", y: "9%", size: 13 },
@@ -17,56 +14,19 @@ const STARS = [
   { x: "95%", y: "8%", size: 9 },
 ];
 
-let googleScript = null;
-function loadGoogle() {
-  if (!googleScript) {
-    googleScript = new Promise((resolve, reject) => {
-      const script = document.createElement("script");
-      script.src = GOOGLE_SCRIPT;
-      script.async = true;
-      script.onload = resolve;
-      script.onerror = () => {
-        googleScript = null;
-        reject(new Error("Google sign-in could not load."));
-      };
-      document.head.appendChild(script);
-    });
-  }
-  return googleScript;
-}
-
-// Google draws its own button in an iframe at a fixed pixel width, so the width is
-// measured from the column it sits in.
-function GoogleButton({ clientId, onCredential }) {
-  const holder = useRef(null);
-  const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
-    let active = true;
-    loadGoogle()
-      .then(() => {
-        if (!active || !holder.current) return;
-        window.google.accounts.id.initialize({
-          client_id: clientId,
-          callback: (response) => onCredential(response.credential),
-        });
-        window.google.accounts.id.renderButton(holder.current, {
-          theme: "filled_blue",
-          size: "large",
-          shape: "pill",
-          text: "continue_with",
-          logo_alignment: "center",
-          width: Math.min(GOOGLE_MAX_WIDTH, Math.floor(holder.current.clientWidth)),
-        });
-      })
-      .catch(() => active && setFailed(true));
-    return () => {
-      active = false;
-    };
-  }, [clientId, onCredential]);
-
-  if (failed) return <p className="tag-hint">Google sign-in could not load. Use your email and password instead.</p>;
-  return <div ref={holder} className="google-button" />;
+// The mark is Google's own four-colour G, as their branding guidelines ask.
+function GoogleButton() {
+  return (
+    <a className="google-button" href={MOCK_MODE ? "#/" : GOOGLE_START_URL}>
+      <svg viewBox="0 0 18 18" width="20" height="20" aria-hidden="true">
+        <path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62z" />
+        <path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.8.54-1.84.86-3.04.86-2.34 0-4.33-1.58-5.04-3.7H.96v2.33A9 9 0 0 0 9 18z" />
+        <path fill="#FBBC05" d="M3.96 10.72a5.41 5.41 0 0 1 0-3.44V4.95H.96a9 9 0 0 0 0 8.1l3-2.33z" />
+        <path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58A9 9 0 0 0 .96 4.95l3 2.33C4.67 5.16 6.66 3.58 9 3.58z" />
+      </svg>
+      Continue with Google
+    </a>
+  );
 }
 
 export function PasswordInput({ id, value, onChange, autoComplete, invalid, describedBy }) {
@@ -150,7 +110,7 @@ export function AuthFrame({ title, intro, children }) {
 const loadConfig = (signal) => api.config(signal);
 const isEmail = (value) => /^\S+@\S+\.\S+$/.test(value.trim());
 
-export default function SignIn({ onSignedIn }) {
+export default function SignIn({ onSignedIn, googleError, finishingGoogle }) {
   const ids = useId();
   const config = useLoad(loadConfig);
   const [view, setView] = useState("sign-in");
@@ -198,10 +158,6 @@ export default function SignIn({ onSignedIn }) {
       setView("sent");
     });
   };
-
-  const [onCredential] = useState(
-    () => (credential) => run(async () => onSignedIn(await api.googleSignIn(credential))),
-  );
 
   const emailField = (
     <div className="tag-field">
@@ -269,9 +225,10 @@ export default function SignIn({ onSignedIn }) {
 
   return (
     <AuthFrame title="Sign in" intro="For accepted hackers.">
-      {config.data?.googleClientId && (
+      {googleError && !error && <Alert error={googleError} />}
+      {config.data?.googleSignIn && (
         <>
-          <GoogleButton clientId={config.data.googleClientId} onCredential={onCredential} />
+          <GoogleButton />
           <p className="tag-divider">
             <span>or with your email</span>
           </p>
@@ -285,8 +242,8 @@ export default function SignIn({ onSignedIn }) {
         </div>
         <Alert error={error} />
         <div className="tag-actions">
-          <button type="submit" className="tag-button" disabled={busy} aria-busy={busy}>
-            {busy ? "Signing in…" : "Sign in"}
+          <button type="submit" className="tag-button" disabled={busy || finishingGoogle} aria-busy={busy || finishingGoogle}>
+            {busy || finishingGoogle ? "Signing in…" : "Sign in"}
           </button>
         </div>
       </form>

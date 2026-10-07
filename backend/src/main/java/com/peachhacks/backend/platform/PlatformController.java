@@ -1,9 +1,12 @@
 package com.peachhacks.backend.platform;
 
+import java.net.URI;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import com.peachhacks.backend.common.ClientAddress;
+import com.peachhacks.backend.common.RateLimiter;
 import com.peachhacks.backend.config.DiscordProperties;
 import com.peachhacks.backend.config.PlatformProperties;
 import com.peachhacks.backend.discord.DiscordVerification;
@@ -19,6 +22,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -30,8 +34,8 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/platform")
 public class PlatformController {
 
-	/** discordClientId is null while "Connect Discord" is not set up; googleClientId likewise. */
-	public record Config(String googleClientId, String discordClientId, String discordRedirectUri,
+	/** googleSignIn says whether "Continue with Google" is offered. discordClientId is null while "Connect Discord" is not set up. */
+	public record Config(boolean googleSignIn, String discordClientId, String discordRedirectUri,
 			int maxTeamSize) {
 	}
 
@@ -44,7 +48,7 @@ public class PlatformController {
 	public record SetPasswordRequest(String token, String password) {
 	}
 
-	public record GoogleRequest(String credential) {
+	public record GoogleClaim(String handoff) {
 	}
 
 	public record DiscordRequest(String code) {
@@ -52,6 +56,8 @@ public class PlatformController {
 
 	public record JoinMessage(String message) {
 	}
+
+	private static final int GOOGLE_STARTS_PER_MINUTE = 20;
 
 	private final HackerAuth auth;
 
@@ -65,8 +71,15 @@ public class PlatformController {
 
 	private final GoogleIdentity google;
 
+	private final RateLimiter rateLimiter;
+
+	private final ClientAddress clientAddress;
+
 	public PlatformController(HackerAuth auth, PlatformService platform, DiscordVerification discord,
-			PlatformProperties properties, DiscordProperties discordProperties, GoogleIdentity google) {
+			PlatformProperties properties, DiscordProperties discordProperties, GoogleIdentity google,
+			RateLimiter rateLimiter, ClientAddress clientAddress) {
+		this.rateLimiter = rateLimiter;
+		this.clientAddress = clientAddress;
 		this.auth = auth;
 		this.platform = platform;
 		this.discord = discord;
@@ -77,7 +90,7 @@ public class PlatformController {
 
 	@GetMapping("/config")
 	Config config() {
-		return new Config(google.enabled() ? properties.googleClientId() : null,
+		return new Config(google.enabled(),
 				discordProperties.oauthConfigured() ? discordProperties.applicationId() : null,
 				properties.discordRedirectUri(), properties.maxTeamSize());
 	}
@@ -98,9 +111,24 @@ public class PlatformController {
 		return auth.setPassword(request.token(), request.password());
 	}
 
-	@PostMapping("/auth/google")
-	HackerAuth.Session googleSignIn(@RequestBody GoogleRequest request) {
-		return auth.googleSignIn(request.credential());
+	/** A page navigation, not an API call: the whole tab goes to Google and comes back to the callback. */
+	@GetMapping("/auth/google/start")
+	ResponseEntity<Void> googleStart(HttpServletRequest request) {
+		if (!rateLimiter.tryAcquire("google-start:" + clientAddress.of(request), GOOGLE_STARTS_PER_MINUTE)) {
+			return redirect(properties.baseUrl() + "/?google_error=failed");
+		}
+		return redirect(auth.googleStart());
+	}
+
+	@GetMapping("/auth/google/callback")
+	ResponseEntity<Void> googleCallback(@RequestParam(required = false) String code,
+			@RequestParam(required = false) String state, @RequestParam(required = false) String error) {
+		return redirect(auth.googleCallback(code, state, error));
+	}
+
+	@PostMapping("/auth/google/claim")
+	HackerAuth.Session googleClaim(@RequestBody GoogleClaim request) {
+		return auth.googleClaim(request.handoff());
 	}
 
 	@PostMapping("/auth/logout")
@@ -185,6 +213,13 @@ public class PlatformController {
 	@ResponseStatus(HttpStatus.NO_CONTENT)
 	void withdrawRequest(HttpServletRequest request, @PathVariable UUID teamId) {
 		platform.withdrawRequest(auth.require(request), teamId);
+	}
+
+	private static ResponseEntity<Void> redirect(String url) {
+		return ResponseEntity.status(HttpStatus.FOUND)
+			.location(URI.create(url))
+			.cacheControl(CacheControl.noStore())
+			.build();
 	}
 
 }

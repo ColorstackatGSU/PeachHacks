@@ -48,6 +48,10 @@ public class HackerAuth {
 
 	private static final Duration LINK_INTERVAL = Duration.ofMinutes(2);
 
+	private static final int GOOGLE_STATE_MINUTES = 10;
+
+	private static final int GOOGLE_HANDOFF_MINUTES = 2;
+
 	private static final String BEARER = "Bearer ";
 
 	private static final String THROTTLE_PREFIX = "hacker:";
@@ -56,6 +60,9 @@ public class HackerAuth {
 	}
 
 	private record Person(UUID id, String firstName) {
+	}
+
+	private record Handoff(UUID registrationId, String subject, String email) {
 	}
 
 	private final JdbcClient jdbc;
@@ -200,14 +207,57 @@ public class HackerAuth {
 		});
 	}
 
+	/** The address at Google to send the browser to. Starts a sign-in that must finish within ten minutes. */
+	public String googleStart() {
+		if (!google.enabled()) {
+			throw ApiException.notFound("Google sign-in is not set up.");
+		}
+		String state = Tokens.random();
+		String nonce = Tokens.random();
+		jdbc.sql("delete from google_sign_ins where expires_at <= now()").update();
+		jdbc.sql("""
+				insert into google_sign_ins (token_hash, kind, nonce, expires_at)
+				values (:hash, 'STATE', :nonce, now() + make_interval(mins => cast(:minutes as integer)))
+				""")
+			.param("hash", Tokens.sha256(state))
+			.param("nonce", nonce)
+			.param("minutes", GOOGLE_STATE_MINUTES)
+			.update();
+		return google.authorizationUrl(state, nonce);
+	}
+
 	/**
-	 * The Google account's address must be the one the person applied with, or their school
-	 * address once they have confirmed it.
+	 * Where to send the browser once Google has sent it back. Always the platform: the
+	 * person is mid-sign-in in a browser tab, so every outcome has to land on a page that
+	 * can explain itself. A finished sign-in travels as a one-time handoff, never as a
+	 * session token in an address.
 	 */
-	public Session googleSignIn(String credential) {
-		GoogleIdentity.Account account = google.verify(credential)
-			.orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS",
-					"Google sign-in did not work. Try again."));
+	public String googleCallback(String code, String state, String error) {
+		String platform = properties.baseUrl() + "/";
+		if (error != null && !error.isBlank()) {
+			return platform + "?google_error=cancelled";
+		}
+		if (!google.enabled() || code == null || code.isBlank() || state == null || state.isBlank()) {
+			return platform + "?google_error=failed";
+		}
+		Optional<String> nonce = jdbc
+			.sql("""
+					delete from google_sign_ins
+					where token_hash = :hash and kind = 'STATE' and expires_at > now()
+					returning nonce
+					""")
+			.param("hash", Tokens.sha256(state))
+			.query(String.class)
+			.optional();
+		if (nonce.isEmpty()) {
+			return platform + "?google_error=expired";
+		}
+		Optional<GoogleIdentity.Account> account = google.exchange(code, nonce.get());
+		if (account.isEmpty()) {
+			return platform + "?google_error=failed";
+		}
+		// The Google account's address must be the one the person applied with, or their
+		// school address once they have confirmed it.
 		UUID id = jdbc.sql("""
 				select r.id from registrations r
 				where r.status = 'ACCEPTED' and (r.email = :email or (r.school_email = :email and exists (
@@ -215,21 +265,60 @@ public class HackerAuth {
 					where c.email = r.email and c.school_email = r.school_email and c.confirmed_at is not null)))
 				order by (r.email = :email) desc, r.created_at
 				limit 1
+				""").param("email", account.get().email()).query(UUID.class).optional().orElse(null);
+		String handoff = Tokens.random();
+		jdbc.sql("""
+				insert into google_sign_ins (token_hash, kind, registration_id, google_subject, email, expires_at)
+				values (:hash, 'HANDOFF', :id, :subject, :email,
+					now() + make_interval(mins => cast(:minutes as integer)))
 				""")
-			.param("email", account.email())
-			.query(UUID.class)
+			.param("hash", Tokens.sha256(handoff))
+			.param("id", id)
+			.param("subject", account.get().subject())
+			.param("email", account.get().email())
+			.param("minutes", GOOGLE_HANDOFF_MINUTES)
+			.update();
+		return platform + "?google=" + handoff;
+	}
+
+	/** Trades the handoff the browser arrived with for a session. It works once. */
+	public Session googleClaim(String handoff) {
+		Handoff claimed = jdbc.sql("""
+				delete from google_sign_ins
+				where token_hash = :hash and kind = 'HANDOFF' and expires_at > now()
+				returning registration_id, google_subject, email
+				""")
+			.param("hash", Tokens.sha256(Texts.orEmpty(handoff)))
+			.query((rs, rowNum) -> new Handoff(rs.getObject("registration_id", UUID.class),
+					rs.getString("google_subject"), rs.getString("email")))
 			.optional()
-			.orElseThrow(() -> new ApiException(HttpStatus.FORBIDDEN, "NOT_ACCEPTED",
-					"There is no accepted PeachHacks application for " + account.email()
-							+ ". Sign in with the email you applied with."));
+			.orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS",
+					"That sign-in expired. Press Continue with Google again."));
+		// Says which address failed: someone with two Google accounts cannot otherwise tell
+		// which one to try.
+		if (claimed.registrationId() == null) {
+			throw new ApiException(HttpStatus.FORBIDDEN, "NOT_ACCEPTED",
+					"There is no accepted PeachHacks application for " + claimed.email()
+							+ ". Choose the Google account with the email you applied with, or sign in with your"
+							+ " email and password.");
+		}
+		UUID id = claimed.registrationId();
 		return transaction.execute(tx -> {
+			boolean accepted = jdbc.sql("select status = 'ACCEPTED' from registrations where id = :id")
+				.param("id", id)
+				.query(Boolean.class)
+				.optional()
+				.orElse(false);
+			if (!accepted) {
+				throw new ApiException(HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", "Sign in to continue.");
+			}
 			ensureAccount(id);
 			jdbc.sql("update hacker_accounts set google_subject = null where google_subject = :subject and registration_id <> :id")
-				.param("subject", account.subject())
+				.param("subject", claimed.subject())
 				.param("id", id)
 				.update();
 			jdbc.sql("update hacker_accounts set google_subject = :subject where registration_id = :id")
-				.param("subject", account.subject())
+				.param("subject", claimed.subject())
 				.param("id", id)
 				.update();
 			return startSession(id);

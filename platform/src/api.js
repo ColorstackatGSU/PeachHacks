@@ -113,7 +113,7 @@ export const api = {
   passwordLink: (email) => request("POST", "/platform/auth/password-link", { body: { email }, auth: false }),
   setPassword: (token, password) =>
     request("POST", "/platform/auth/set-password", { body: { token, password }, auth: false }),
-  googleSignIn: (credential) => request("POST", "/platform/auth/google", { body: { credential }, auth: false }),
+  googleClaim: (handoff) => request("POST", "/platform/auth/google/claim", { body: { handoff }, auth: false }),
   logout: () => request("POST", "/platform/auth/logout"),
 
   me: (signal) => request("GET", "/platform/me", { signal }),
@@ -139,6 +139,10 @@ const MOCK_QR =
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="#fff"/>' +
       '<path d="M1 1h3v3H1zM6 1h3v3H6zM1 6h3v3H1zM6 6h1v1H6zM8 6h1v1H8zM7 7h1v1H7zM6 8h1v1H6zM8 8h1v1H8z"/></svg>',
   );
+
+// Signing in with Google is a trip through Google and back, so it starts as a page
+// navigation to the API, not a fetch.
+export const GOOGLE_START_URL = `${API_BASE}/platform/auth/google/start`;
 
 export const qrUrl = (ticketToken) =>
   MOCK_MODE ? MOCK_QR : `${API_BASE}/public/tickets/${id(ticketToken)}/qr.png`;

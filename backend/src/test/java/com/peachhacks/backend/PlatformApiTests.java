@@ -3,6 +3,7 @@ package com.peachhacks.backend;
 import java.net.InetSocketAddress;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -45,15 +46,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Google and Discord are one local stub. A Google credential here is "audience:email",
- * which the stub turns into the claims Google would return for a real ID token.
+ * Google and Discord are one local stub. The code "Google" hands back here is
+ * "email|nonce|audience", which the stub's token endpoint turns into the ID token Google
+ * would issue for that sign-in.
  */
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest(properties = { "app.admin.bootstrap-email=platform@test.local",
 		"app.admin.bootstrap-password=correct-horse-battery", "app.admin.bootstrap-name=Test Organizer",
 		"app.rate-limit.public-per-minute=100000", "app.rate-limit.login-per-minute=100000",
 		"app.rate-limit.sign-up-per-window=100000", "app.rate-limit.sign-up-global-per-hour=100000",
-		"app.platform.google-client-id=google-client", "app.platform.max-team-size=2",
+		"app.platform.google-client-id=google-client", "app.platform.google-client-secret=google-secret",
+		"app.platform.api-base-url=https://api.test", "app.platform.max-team-size=2",
 		"app.platform.base-url=https://platform.test", "app.discord.bot-token=test-bot-token",
 		"app.discord.public-key=3d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660c",
 		"app.discord.application-id=4242", "app.discord.client-secret=oauth-secret", "app.discord.guild-id=1000",
@@ -84,13 +87,16 @@ class PlatformApiTests {
 			bodies.add(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
 			calls.add(exchange.getRequestMethod() + " " + path);
 			String answer = null;
-			if (path.equals("/tokeninfo")) {
-				String[] credential = URLDecoder
-					.decode(exchange.getRequestURI().getRawQuery().substring("id_token=".length()),
-							StandardCharsets.UTF_8)
-					.split(":", 2);
-				answer = "{\"aud\":\"%s\",\"iss\":\"https://accounts.google.com\",\"sub\":\"sub-%s\",\"email\":\"%s\",\"email_verified\":\"true\"}"
-					.formatted(credential[0], credential[1], credential[1]);
+			if (path.equals("/token")) {
+				String form = bodies.get(bodies.size() - 1);
+				String[] code = URLDecoder
+					.decode(form.substring(form.indexOf("code=") + 5).split("&")[0], StandardCharsets.UTF_8)
+					.split("\\|");
+				String claims = "{\"aud\":\"%s\",\"iss\":\"https://accounts.google.com\",\"sub\":\"sub-%s\",\"email\":\"%s\",\"email_verified\":true,\"nonce\":\"%s\",\"exp\":%d}"
+					.formatted(code[2], code[0], code[0], code[1], System.currentTimeMillis() / 1000 + 600);
+				answer = "{\"id_token\":\"e30.%s.signature\"}".formatted(Base64.getUrlEncoder()
+					.withoutPadding()
+					.encodeToString(claims.getBytes(StandardCharsets.UTF_8)));
 			}
 			else if (path.equals("/oauth2/token")) {
 				answer = "{\"access_token\":\"user-access-token\"}";
@@ -116,7 +122,7 @@ class PlatformApiTests {
 	static void stubUrls(DynamicPropertyRegistry registry) {
 		String base = "http://127.0.0.1:" + stub.getAddress().getPort();
 		registry.add("app.discord.api-base-url", () -> base);
-		registry.add("app.platform.google-token-info-url", () -> base + "/tokeninfo");
+		registry.add("app.platform.google-token-url", () -> base + "/token");
 	}
 
 	@TestConfiguration(proxyBeanMethods = false)
@@ -209,15 +215,33 @@ class PlatformApiTests {
 		Hacker grace = register("Grace", "ACCEPTED");
 		Hacker pending = register("Waiting", "PENDING");
 		mockMvc.perform(get("/platform/config"))
-			.andExpect(jsonPath("$.googleClientId").value("google-client"))
+			.andExpect(jsonPath("$.googleSignIn").value(true))
 			.andExpect(jsonPath("$.discordClientId").value("4242"))
 			.andExpect(jsonPath("$.discordRedirectUri").value("https://platform.test/"))
 			.andExpect(jsonPath("$.maxTeamSize").value(2));
 
-		google("google-client:" + pending.email()).andExpect(status().isForbidden())
-			.andExpect(jsonPath("$.code").value("NOT_ACCEPTED"));
-		google("someone-elses-client:" + grace.email()).andExpect(status().isUnauthorized());
-		String session = token(google("google-client:" + grace.email()).andExpect(status().isOk()));
+		String start = googleStart();
+		assertThat(start).startsWith("https://accounts.google.com/o/oauth2/v2/auth?")
+			.contains("client_id=google-client")
+			.contains("redirect_uri=https://api.test/platform/auth/google/callback")
+			.contains("prompt=select_account");
+		assertThat(start).doesNotContain("google-secret");
+
+		assertThat(googleReturn(null, null, "access_denied")).isEqualTo("https://platform.test/?google_error=cancelled");
+		assertThat(googleReturn("code", "a-state-nobody-issued", null))
+			.isEqualTo("https://platform.test/?google_error=expired");
+		assertThat(googleLanding(grace.email(), "someone-elses-client"))
+			.isEqualTo("https://platform.test/?google_error=failed");
+
+		String refused = googleLanding(pending.email(), "google-client");
+		assertThat(refused).startsWith("https://platform.test/?google=").doesNotContain("@");
+		claim(handoff(refused)).andExpect(status().isForbidden())
+			.andExpect(jsonPath("$.code").value("NOT_ACCEPTED"))
+			.andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString(pending.email())));
+
+		String landing = googleLanding(grace.email(), "google-client");
+		String session = token(claim(handoff(landing)).andExpect(status().isOk()));
+		claim(handoff(landing)).andExpect(status().isUnauthorized());
 
 		as(session, get("/platform/me")).andExpect(jsonPath("$.email").value(grace.email()))
 			.andExpect(jsonPath("$.hasPassword").value(false));
@@ -383,12 +407,50 @@ class PlatformApiTests {
 	}
 
 	private String signIn(Hacker hacker) throws Exception {
-		return token(google("google-client:" + hacker.email()).andExpect(status().isOk()));
+		return token(claim(handoff(googleLanding(hacker.email(), "google-client"))).andExpect(status().isOk()));
 	}
 
-	private ResultActions google(String credential) throws Exception {
-		return mockMvc.perform(post("/platform/auth/google").contentType(MediaType.APPLICATION_JSON)
-			.content("{\"credential\":\"%s\"}".formatted(credential)));
+	/** The address at Google that "Continue with Google" sends the browser to. */
+	private String googleStart() throws Exception {
+		return mockMvc.perform(get("/platform/auth/google/start"))
+			.andExpect(status().isFound())
+			.andReturn()
+			.getResponse()
+			.getHeader("Location");
+	}
+
+	/** Where the browser ends up after choosing this Google account. */
+	private String googleLanding(String email, String audience) throws Exception {
+		String start = googleStart();
+		return googleReturn(email + "|" + parameter(start, "nonce") + "|" + audience, parameter(start, "state"), null);
+	}
+
+	private String googleReturn(String code, String state, String error) throws Exception {
+		MockHttpServletRequestBuilder request = get("/platform/auth/google/callback");
+		if (code != null) {
+			request = request.param("code", code);
+		}
+		if (state != null) {
+			request = request.param("state", state);
+		}
+		if (error != null) {
+			request = request.param("error", error);
+		}
+		return mockMvc.perform(request).andExpect(status().isFound()).andReturn().getResponse().getHeader("Location");
+	}
+
+	private ResultActions claim(String handoff) throws Exception {
+		return mockMvc.perform(post("/platform/auth/google/claim").contentType(MediaType.APPLICATION_JSON)
+			.content("{\"handoff\":\"%s\"}".formatted(handoff)));
+	}
+
+	private static String handoff(String landing) {
+		return landing.substring(landing.indexOf("?google=") + 8);
+	}
+
+	private static String parameter(String url, String name) {
+		String rest = url.substring(url.indexOf(name + "=") + name.length() + 1);
+		return rest.contains("&") ? rest.substring(0, rest.indexOf('&')) : rest;
 	}
 
 	private ResultActions login(String email, String password) throws Exception {
