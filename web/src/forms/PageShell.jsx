@@ -25,16 +25,20 @@ export function PageShell({ children }) {
   );
 }
 
-export function Card({ title, titleId, intro, children, headingRef }) {
+// `panel` is the card inside the homepage's sign-up dialog: the dialog is
+// already the labelled region and the page already has its h1.
+export function Card({ title, titleId, intro, children, headingRef, panel = false }) {
+  const Root = panel ? 'div' : 'section';
+  const Heading = panel ? 'h2' : 'h1';
   return (
-    <section className="pf-card" aria-labelledby={titleId}>
+    <Root className="pf-card" aria-labelledby={panel ? undefined : titleId}>
       <div className="pf-tag">
         <span className="pf-eyelet" aria-hidden="true" />
-        <h1 id={titleId} tabIndex={-1} ref={headingRef}>{title}</h1>
+        <Heading className="pf-title" id={titleId} tabIndex={-1} ref={headingRef}>{title}</Heading>
         {intro && <p className="pf-intro">{intro}</p>}
       </div>
       <div className="pf-card-body">{children}</div>
-    </section>
+    </Root>
   );
 }
 

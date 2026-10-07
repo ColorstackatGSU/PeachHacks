@@ -1,4 +1,12 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "cleanUrls": true
+  "cleanUrls": true,
+  "redirects": [
+    { "source": "/pre-register", "destination": "/?register=1", "permanent": false },
+    { "source": "/pre-register.html", "destination": "/?register=1", "permanent": false },
+    { "source": "/register", "destination": "/?register=1", "permanent": false },
+    { "source": "/register.html", "destination": "/?register=1", "permanent": false },
+    { "source": "/interest-form", "destination": "/?register=1", "permanent": false },
+    { "source": "/interest-form.html", "destination": "/?register=1", "permanent": false }
+  ]
 }
