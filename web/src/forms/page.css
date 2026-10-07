@@ -131,6 +131,11 @@ noscript {
   margin: 0;
 }
 
+.pf-footer .pf-footer-legal {
+  margin-top: 8px;
+  font-size: 13px;
+}
+
 .pf-footer-link {
   color: var(--pf-cream);
   font-weight: 700;

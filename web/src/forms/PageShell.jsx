@@ -19,6 +19,11 @@ export function PageShell({ children }) {
         <p>
           Questions? Email <a className="pf-footer-link" href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
         </p>
+        <p className="pf-footer-legal">
+          <a className="pf-footer-link" href="/privacy">Privacy Policy</a>
+          <span aria-hidden="true"> · </span>
+          <a className="pf-footer-link" href="/terms">Terms of Service</a>
+        </p>
       </footer>
     </div>
   );

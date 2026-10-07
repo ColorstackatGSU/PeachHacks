@@ -140,6 +140,10 @@ img { max-width: 100%; }
 .auth-card h1 { color: var(--peach); font-family: 'Agbalumo', system-ui, sans-serif; font-size: clamp(36px, 10vw, 44px); font-weight: 400; line-height: 1.05; text-shadow: 3px 3px 0 rgb(0, 12, 24); }
 .auth-intro { margin-top: 6px; color: var(--mist); font-size: 15px; }
 
+.auth-legal { color: var(--mist); font-size: 13px; }
+.auth-legal a { color: var(--mist); font-weight: 600; }
+.auth-legal a:hover { color: var(--cream); }
+
 .tag-form { display: grid; gap: 16px; }
 .tag-text { color: var(--cream); line-height: 1.55; }
 .tag-hint { color: var(--mist); font-size: 13.5px; }

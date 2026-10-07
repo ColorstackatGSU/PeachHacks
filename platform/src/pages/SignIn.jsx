@@ -137,6 +137,11 @@ export function AuthFrame({ title, intro, children }) {
           </div>
           {children}
         </main>
+        <p className="auth-legal">
+          <a href="https://www.peachhacks.com/privacy">Privacy Policy</a>
+          <span aria-hidden="true"> · </span>
+          <a href="https://www.peachhacks.com/terms">Terms of Service</a>
+        </p>
       </div>
     </div>
   );

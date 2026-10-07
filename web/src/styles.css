@@ -221,6 +221,8 @@ main:focus { outline: none; }
 .footer-contact .footer-link { min-height: 32px; }
 .footer-legal { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0 24px; width: min(100%, 1180px); margin: 0 auto; padding: 8px 0 14px; border-top: 1px solid rgba(244, 246, 237, .14); color: var(--mist); font-size: 13px; line-height: 1.6; }
 .footer-legal-text { margin: 10px 0; }
+.footer-legal-links { display: flex; flex-wrap: wrap; align-items: center; gap: 0 10px; }
+.footer-legal-links .footer-link { min-height: 32px; font-size: 13px; }
 .motion-toggle { min-height: 44px; margin: 0 -2px; padding: 0 2px; border: 0; border-radius: 4px; background: none; color: var(--cream); font: inherit; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; transition: color .2s ease; }
 .motion-toggle:hover { color: var(--peach); }
 @media (max-width: 900px) {

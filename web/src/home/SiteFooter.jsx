@@ -69,6 +69,11 @@ function SiteFooter() {
         </div>
         <div className="footer-legal">
           <p className="footer-legal-text">PeachHacks {EVENT_YEAR} <span aria-hidden="true">·</span> Hosted by ColorStack at Georgia State University</p>
+          <p className="footer-legal-text footer-legal-links">
+            <a className="footer-link" href="/privacy">Privacy Policy</a>
+            <span aria-hidden="true">·</span>
+            <a className="footer-link" href="/terms">Terms of Service</a>
+          </p>
           <button type="button" className="motion-toggle" aria-pressed={motionPaused} onClick={toggleMotion}>
             {motionPaused ? 'Play animation' : 'Pause animation'}
           </button>

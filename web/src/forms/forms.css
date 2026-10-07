@@ -795,3 +795,44 @@
   border-radius: 8px;
   background: #fff;
 }
+
+/* Long-form text inside a card: the privacy policy and the terms. */
+.pf-prose {
+  font-size: 16px;
+  line-height: 1.65;
+}
+
+.pf-prose > :first-child {
+  margin-top: 0;
+}
+
+.pf-prose p,
+.pf-prose ul {
+  margin: 0 0 14px;
+}
+
+.pf-prose ul {
+  padding-left: 22px;
+}
+
+.pf-prose li {
+  margin-bottom: 6px;
+}
+
+.pf-prose h2 {
+  margin: 30px 0 10px;
+  padding-top: 20px;
+  border-top: 2px dashed rgb(0 31 58 / 18%);
+  color: var(--pf-navy);
+  font-family: var(--pf-display);
+  font-size: 26px;
+  font-weight: 400;
+  line-height: 1.2;
+}
+
+.pf-prose h3 {
+  margin: 20px 0 6px;
+  color: var(--pf-navy);
+  font-size: 16px;
+  font-weight: 800;
+}
