@@ -72,11 +72,13 @@ Shown under a note explaining that the MLH partnership is still in progress.
 
 ### Registration: optional fields
 
+Required fields carry a red asterisk; optional fields have no marker.
+
 Grouped into three collapsible sections. Nothing here is needed to register.
 
-- **Food, shirt and shipping**: Dietary Restrictions (multi-select) with a free-text details field, T-shirt Size (US unisex XS to 3XL), Shipping Address (line 1, line 2, city, state, country, postal code)
+- **Food and shirt**: Dietary Restrictions (multi-select) with a free-text details field, T-shirt Size (US unisex XS to 3XL). MLH's optional Shipping Address is not collected; the API still accepts `shippingAddress` but the form never sends it.
 - **Studies and career**: Highest level of formal education completed, Major / Field of Study, LinkedIn URL, Resume
-- **Demographics** (used only in aggregate): underrepresented group in tech, Gender, Pronouns, Race / Ethnicity (multi-select), sexual orientation
+- **Demographics**: underrepresented group in tech, Gender, Pronouns, Race / Ethnicity (multi-select), Sexual orientation (MLH words this "Do you consider yourself to be any of the following?"; the form labels it plainly)
 
 Options that say "self-describe", "other" or "please specify" reveal a text input. Its text is only submitted while that option is selected.
 
@@ -84,7 +86,7 @@ Choice fields are submitted as the exact label text from the MLH guide. The opti
 
 ### Resume
 
-Optional, in the "Studies and career" section. One PDF of at most 2 MB.
+Optional but marked "Highly recommended", in the "Studies and career" section. One PDF of at most 2 MB.
 
 - The file is checked when it is chosen and again on submit: its type (or a `.pdf` name when the browser reports no type), its size, and that it starts with `%PDF-`. Failures show under the field like any other error and the file is dropped. The API repeats the size and `%PDF-` checks and answers with `fieldErrors.resume`.
 - The chosen file's name and size are shown with a "Remove" control.

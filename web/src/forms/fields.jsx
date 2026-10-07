@@ -26,7 +26,7 @@ export function FieldLabel({ htmlFor, children, optional }) {
   return (
     <label className="pf-label" htmlFor={htmlFor}>
       {children}
-      {optional && <span className="pf-optional"> (optional)</span>}
+      {!optional && <span className="pf-required" aria-hidden="true"> *</span>}
     </label>
   );
 }
@@ -99,7 +99,6 @@ export function CheckboxGroup({ name, legend, options, value, onChange, hint, er
     <fieldset className="pf-field pf-field-wide pf-group" aria-describedby={`${id}-msg`}>
       <legend className="pf-label">
         {legend}
-        <span className="pf-optional"> (optional, choose any)</span>
       </legend>
       <div className="pf-chips">
         {options.map((option, index) => (
@@ -139,7 +138,7 @@ export function ConsentCheckbox({ name, checked, onChange, error, required = fal
         />
         <label htmlFor={id}>
           {children}
-          <span className="pf-optional">{required ? ' (required)' : ' (optional)'}</span>
+          {required && <span className="pf-required" aria-hidden="true"> *</span>}
         </label>
       </div>
       <FieldMessage id={`${id}-msg`} error={error} />

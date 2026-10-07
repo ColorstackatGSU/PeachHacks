@@ -33,12 +33,6 @@ const INITIAL_VALUES = {
   dietaryRestrictions: [],
   dietaryDetails: '',
   tshirtSize: '',
-  'shippingAddress.line1': '',
-  'shippingAddress.line2': '',
-  'shippingAddress.city': '',
-  'shippingAddress.state': '',
-  'shippingAddress.country': '',
-  'shippingAddress.postalCode': '',
   highestEducation: '',
   highestEducationOther: '',
   majorFieldOfStudy: '',
@@ -59,12 +53,10 @@ const INITIAL_VALUES = {
 };
 const FIELD_NAMES = Object.keys(INITIAL_VALUES);
 
-const ADDRESS_FIELDS = ['line1', 'line2', 'city', 'state', 'country', 'postalCode'];
-
 // Which collapsible section each optional field lives in, so a section can be
 // opened when the API reports an error inside it.
 const SECTION_FIELDS = {
-  logistics: ['dietaryRestrictions', 'dietaryDetails', 'tshirtSize', ...ADDRESS_FIELDS.map((key) => `shippingAddress.${key}`)],
+  logistics: ['dietaryRestrictions', 'dietaryDetails', 'tshirtSize'],
   studies: ['highestEducation', 'highestEducationOther', 'majorFieldOfStudy', 'majorOther', 'linkedinUrl', 'resume', 'resumeOptIn'],
   demographics: [
     'underrepresentedGroup', 'gender', 'genderSelfDescribe', 'pronouns', 'pronounsOther', 'raceEthnicity',
@@ -100,8 +92,6 @@ function validate(values) {
 
 // `resume` is null or { fileName, contentBase64 }, read from the chosen file at submit time.
 function buildPayload(values, resume) {
-  const address = Object.fromEntries(ADDRESS_FIELDS.map((key) => [key, blankToNull(values[`shippingAddress.${key}`])]));
-  const hasAddress = Object.values(address).some((part) => part !== null);
   const otherText = (selected, text) => (selected ? blankToNull(text) : null);
 
   return {
@@ -132,7 +122,6 @@ function buildPayload(values, resume) {
     highestEducation: blankToNull(values.highestEducation),
     highestEducationOther: otherText(values.highestEducation === HIGHEST_EDUCATION_OTHER, values.highestEducationOther),
     tshirtSize: blankToNull(values.tshirtSize),
-    shippingAddress: hasAddress ? address : null,
     majorFieldOfStudy: blankToNull(values.majorFieldOfStudy),
     majorOther: otherText(values.majorFieldOfStudy === MAJOR_OTHER, values.majorOther),
     linkedinUrl: blankToNull(normalizeLinkedinUrl(values.linkedinUrl) ?? ''),
@@ -153,10 +142,8 @@ function Section({ id, title, summary, open, onToggle, children }) {
           aria-controls={`pf-section-${id}`}
           onClick={() => onToggle(id)}
         >
-          <span className="pf-section-title">
-            {title} <span className="pf-optional">(optional)</span>
-          </span>
-          <span className="pf-section-summary">{summary}</span>
+          <span className="pf-section-title">{title}</span>
+          {summary && <span className="pf-section-summary">{summary}</span>}
           <span className="pf-section-chevron" aria-hidden="true" />
         </button>
       </h3>
@@ -356,14 +343,11 @@ export default function RegisterForm({ titleId, onSuccess, onClosed }) {
       </fieldset>
 
       <div className="pf-optional-intro">
-        <h3 className="pf-legend">A little more, if you like</h3>
-        <p className="pf-note">
-          Everything below is optional. Skip any of it and you can still register.
-        </p>
+        <h3 className="pf-legend">A little more information:</h3>
       </div>
 
       <Section
-        id="logistics" title="Food, shirt and shipping" summary="Helps us order the right meals and swag."
+        id="logistics" title="Food and shirt" summary="Helps us order the right meals and swag."
         open={openSections.logistics} onToggle={toggleSection}
       >
         <div className="pf-grid">
@@ -374,39 +358,6 @@ export default function RegisterForm({ titleId, onSuccess, onClosed }) {
           />
           <SelectField {...field('tshirtSize')} label="T-shirt Size" optional options={TSHIRT_SIZES} hint="US unisex sizing." />
         </div>
-        <fieldset className="pf-fieldset pf-fieldset-nested">
-          <legend className="pf-label">
-            Shipping Address<span className="pf-optional"> (optional)</span>
-          </legend>
-          <p className="pf-note">Only used if we mail you swag or a prize.</p>
-          <div className="pf-grid">
-            <TextField
-              {...field('shippingAddress.line1')} label="Address Line 1" optional wide
-              autoComplete="shipping address-line1" maxLength={255}
-            />
-            <TextField
-              {...field('shippingAddress.line2')} label="Address Line 2" optional wide
-              autoComplete="shipping address-line2" maxLength={255}
-            />
-            <TextField
-              {...field('shippingAddress.city')} label="City" optional
-              autoComplete="shipping address-level2" maxLength={255}
-            />
-            <TextField
-              {...field('shippingAddress.state')} label="State" optional hint="Or province / region."
-              autoComplete="shipping address-level1" maxLength={255}
-            />
-            <SelectField
-              {...field('shippingAddress.country')} label="Country" optional
-              options={OTHER_COUNTRY_OPTIONS} pinned={PINNED_COUNTRY_OPTION} placeholder="Select a country"
-              autoComplete="shipping country"
-            />
-            <TextField
-              {...field('shippingAddress.postalCode')} label="Postal code" optional
-              autoComplete="shipping postal-code" autoCapitalize="characters" maxLength={32}
-            />
-          </div>
-        </fieldset>
       </Section>
 
       <Section
@@ -431,7 +382,7 @@ export default function RegisterForm({ titleId, onSuccess, onClosed }) {
           />
           <ResumeField
             name="resume" file={values.resume} onChoose={chooseResume} onRemove={removeResume} error={errors.resume}
-            hint="Optional. PDF only, up to 2 MB."
+            hint="Highly recommended. PDF only, up to 2 MB."
           />
           {values.resume && (
             <ConsentCheckbox
@@ -446,13 +397,9 @@ export default function RegisterForm({ titleId, onSuccess, onClosed }) {
       </Section>
 
       <Section
-        id="demographics" title="Demographics" summary="Only ever used in aggregate."
+        id="demographics" title="Demographics" summary=""
         open={openSections.demographics} onToggle={toggleSection}
       >
-        <p className="pf-note">
-          These questions are optional. Answers are only looked at in aggregate, to understand who PeachHacks is
-          reaching, and never affect your registration.
-        </p>
         <div className="pf-grid">
           <SelectField
             {...field('underrepresentedGroup')} optional wide options={UNDERREPRESENTED_GROUP}
@@ -472,7 +419,7 @@ export default function RegisterForm({ titleId, onSuccess, onClosed }) {
           )}
           <SelectField
             {...field('sexualOrientation')} optional wide options={SEXUAL_ORIENTATION}
-            label="Do you consider yourself to be any of the following?"
+            label="Sexual orientation"
           />
           {values.sexualOrientation === SEXUAL_ORIENTATION_OTHER && (
             <TextField {...field('sexualOrientationOther')} label="Describe your identity" optional wide maxLength={255} />

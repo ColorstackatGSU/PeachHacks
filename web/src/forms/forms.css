@@ -158,9 +158,9 @@
   line-height: 1.35;
 }
 
-.pf-optional {
-  color: var(--pf-muted);
-  font-weight: 400;
+.pf-required {
+  color: var(--pf-error);
+  font-weight: 800;
 }
 
 .pf-input {
@@ -249,10 +249,6 @@
 
 .pf-optional-intro {
   margin-bottom: -14px;
-}
-
-.pf-optional-intro .pf-note {
-  margin-bottom: 0;
 }
 
 .pf-chips {
