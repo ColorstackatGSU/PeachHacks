@@ -175,6 +175,10 @@ main:focus { outline: none; }
 .signin-card h1 { font-size: 26px; font-weight: 800; letter-spacing: -.03em; text-align: center; }
 .signin-card form { display: grid; gap: 16px; }
 .signin-card .btn-primary { min-height: 46px; margin-top: 4px; font-size: 15px; }
+.signin-switch { justify-self: center; }
+.signin-card .btn-block { text-align: center; text-decoration: none; }
+.invite-notice { display: grid; gap: 8px; margin: 16px 0; }
+.invite-notice .link-btn { justify-self: start; }
 .signin-foot { color: var(--text-2); font-size: 12.5px; text-align: center; }
 
 .gate-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 14px; padding: 14px 18px; border: 1px solid var(--line); border-left: 4px solid var(--mist); border-radius: var(--radius); background: var(--panel); }

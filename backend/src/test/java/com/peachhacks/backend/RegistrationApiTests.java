@@ -88,6 +88,8 @@ class RegistrationApiTests {
 
 	private static final Pattern CONFIRM_LINK = Pattern.compile("/confirm-email\\?token=([A-Za-z0-9_-]+)");
 
+	private static final Pattern PASSWORD_LINK = Pattern.compile("/#/set-password\\?token=([A-Za-z0-9_-]+)");
+
 	@TestConfiguration(proxyBeanMethods = false)
 	static class RecordingEmail {
 
@@ -336,23 +338,24 @@ class RegistrationApiTests {
 		mockMvc
 			.perform(post("/admin/admins").header("Authorization", token)
 				.contentType(MediaType.APPLICATION_JSON)
-				.content("{\"email\":\"%s\",\"name\":\"Second\",\"password\":\"short\"}".formatted(email)))
+				.content("{\"email\":\"%s\",\"name\":\"\"}".formatted(email)))
 			.andExpect(status().isBadRequest())
-			.andExpect(jsonPath("$.fieldErrors.password").isNotEmpty());
+			.andExpect(jsonPath("$.fieldErrors.name").isNotEmpty());
 		String created = mockMvc
 			.perform(post("/admin/admins").header("Authorization", token)
 				.contentType(MediaType.APPLICATION_JSON)
-				.content("{\"email\":\"%s\",\"name\":\"Second\",\"password\":\"another-long-password\"}"
-					.formatted(email)))
+				.content("{\"email\":\"%s\",\"name\":\"Second\"}".formatted(email)))
 			.andExpect(status().isCreated())
 			.andExpect(jsonPath("$.email").value(email))
 			.andExpect(jsonPath("$.role").value("ADMIN"))
+			.andExpect(jsonPath("$.pending").value(true))
 			.andExpect(jsonPath("$.password").doesNotExist())
 			.andExpect(jsonPath("$.passwordHash").doesNotExist())
 			.andReturn()
 			.getResponse()
 			.getContentAsString();
 		String id = JsonPath.read(created, "$.id");
+		choosePassword(created, "another-long-password");
 		login(email, "another-long-password").andExpect(status().isOk());
 
 		String me = mockMvc.perform(get("/admin/auth/me").header("Authorization", token))
@@ -365,6 +368,154 @@ class RegistrationApiTests {
 		mockMvc.perform(delete("/admin/admins/" + id).header("Authorization", token))
 			.andExpect(status().isNoContent());
 		login(email, "another-long-password").andExpect(status().isUnauthorized());
+	}
+
+	@Test
+	void anInvitedAccountChoosesItsOwnPasswordFromAOneTimeLink() throws Exception {
+		String admin = bearer();
+		String email = unique() + "@test.local";
+		String created = mockMvc
+			.perform(post("/admin/admins").header("Authorization", admin)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"email\":\"%s\",\"name\":\"Invited\",\"role\":\"VOLUNTEER\"}".formatted(email)))
+			.andExpect(status().isCreated())
+			.andExpect(jsonPath("$.pending").value(true))
+			.andReturn()
+			.getResponse()
+			.getContentAsString();
+		String id = JsonPath.read(created, "$.id");
+		String firstToken = passwordToken(JsonPath.read(created, "$.setPasswordUrl"));
+
+		EmailMessage invite = awaitEmail(email, "check-in volunteer");
+		assertThat(invite.text()).contains("Test Organizer added you as a check-in volunteer")
+			.contains("Set your password: http://localhost:5174/#/set-password?token=" + firstToken)
+			.contains("works for 7 days");
+		login(email, "").andExpect(status().isBadRequest());
+		login(email, "anything-at-all").andExpect(status().isUnauthorized());
+		mockMvc.perform(get("/admin/admins").header("Authorization", admin))
+			.andExpect(jsonPath("$[?(@.id == '%s')].pending".formatted(id)).value(true))
+			.andExpect(jsonPath("$[?(@.id == '%s')].setPasswordUrl".formatted(id)).value((Object) null));
+
+		String resent = mockMvc.perform(post("/admin/admins/" + id + "/invite").header("Authorization", admin))
+			.andExpect(status().isOk())
+			.andReturn()
+			.getResponse()
+			.getContentAsString();
+		String token = passwordToken(JsonPath.read(resent, "$.setPasswordUrl"));
+		assertThat(token).isNotEqualTo(firstToken);
+		setPassword(firstToken, "replaced-link-password").andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value("INVALID_PASSWORD_LINK"));
+
+		mockMvc
+			.perform(post("/admin/auth/set-password/check").contentType(MediaType.APPLICATION_JSON)
+				.content("{\"token\":\"%s\"}".formatted(token)))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.email").value(email))
+			.andExpect(jsonPath("$.name").value("Invited"))
+			.andExpect(jsonPath("$.invite").value(true));
+		setPassword(token, "short").andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.fieldErrors.password").isNotEmpty());
+		setPassword(token, "my-own-password").andExpect(status().isNoContent());
+		setPassword(token, "second-use-password").andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value("INVALID_PASSWORD_LINK"));
+		login(email, "my-own-password").andExpect(status().isOk())
+			.andExpect(jsonPath("$.admin.role").value("VOLUNTEER"));
+		mockMvc.perform(get("/admin/admins").header("Authorization", admin))
+			.andExpect(jsonPath("$[?(@.id == '%s')].pending".formatted(id)).value(false));
+		mockMvc.perform(post("/admin/admins/" + id + "/invite").header("Authorization", admin))
+			.andExpect(status().isBadRequest());
+
+		mockMvc.perform(delete("/admin/admins/" + id).header("Authorization", admin))
+			.andExpect(status().isNoContent());
+	}
+
+	@Test
+	void aForgottenPasswordIsResetFromAnEmailedLinkAndEndsOtherSessions() throws Exception {
+		String admin = bearer();
+		Volunteer volunteer = createVolunteer(admin, "Forgetful");
+		String email = jdbc.sql("select email from admins where id = :id")
+			.param("id", UUID.fromString(volunteer.id()))
+			.query(String.class)
+			.single();
+		int before = sentEmails.size();
+
+		mockMvc
+			.perform(post("/admin/auth/forgot-password").contentType(MediaType.APPLICATION_JSON)
+				.content("{\"email\":\"nobody-%s@test.local\"}".formatted(unique())))
+			.andExpect(status().isNoContent());
+		mockMvc
+			.perform(post("/admin/auth/forgot-password").contentType(MediaType.APPLICATION_JSON)
+				.content("{\"email\":\"%s\"}".formatted(email.toUpperCase())))
+			.andExpect(status().isNoContent());
+		EmailMessage reset = awaitEmail(email, "Reset your PeachHacks admin password");
+		assertThat(sentEmails.subList(before, sentEmails.size())).hasSize(1);
+		assertThat(reset.text()).contains("works for 1 hour");
+		String token = passwordToken(reset.text());
+
+		jdbc.sql("update admins set password_token_expires_at = now() - interval '1 minute' where id = :id")
+			.param("id", UUID.fromString(volunteer.id()))
+			.update();
+		setPassword(token, "too-late-password").andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value("INVALID_PASSWORD_LINK"));
+		jdbc.sql("update admins set password_token_expires_at = now() + interval '1 hour' where id = :id")
+			.param("id", UUID.fromString(volunteer.id()))
+			.update();
+		mockMvc
+			.perform(post("/admin/auth/set-password/check").contentType(MediaType.APPLICATION_JSON)
+				.content("{\"token\":\"%s\"}".formatted(token)))
+			.andExpect(jsonPath("$.invite").value(false));
+		setPassword(token, "remembered-password").andExpect(status().isNoContent());
+
+		mockMvc.perform(get("/admin/auth/me").header("Authorization", volunteer.token()))
+			.andExpect(status().isUnauthorized());
+		login(email, "volunteer-password").andExpect(status().isUnauthorized());
+		login(email, "remembered-password").andExpect(status().isOk());
+
+		mockMvc.perform(delete("/admin/admins/" + volunteer.id()).header("Authorization", admin))
+			.andExpect(status().isNoContent());
+	}
+
+	@Test
+	void anyoneSignedInCanChangeTheirOwnPassword() throws Exception {
+		String admin = bearer();
+		Volunteer volunteer = createVolunteer(admin, "Changer");
+		String email = jdbc.sql("select email from admins where id = :id")
+			.param("id", UUID.fromString(volunteer.id()))
+			.query(String.class)
+			.single();
+		String otherSession = "Bearer " + JsonPath.read(
+				login(email, "volunteer-password").andReturn().getResponse().getContentAsString(), "$.token");
+
+		mockMvc
+			.perform(post("/admin/auth/change-password").contentType(MediaType.APPLICATION_JSON)
+				.content("{\"currentPassword\":\"volunteer-password\",\"newPassword\":\"a-brand-new-password\"}"))
+			.andExpect(status().isUnauthorized());
+		mockMvc
+			.perform(post("/admin/auth/change-password").header("Authorization", volunteer.token())
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"currentPassword\":\"not-my-password\",\"newPassword\":\"a-brand-new-password\"}"))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.fieldErrors.currentPassword").isNotEmpty());
+		mockMvc
+			.perform(post("/admin/auth/change-password").header("Authorization", volunteer.token())
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"currentPassword\":\"volunteer-password\",\"newPassword\":\"short\"}"))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.fieldErrors.newPassword").isNotEmpty());
+		mockMvc
+			.perform(post("/admin/auth/change-password").header("Authorization", volunteer.token())
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"currentPassword\":\"volunteer-password\",\"newPassword\":\"a-brand-new-password\"}"))
+			.andExpect(status().isNoContent());
+
+		mockMvc.perform(get("/admin/auth/me").header("Authorization", volunteer.token())).andExpect(status().isOk());
+		mockMvc.perform(get("/admin/auth/me").header("Authorization", otherSession))
+			.andExpect(status().isUnauthorized());
+		login(email, "volunteer-password").andExpect(status().isUnauthorized());
+		login(email, "a-brand-new-password").andExpect(status().isOk());
+
+		mockMvc.perform(delete("/admin/admins/" + volunteer.id()).header("Authorization", admin))
+			.andExpect(status().isNoContent());
 	}
 
 	@Test
@@ -1808,6 +1959,34 @@ class RegistrationApiTests {
 			.content("{\"email\":\"%s\",\"password\":\"%s\"}".formatted(email, password)));
 	}
 
+	private static String passwordToken(String link) {
+		Matcher matcher = PASSWORD_LINK.matcher(link);
+		assertThat(matcher.find()).as("a set-password link in: " + link).isTrue();
+		return matcher.group(1);
+	}
+
+	private ResultActions setPassword(String token, String password) throws Exception {
+		return mockMvc.perform(post("/admin/auth/set-password").contentType(MediaType.APPLICATION_JSON)
+			.content("{\"token\":\"%s\",\"password\":\"%s\"}".formatted(token, password)));
+	}
+
+	private void choosePassword(String createdAccountJson, String password) throws Exception {
+		setPassword(passwordToken(JsonPath.read(createdAccountJson, "$.setPasswordUrl")), password)
+			.andExpect(status().isNoContent());
+	}
+
+	private EmailMessage awaitEmail(String to, String subjectPart) throws InterruptedException {
+		for (int attempt = 0; attempt < 100; attempt++) {
+			for (EmailMessage message : sentEmails) {
+				if (message.to().equals(to) && message.subject().contains(subjectPart)) {
+					return message;
+				}
+			}
+			Thread.sleep(50);
+		}
+		throw new AssertionError("No \"" + subjectPart + "\" email to " + to);
+	}
+
 	private String bearer() throws Exception {
 		String body = login(ADMIN_EMAIL, ADMIN_PASSWORD).andExpect(status().isOk())
 			.andReturn()
@@ -1824,13 +2003,13 @@ class RegistrationApiTests {
 		String created = mockMvc
 			.perform(post("/admin/admins").header("Authorization", adminToken)
 				.contentType(MediaType.APPLICATION_JSON)
-				.content("{\"email\":\"%s\",\"name\":\"%s\",\"password\":\"volunteer-password\",\"role\":\"VOLUNTEER\"}"
-					.formatted(email, name)))
+				.content("{\"email\":\"%s\",\"name\":\"%s\",\"role\":\"VOLUNTEER\"}".formatted(email, name)))
 			.andExpect(status().isCreated())
 			.andExpect(jsonPath("$.role").value("VOLUNTEER"))
 			.andReturn()
 			.getResponse()
 			.getContentAsString();
+		choosePassword(created, "volunteer-password");
 		String session = login(email, "volunteer-password").andExpect(status().isOk())
 			.andExpect(jsonPath("$.admin.role").value("VOLUNTEER"))
 			.andReturn()

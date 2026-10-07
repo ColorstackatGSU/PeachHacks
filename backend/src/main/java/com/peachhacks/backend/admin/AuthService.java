@@ -1,5 +1,6 @@
 package com.peachhacks.backend.admin;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -30,6 +31,19 @@ public class AuthService {
 			return "Login[admin=" + admin + ", expiresAt=" + expiresAt + "]";
 		}
 
+	}
+
+	/** The token is only ever handed to the account's owner (by email) or to the admin who asked for the link. */
+	public record PasswordLink(Admin admin, String token, Duration validFor) {
+
+		@Override
+		public String toString() {
+			return "PasswordLink[admin=" + admin.getEmail() + "]";
+		}
+
+	}
+
+	public record PasswordLinkView(String email, String name, boolean invite) {
 	}
 
 	public static final int MIN_PASSWORD_LENGTH = 10;
@@ -63,8 +77,9 @@ public class AuthService {
 		String candidate = (password != null && password.length() <= MAX_PASSWORD_LENGTH) ? password : "";
 		Optional<Admin> admin = (normalized != null) ? admins.findByEmail(normalized) : Optional.empty();
 		// Always run one hash comparison so unknown emails take as long as wrong passwords.
-		boolean matches = passwordEncoder.matches(candidate, admin.map(Admin::getPasswordHash).orElse(dummyHash));
-		if (admin.isEmpty() || !matches || candidate.isEmpty()) {
+		boolean matches = passwordEncoder.matches(candidate,
+				admin.filter(found -> !found.isPending()).map(Admin::getPasswordHash).orElse(dummyHash));
+		if (admin.isEmpty() || admin.get().isPending() || !matches || candidate.isEmpty()) {
 			throw new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS", "Incorrect email or password.");
 		}
 		Instant now = Instant.now();
@@ -107,6 +122,81 @@ public class AuthService {
 		catch (DataIntegrityViolationException ex) {
 			throw ApiException.invalidField("email", "An account with this email already exists.");
 		}
+	}
+
+	public PasswordLink invite(String email, String name, AdminRole role) {
+		String normalized = Texts.email(email);
+		if (admins.findByEmail(normalized).isPresent()) {
+			throw ApiException.invalidField("email", "An account with this email already exists.");
+		}
+		try {
+			PasswordLink link = issueLink(new Admin(normalized, name.strip(), null, role), properties.inviteTtl());
+			log.info("{} account {} invited", role, normalized);
+			return link;
+		}
+		catch (DataIntegrityViolationException ex) {
+			throw ApiException.invalidField("email", "An account with this email already exists.");
+		}
+	}
+
+	public PasswordLink reinvite(UUID id) {
+		Admin admin = admins.findById(id).orElseThrow(() -> ApiException.notFound("Admin not found."));
+		if (!admin.isPending()) {
+			throw ApiException.validation(
+					"This account already has a password. Its owner can use \"Forgot password?\" on the sign-in page.",
+					null);
+		}
+		return issueLink(admin, properties.inviteTtl());
+	}
+
+	/** Empty when no account has this email; callers must answer the same either way. */
+	public Optional<PasswordLink> requestPasswordReset(String email) {
+		String normalized = Texts.email(email);
+		Optional<Admin> admin = (normalized != null) ? admins.findByEmail(normalized) : Optional.empty();
+		return admin.map(found -> {
+			log.info("Password link requested for {}", found.getEmail());
+			return issueLink(found, found.isPending() ? properties.inviteTtl() : properties.passwordResetTtl());
+		});
+	}
+
+	public PasswordLinkView describePasswordLink(String token) {
+		Admin admin = byPasswordToken(token);
+		return new PasswordLinkView(admin.getEmail(), admin.getName(), admin.isPending());
+	}
+
+	public void setPassword(String token, String password) {
+		Admin admin = byPasswordToken(token);
+		admin.changePassword(passwordEncoder.encode(password));
+		admins.save(admin);
+		sessions.deleteOthersByAdminId(admin.getId(), "");
+		log.info("Password set for {} from an emailed link", admin.getEmail());
+	}
+
+	public void changePassword(AdminPrincipal current, String currentPassword, String newPassword) {
+		Admin admin = admins.findById(current.id()).orElseThrow(() -> ApiException.notFound("Admin not found."));
+		String candidate = (currentPassword != null && currentPassword.length() <= MAX_PASSWORD_LENGTH)
+				? currentPassword : "";
+		if (admin.isPending() || candidate.isEmpty() || !passwordEncoder.matches(candidate, admin.getPasswordHash())) {
+			throw ApiException.invalidField("currentPassword", "That is not your current password.");
+		}
+		admin.changePassword(passwordEncoder.encode(newPassword));
+		admins.save(admin);
+		sessions.deleteOthersByAdminId(admin.getId(), current.tokenHash());
+		log.info("Password changed by {}", admin.getEmail());
+	}
+
+	/** A new link replaces any earlier one for the same account. */
+	private PasswordLink issueLink(Admin admin, Duration validFor) {
+		String token = Tokens.random();
+		admin.issuePasswordToken(Tokens.sha256(token), Instant.now().plus(validFor));
+		return new PasswordLink(admins.save(admin), token, validFor);
+	}
+
+	private Admin byPasswordToken(String token) {
+		Optional<Admin> admin = (token == null || token.isBlank() || token.length() > 200) ? Optional.empty()
+				: admins.findByPasswordToken(Tokens.sha256(token), Instant.now());
+		return admin.orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "INVALID_PASSWORD_LINK",
+				"This link has expired or was already used. Ask for a new one."));
 	}
 
 	public void delete(UUID id, AdminPrincipal current) {

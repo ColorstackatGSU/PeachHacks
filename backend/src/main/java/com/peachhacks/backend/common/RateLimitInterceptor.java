@@ -34,7 +34,7 @@ public class RateLimitInterceptor implements HandlerInterceptor {
 		else if (!"POST".equalsIgnoreCase(request.getMethod())) {
 			return true;
 		}
-		else if (uri.endsWith("/admin/auth/login")) {
+		else if (uri.startsWith(request.getContextPath() + "/admin/auth/")) {
 			bucket = "login:";
 			limit = properties.loginPerMinute();
 		}

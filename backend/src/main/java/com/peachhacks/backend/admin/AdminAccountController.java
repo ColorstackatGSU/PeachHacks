@@ -26,11 +26,25 @@ import com.peachhacks.backend.email.MailService;
 @RequestMapping("/admin/admins")
 public class AdminAccountController {
 
-	public record AdminItem(UUID id, String email, String name, AdminRole role, Instant createdAt) {
+	/**
+	 * setPasswordUrl is only present in the answer to creating or re-inviting an account, so
+	 * the admin can pass the link on if the email does not arrive.
+	 */
+	public record AdminItem(UUID id, String email, String name, AdminRole role, Instant createdAt, boolean pending,
+			String setPasswordUrl) {
 
 		static AdminItem from(Admin admin) {
+			return from(admin, null);
+		}
+
+		static AdminItem from(Admin admin, String setPasswordUrl) {
 			return new AdminItem(admin.getId(), admin.getEmail(), admin.getName(), admin.getRole(),
-					admin.getCreatedAt());
+					admin.getCreatedAt(), admin.isPending(), setPasswordUrl);
+		}
+
+		@Override
+		public String toString() {
+			return "AdminItem[email=" + email + ", role=" + role + ", pending=" + pending + "]";
 		}
 
 	}
@@ -41,16 +55,7 @@ public class AdminAccountController {
 							message = "Email must be at most 255 characters") String email,
 			@NotBlank(message = "Name is required") @Size(max = 100,
 					message = "Name must be at most 100 characters") String name,
-			@NotBlank(message = "Password is required") @Size(min = AuthService.MIN_PASSWORD_LENGTH,
-					max = AuthService.MAX_PASSWORD_LENGTH,
-					message = "Password must be 10 to 72 characters") String password,
 			String role) {
-
-		@Override
-		public String toString() {
-			return "CreateAdminRequest[email=" + email + ", name=" + name + ", role=" + role + "]";
-		}
-
 	}
 
 	private final AuthService authService;
@@ -71,14 +76,26 @@ public class AdminAccountController {
 	ResponseEntity<AdminItem> create(@Valid @RequestBody CreateAdminRequest request,
 			@AuthenticationPrincipal AdminPrincipal current) {
 		AdminRole role = AdminRole.parseOrDefault(request.role());
-		Admin admin = authService.create(request.email(), request.name(), request.password(), role);
-		if (role == AdminRole.VOLUNTEER) {
-			mailService.sendVolunteerWelcome(admin.getEmail(), admin.getName(), current.name());
+		return ResponseEntity.status(HttpStatus.CREATED)
+			.body(sendInvite(authService.invite(request.email(), request.name(), role), current));
+	}
+
+	@PostMapping("/{id}/invite")
+	AdminItem reinvite(@PathVariable UUID id, @AuthenticationPrincipal AdminPrincipal current) {
+		return sendInvite(authService.reinvite(id), current);
+	}
+
+	private AdminItem sendInvite(AuthService.PasswordLink link, AdminPrincipal current) {
+		Admin admin = link.admin();
+		if (admin.getRole() == AdminRole.VOLUNTEER) {
+			mailService.sendVolunteerInvite(admin.getEmail(), admin.getName(), current.name(), link.token(),
+					link.validFor());
 		}
 		else {
-			mailService.sendAdminWelcome(admin.getEmail(), admin.getName(), current.name());
+			mailService.sendAdminInvite(admin.getEmail(), admin.getName(), current.name(), link.token(),
+					link.validFor());
 		}
-		return ResponseEntity.status(HttpStatus.CREATED).body(AdminItem.from(admin));
+		return AdminItem.from(admin, mailService.adminPasswordUrl(link.token()));
 	}
 
 	@DeleteMapping("/{id}")

@@ -604,12 +604,17 @@ class AcceptanceApiTests {
 		String created = mockMvc
 			.perform(post("/admin/admins").header("Authorization", admin)
 				.contentType(MediaType.APPLICATION_JSON)
-				.content("{\"email\":\"%s\",\"name\":\"Door\",\"password\":\"volunteer-password\",\"role\":\"VOLUNTEER\"}"
-					.formatted(email)))
+				.content("{\"email\":\"%s\",\"name\":\"Door\",\"role\":\"VOLUNTEER\"}".formatted(email)))
 			.andExpect(status().isCreated())
 			.andReturn()
 			.getResponse()
 			.getContentAsString();
+		String link = JsonPath.read(created, "$.setPasswordUrl");
+		mockMvc
+			.perform(post("/admin/auth/set-password").contentType(MediaType.APPLICATION_JSON)
+				.content("{\"token\":\"%s\",\"password\":\"volunteer-password\"}"
+					.formatted(link.substring(link.indexOf("token=") + 6))))
+			.andExpect(status().isNoContent());
 		String session = mockMvc
 			.perform(post("/admin/auth/login").contentType(MediaType.APPLICATION_JSON)
 				.content("{\"email\":\"%s\",\"password\":\"volunteer-password\"}".formatted(email)))

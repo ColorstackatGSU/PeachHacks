@@ -10,8 +10,11 @@ import Email from "./pages/Email.jsx";
 import Overview from "./pages/Overview.jsx";
 import PreRegistrations from "./pages/PreRegistrations.jsx";
 import Registrations from "./pages/Registrations.jsx";
+import SetPassword from "./pages/SetPassword.jsx";
 import Settings from "./pages/Settings.jsx";
 import SignIn from "./pages/SignIn.jsx";
+
+const SET_PASSWORD_PATH = "/set-password";
 
 const signedOut = (notice = null) => ({ status: "signedOut", admin: null, notice, error: null });
 
@@ -50,7 +53,7 @@ export default function App() {
   // Volunteers have one screen; any other address (typed, bookmarked or left over from an
   // admin who used this browser) goes there. The API enforces the same limit.
   useEffect(() => {
-    if (volunteer && route.path !== CHECK_IN_PATH) navigate(CHECK_IN_PATH);
+    if (volunteer && route.path !== CHECK_IN_PATH && route.path !== SET_PASSWORD_PATH) navigate(CHECK_IN_PATH);
   }, [volunteer, route.path]);
 
   const handleSignedIn = useCallback((result) => {
@@ -69,6 +72,21 @@ export default function App() {
     setSigningOut(false);
     setSession(signedOut());
   }, []);
+
+  // Reached from an emailed link, so it shows whether or not this browser has a session.
+  // Saving a password ends every session for that account, so the result is a fresh sign-in.
+  if (route.path === SET_PASSWORD_PATH) {
+    return (
+      <SetPassword
+        token={route.query.get("token") || ""}
+        onDone={(notice) => {
+          setToken(null);
+          setSession(signedOut(notice));
+          navigate("/");
+        }}
+      />
+    );
+  }
 
   if (session.status === "checking") {
     return (

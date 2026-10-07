@@ -43,7 +43,8 @@ public class WebConfig implements WebMvcConfigurer {
 
 	@Override
 	public void addInterceptors(InterceptorRegistry registry) {
-		registry.addInterceptor(rateLimitInterceptor).addPathPatterns("/public/**", "/admin/auth/login");
+		registry.addInterceptor(rateLimitInterceptor).addPathPatterns("/public/**", "/admin/auth/login", "/admin/auth/forgot-password", "/admin/auth/set-password",
+					"/admin/auth/set-password/check");
 		registry.addInterceptor(registrationBodyLimit).addPathPatterns("/public/registrations");
 	}
 

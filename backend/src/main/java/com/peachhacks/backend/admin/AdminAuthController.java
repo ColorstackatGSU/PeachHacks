@@ -2,6 +2,7 @@ package com.peachhacks.backend.admin;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -10,6 +11,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
+import com.peachhacks.backend.email.MailService;
 
 @RestController
 @RequestMapping("/admin/auth")
@@ -25,10 +28,88 @@ public class AdminAuthController {
 
 	}
 
+	public record ForgotPasswordRequest(@NotBlank(message = "Email is required") @Size(max = 255,
+			message = "Email must be at most 255 characters") String email) {
+	}
+
+	public record PasswordLinkRequest(@NotBlank(message = "The link is incomplete") String token) {
+
+		@Override
+		public String toString() {
+			return "PasswordLinkRequest[]";
+		}
+
+	}
+
+	public record SetPasswordRequest(@NotBlank(message = "The link is incomplete") String token,
+			@NotBlank(message = "Password is required") @Size(min = AuthService.MIN_PASSWORD_LENGTH,
+					max = AuthService.MAX_PASSWORD_LENGTH,
+					message = "Password must be 10 to 72 characters") String password) {
+
+		@Override
+		public String toString() {
+			return "SetPasswordRequest[]";
+		}
+
+	}
+
+	public record ChangePasswordRequest(@NotBlank(message = "Current password is required") String currentPassword,
+			@NotBlank(message = "New password is required") @Size(min = AuthService.MIN_PASSWORD_LENGTH,
+					max = AuthService.MAX_PASSWORD_LENGTH,
+					message = "Password must be 10 to 72 characters") String newPassword) {
+
+		@Override
+		public String toString() {
+			return "ChangePasswordRequest[]";
+		}
+
+	}
+
 	private final AuthService authService;
 
-	public AdminAuthController(AuthService authService) {
+	private final MailService mailService;
+
+	public AdminAuthController(AuthService authService, MailService mailService) {
 		this.authService = authService;
+		this.mailService = mailService;
+	}
+
+	/** Answers the same whether or not the account exists. */
+	@PostMapping("/forgot-password")
+	ResponseEntity<Void> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
+		authService.requestPasswordReset(request.email()).ifPresent(link -> {
+			Admin admin = link.admin();
+			if (!admin.isPending()) {
+				mailService.sendPasswordReset(admin.getEmail(), admin.getName(), link.token(), link.validFor());
+			}
+			else if (admin.getRole() == AdminRole.VOLUNTEER) {
+				mailService.sendVolunteerInvite(admin.getEmail(), admin.getName(), "An organizer", link.token(),
+						link.validFor());
+			}
+			else {
+				mailService.sendAdminInvite(admin.getEmail(), admin.getName(), "An organizer", link.token(),
+						link.validFor());
+			}
+		});
+		return ResponseEntity.noContent().build();
+	}
+
+	@PostMapping("/set-password/check")
+	AuthService.PasswordLinkView checkPasswordLink(@Valid @RequestBody PasswordLinkRequest request) {
+		return authService.describePasswordLink(request.token());
+	}
+
+	@PostMapping("/set-password")
+	ResponseEntity<Void> setPassword(@Valid @RequestBody SetPasswordRequest request) {
+		authService.setPassword(request.token(), request.password());
+		return ResponseEntity.noContent().build();
+	}
+
+	@PostMapping("/change-password")
+	ResponseEntity<Void> changePassword(@Valid @RequestBody ChangePasswordRequest request,
+			@AuthenticationPrincipal AdminPrincipal admin) {
+		authService.changePassword(admin, request.currentPassword(), request.newPassword());
+		return ResponseEntity.noContent().build();
 	}
 
 	@PostMapping("/login")

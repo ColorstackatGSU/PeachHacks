@@ -76,7 +76,7 @@ Standard Spring Boot environment variables; see `.env.example`.
 | `RESEND_API_KEY` | Resend API key. Blank means emails are logged, not sent |
 | `EMAIL_FROM` | Sender (default `PeachHacks <hello@peachhacks.com>`); the domain must be verified in Resend |
 | `WEB_BASE_URL` | Public site URL used for links in emails (unsubscribe, ticket, school email confirmation) and for the ticket URL inside every QR code (default `http://localhost:5173`, `https://www.peachhacks.com` in `prod`). Changing it changes what newly rendered QR codes contain; codes already sent keep working because the scanner only reads the token |
-| `ADMIN_BASE_URL` | Admin site URL used in the email sent to a newly added admin or volunteer (default `http://localhost:5174`, `https://admin.peachhacks.com` in `prod`) |
+| `ADMIN_BASE_URL` | Admin site URL used for the set-password links emailed to admins and volunteers (default `http://localhost:5174`, `https://admin.peachhacks.com` in `prod`) |
 | `CORS_ALLOWED_ORIGINS` | Comma-separated origins (default `http://localhost:5173`, `http://localhost:5174`, `https://www.peachhacks.com`, `https://peachhacks.com`, `https://admin.peachhacks.com`) |
 | `SPRING_DATASOURCE_HIKARI_MAXIMUMPOOLSIZE` | Connection pool size (5 in `prod`) |
 | `GOOGLE_WALLET_ISSUER_ID` | Google Wallet issuer ID. Optional; see [Google Wallet](#google-wallet) |
@@ -130,7 +130,7 @@ Both forms accept a hidden `website` honeypot field: when it is filled in, the r
 
 ### Admin
 
-Everything under `/admin` except login needs `Authorization: Bearer <token>`. Tokens are random, opaque, valid for 12 hours and stored only as a SHA-256 hash; passwords are stored as BCrypt hashes. There are no cookies or server sessions.
+Everything under `/admin` except login and the password-link routes needs `Authorization: Bearer <token>`. Tokens are random, opaque, valid for 12 hours and stored only as a SHA-256 hash; passwords are stored as BCrypt hashes. There are no cookies or server sessions.
 
 #### Roles
 
@@ -139,6 +139,9 @@ Every account is an `ADMIN` (full access) or a `VOLUNTEER` (check-in only); the 
 | Endpoint | Purpose |
 | --- | --- |
 | `POST /admin/auth/login`, `POST /admin/auth/logout`, `GET /admin/auth/me` | Sign in, invalidate the token, current account (`{ id, email, name, role }`) |
+| `POST /admin/auth/forgot-password` | Public. `{ email }`; always 204. If the account exists it is emailed a one-time link, valid for 1 hour |
+| `POST /admin/auth/set-password/check`, `POST /admin/auth/set-password` | Public. `{ token }` answers `{ email, name, invite }`; `{ token, password }` saves the password, uses up the link and ends every session of that account. A bad, used or expired link is 400 `INVALID_PASSWORD_LINK` |
+| `POST /admin/auth/change-password` | `{ currentPassword, newPassword }` for the signed-in account; its other sessions are ended |
 | `GET /admin/stats` | Totals, per school, per day, per level of study and per status; `preRegistrations.schoolEmailConfirmed` and `registrations.schoolEmailConfirmed` (how many have a confirmed school email); `registrations.checkedIn` (general check-in), `registrations.withResume` and `registrations.resumeOptIn` (resumes uploaded, and how many of those may be shared with sponsors) and `events`, a list of `{ eventId, name, checkedIn }` |
 | `GET /admin/pre-registrations?page=&size=&q=&school=&schoolEmailConfirmed=` | Paged list, newest first (`size` is capped at 200). Items carry `schoolEmailConfirmed` and `schoolEmailConfirmedAt` (null until confirmed); `schoolEmailConfirmed=true` or `false` filters on it |
 | `GET /admin/pre-registrations/export.csv` | CSV export with the same filters, `school_email_confirmed` appended last. Pre-registrations cannot be deleted through the API |
@@ -161,7 +164,7 @@ Every account is an `ADMIN` (full access) or a `VOLUNTEER` (check-in only); the 
 | `POST /admin/emails/test` | `{ kind?, subject, body }`: send one copy to the signed-in admin, with the footer of that kind (`ANNOUNCEMENT` when omitted) |
 | `POST /admin/emails/preview` | `{ kind?, subject, body }`: the draft rendered as the test copy would be, `{ subject, html, text }`. Sends nothing; the admin site shows `html` in a sandboxed frame |
 | `POST /admin/emails`, `GET /admin/emails` | `{ kind, audience, school?, subject, body }` starts a campaign (202, sent in the background); list campaigns, each with its `kind` |
-| `GET`, `POST /admin/admins`, `DELETE /admin/admins/{id}` | Accounts. `POST` takes an optional `role` (`ADMIN` by default, or `VOLUNTEER`). You cannot delete yourself or the last `ADMIN`; volunteers do not count towards that |
+| `GET`, `POST /admin/admins`, `POST /admin/admins/{id}/invite`, `DELETE /admin/admins/{id}` | Accounts. Nobody sets a password for someone else: `POST` takes `name`, `email` and an optional `role` (`ADMIN` by default, or `VOLUNTEER`) and emails the person a one-time link, valid for 7 days, to choose their own. Until they do, the account is `pending` and cannot sign in. `/invite` sends a pending account a new link, which replaces the old one. Both answer with `setPasswordUrl` so the link can be passed on by hand if the email does not arrive; it is never returned again. Links are `$ADMIN_BASE_URL/#/set-password?token=...`, stored only as a SHA-256 hash. You cannot delete yourself or the last `ADMIN`; volunteers do not count towards that |
 | `GET /admin/events` | Both roles. Every check-in event with its count: `[{ id, name, startsAt, general, checkedIn }]`, the built-in general event first |
 | `POST /admin/events`, `PATCH /admin/events/{id}` | `{ "name", "startsAt" }` (`startsAt` optional, ISO-8601 UTC). `PATCH` changes only the keys sent; `"startsAt": null` clears it. Names are unique |
 | `DELETE /admin/events/{id}` | Deletes a workshop that has no check-ins; 204. 409 `EVENT_HAS_CHECK_INS` when it has any (the message says how many; undo them first), 400 for the general event, which can never be deleted |
@@ -253,7 +256,7 @@ CSV cells that a spreadsheet would treat as a formula (starting with `=`, `+`, `
 
 ### Email
 
-Confirmation emails go out to the personal address after a new pre-registration and after a registration; while the school email is unconfirmed they include a sentence pointing to the school inbox, where the separate confirmation link is sent (see [School email confirmation](#school-email-confirmation)). A newly added admin or volunteer gets an email with the sign-in link (never the password) that says which kind of account it is.
+Confirmation emails go out to the personal address after a new pre-registration and after a registration; while the school email is unconfirmed they include a sentence pointing to the school inbox, where the separate confirmation link is sent (see [School email confirmation](#school-email-confirmation)). A newly added admin or volunteer gets an email that says which kind of account it is, with a link to choose their own password; "Forgot password?" sends a reset link.
 
 The acceptance email is a "You're in" message with a link to the hacker's ticket page and the QR code itself, embedded in the message (`cid:` image) and listed as a PNG attachment, because many mail clients block images loaded from a server. It is not sent when a registration becomes `ACCEPTED`: it goes out when an admin sends the acceptance emails, or to one person through `POST /admin/registrations/{id}/ticket-email`, which also sends it again afterwards (see [Acceptances](#acceptances)). With Google Wallet configured it also carries an "Add to Google Wallet" link.
 
@@ -261,7 +264,7 @@ The acceptance email is a "You're in" message with a link to the hacker's ticket
 
 Unsubscribing means "no announcements". It never stops the emails a person needs.
 
-- **Essential emails** are always sent and carry no unsubscribe link and no `List-Unsubscribe` header: the pre-registration confirmation, the registration confirmation, the school email confirmation link, the acceptance and ticket email (the send-all run, the one-person send and the resend) and the welcome to a new admin or volunteer. Each ends with one line saying why the person is receiving it.
+- **Essential emails** are always sent and carry no unsubscribe link and no `List-Unsubscribe` header: the pre-registration confirmation, the registration confirmation, the school email confirmation link, the acceptance and ticket email (the send-all run, the one-person send and the resend) the invite to a new admin or volunteer and the password reset link. Each ends with one line saying why the person is receiving it.
 - **Campaigns** written by organizers have a `kind`, required on `POST /admin/emails` and `POST /admin/emails/recipient-count`:
 
 | `kind` | For | Audiences | Unsubscribed people | Footer |
@@ -282,7 +285,7 @@ The body is plain text: blank lines separate paragraphs, `{{firstName}}` and `{{
 Every email is rendered by `EmailComposer` in one layout: a navy header with the logo, the message on a white card, and a navy footer with "PeachHacks · ColorStack at Georgia State University", the reason line, the unsubscribe link where it belongs and a link to the site. It is a table layout with inline styles, 600px wide, with a hidden preview line, a dark-mode variant for clients that honour `prefers-color-scheme`, and Open Sans loaded by a font link with Arial as the fallback. There are no tracking pixels and links are never rewritten.
 
 - The logo is `$WEB_BASE_URL/assets/email-logo.png` (served by `web/`). When `WEB_BASE_URL` is a local address the live site's copy is used instead, so the image loads in a real inbox during development. With images blocked the alt text "PeachHacks" shows on the navy band.
-- System emails are built from structured content (`EmailComposer.Content`): a heading, paragraphs, an optional primary and secondary action and, for the ticket, the inline QR image. An action is a button drawn for Outlook on Windows (VML) as well as for other clients, with the plain URL under it. The actions are "Confirm your school email", "View your ticket", "Add to Google Wallet" (secondary) and the sign-in link in the two welcome emails.
+- System emails are built from structured content (`EmailComposer.Content`): a heading, paragraphs, an optional primary and secondary action and, for the ticket, the inline QR image. An action is a button drawn for Outlook on Windows (VML) as well as for other clients, with the plain URL under it. The actions are "Confirm your school email", "View your ticket", "Add to Google Wallet" (secondary) "Set your password" in the two invite emails and "Choose a new password" in the reset email.
 - Every message has a complete plain-text alternative carrying the same links.
 - The school email confirmation goes to an inbox that has never heard from PeachHacks, so it opens by saying who is writing and which sign-up it belongs to ("You, or someone using this address, signed up for PeachHacks, a student hackathon run by ColorStack at Georgia State University, with the personal email j***@gmail.com"), uses the person's first name, keeps the link on the site's own domain, shows the URL in full, avoids urgent wording and says it can be ignored. The personal address is always masked.
 

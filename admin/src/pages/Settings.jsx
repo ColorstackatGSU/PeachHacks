@@ -6,6 +6,7 @@ import { EmptyBlock, ErrorBlock, InlineError, LoadingBlock, PageHeader, Tag, use
 import { ROLES, errorText, formatDate, roleLabel } from "../lib/format.js";
 import { useAsync } from "../lib/hooks.js";
 import { href } from "../lib/router.js";
+import { MIN_PASSWORD_LENGTH } from "./SetPassword.jsx";
 
 const EMAIL_SHORTCUT = "/email?template=registration-open&audience=PRE_REGISTRANTS_NOT_REGISTERED";
 
@@ -140,7 +141,7 @@ function RegistrationGate() {
 }
 
 const loadAdmins = (signal) => api.admins(signal);
-const EMPTY_FORM = { name: "", email: "", password: "", role: "ADMIN" };
+const EMPTY_FORM = { name: "", email: "", role: "ADMIN" };
 
 function AdminAccounts({ admin }) {
   const notify = useToast();
@@ -150,7 +151,8 @@ function AdminAccounts({ admin }) {
   const [fieldErrors, setFieldErrors] = useState({});
   const [formError, setFormError] = useState(null);
   const [adding, setAdding] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
+  const [invite, setInvite] = useState(null);
+  const [resending, setResending] = useState(null);
   const [pendingRemove, setPendingRemove] = useState(null);
   const [removing, setRemoving] = useState(false);
   const [removeError, setRemoveError] = useState(null);
@@ -163,28 +165,45 @@ function AdminAccounts({ admin }) {
     const errors = {};
     if (form.name.trim() === "") errors.name = "Enter a name.";
     if (!/^\S+@\S+\.\S+$/.test(form.email.trim())) errors.email = "Enter a valid email address.";
-    if (form.password.length < 10) errors.password = "Use at least 10 characters.";
     setFieldErrors(errors);
     setFormError(null);
     if (Object.keys(errors).length > 0) return;
 
     setAdding(true);
     try {
-      await api.createAdmin({
-        name: form.name.trim(),
-        email: form.email.trim(),
-        password: form.password,
-        role: form.role,
-      });
-      notify(`Added ${form.name.trim()} as ${form.role === "VOLUNTEER" ? "a volunteer" : "an admin"}.`);
+      const created = await api.createAdmin({ name: form.name.trim(), email: form.email.trim(), role: form.role });
+      notify(`Invited ${form.name.trim()} as ${form.role === "VOLUNTEER" ? "a volunteer" : "an admin"}.`);
+      setInvite({ name: form.name.trim(), email: form.email.trim(), url: created?.setPasswordUrl || null });
       setForm(EMPTY_FORM);
-      setShowPassword(false);
       admins.reload();
     } catch (error) {
       if (error?.fieldErrors) setFieldErrors(error.fieldErrors);
       else setFormError(error);
     } finally {
       setAdding(false);
+    }
+  };
+
+  const resend = async (row) => {
+    setResending(row.id);
+    try {
+      const result = await api.resendInvite(row.id);
+      notify(`Sent ${row.name || row.email} a new invite.`);
+      setInvite({ name: row.name || row.email, email: row.email, url: result?.setPasswordUrl || null });
+    } catch (error) {
+      notify(errorText(error), "error");
+      admins.reload();
+    } finally {
+      setResending(null);
+    }
+  };
+
+  const copyInvite = async () => {
+    try {
+      await navigator.clipboard.writeText(invite.url);
+      notify("Link copied.");
+    } catch {
+      notify("Could not copy. Select the link and copy it yourself.", "error");
     }
   };
 
@@ -249,7 +268,8 @@ function AdminAccounts({ admin }) {
                 return (
                   <tr key={row.id}>
                     <th scope="row" data-label="Name">
-                      {row.name || "(no name)"} {isSelf && <Tag tone="neutral">You</Tag>}
+                      {row.name || "(no name)"} {isSelf && <Tag tone="neutral">You</Tag>}{" "}
+                      {row.pending && <Tag tone="pending">Invited, no password yet</Tag>}
                     </th>
                     <td data-label="Email" className="cell-break">
                       {row.email}
@@ -264,17 +284,30 @@ function AdminAccounts({ admin }) {
                       {isSelf ? (
                         <span className="muted small">You cannot remove yourself</span>
                       ) : (
-                        <button
-                          type="button"
-                          className="btn btn-small btn-danger-quiet"
-                          aria-label={`Remove ${roleLabel(row.role).toLowerCase()} ${row.name || row.email}`}
-                          onClick={() => {
-                            setRemoveError(null);
-                            setPendingRemove(row);
-                          }}
-                        >
-                          Remove
-                        </button>
+                        <>
+                          {row.pending && (
+                            <button
+                              type="button"
+                              className="btn btn-small"
+                              disabled={resending === row.id}
+                              aria-label={`Resend invite to ${row.name || row.email}`}
+                              onClick={() => resend(row)}
+                            >
+                              {resending === row.id ? "Sending…" : "Resend invite"}
+                            </button>
+                          )}{" "}
+                          <button
+                            type="button"
+                            className="btn btn-small btn-danger-quiet"
+                            aria-label={`Remove ${roleLabel(row.role).toLowerCase()} ${row.name || row.email}`}
+                            onClick={() => {
+                              setRemoveError(null);
+                              setPendingRemove(row);
+                            }}
+                          >
+                            Remove
+                          </button>
+                        </>
                       )}
                     </td>
                   </tr>
@@ -285,8 +318,32 @@ function AdminAccounts({ admin }) {
         </div>
       )}
 
+      {invite && (
+        <div className="notice invite-notice" role="status">
+          <p>
+            <strong>{invite.name}</strong> was emailed a link at {invite.email} to set their own password. It works for 7
+            days and can be used once.
+          </p>
+          {invite.url && (
+            <>
+              <p>If the email does not arrive, send them this link yourself. It will not be shown again.</p>
+              <div className="input-with-button">
+                <input type="text" readOnly value={invite.url} aria-label="Set-password link" onFocus={(e) => e.target.select()} />
+                <button type="button" className="btn btn-small" onClick={copyInvite}>
+                  Copy
+                </button>
+              </div>
+            </>
+          )}
+          <button type="button" className="link-btn" onClick={() => setInvite(null)}>
+            Dismiss
+          </button>
+        </div>
+      )}
+
       <form className="admin-form" onSubmit={add} noValidate aria-labelledby={`${ids}-add`}>
         <h3 id={`${ids}-add`}>Add an account</h3>
+        <p className="hint">They get an email with a link to choose their own password.</p>
         <div className="field account-type">
           <label htmlFor={`${ids}-role`}>Account type</label>
           <select id={`${ids}-role`} value={form.role} onChange={set("role")} aria-describedby={`${ids}-role-hint`}>
@@ -312,32 +369,10 @@ function AdminAccounts({ admin }) {
             <input id={`${ids}-email`} type="email" autoComplete="off" value={form.email} onChange={set("email")} aria-invalid={fieldErrors.email ? true : undefined} aria-describedby={describe("email")} />
             {fieldError("email")}
           </div>
-          <div className="field">
-            <label htmlFor={`${ids}-password`}>Password</label>
-            <div className="input-with-button">
-              <input
-                id={`${ids}-password`}
-                type={showPassword ? "text" : "password"}
-                autoComplete="new-password"
-                minLength={10}
-                value={form.password}
-                onChange={set("password")}
-                aria-invalid={fieldErrors.password ? true : undefined}
-                aria-describedby={`${ids}-password-hint${fieldErrors.password ? ` ${ids}-password-error` : ""}`}
-              />
-              <button type="button" className="btn btn-small" aria-pressed={showPassword} onClick={() => setShowPassword((v) => !v)}>
-                {showPassword ? "Hide" : "Show"}
-              </button>
-            </div>
-            <p id={`${ids}-password-hint`} className="hint">
-              At least 10 characters. Share it with them privately; they sign in with this email and password.
-            </p>
-            {fieldError("password")}
-          </div>
         </div>
         <InlineError>{formError ? errorText(formError) : null}</InlineError>
         <button type="submit" className="btn btn-primary" disabled={adding}>
-          {adding ? "Adding…" : form.role === "VOLUNTEER" ? "Add volunteer" : "Add admin"}
+          {adding ? "Sending invite…" : form.role === "VOLUNTEER" ? "Invite volunteer" : "Invite admin"}
         </button>
       </form>
 
@@ -361,6 +396,81 @@ function AdminAccounts({ admin }) {
   );
 }
 
+function ChangePassword() {
+  const notify = useToast();
+  const ids = useId();
+  const [form, setForm] = useState({ current: "", next: "", repeat: "" });
+  const [fieldErrors, setFieldErrors] = useState({});
+  const [formError, setFormError] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  const set = (key) => (event) => setForm((prev) => ({ ...prev, [key]: event.target.value }));
+
+  const save = async (event) => {
+    event.preventDefault();
+    const errors = {};
+    if (form.current === "") errors.currentPassword = "Enter your current password.";
+    if (form.next.length < MIN_PASSWORD_LENGTH) errors.newPassword = `Use at least ${MIN_PASSWORD_LENGTH} characters.`;
+    else if (form.next.length > 72) errors.newPassword = "Use at most 72 characters.";
+    else if (form.next !== form.repeat) errors.repeat = "The two passwords do not match.";
+    setFieldErrors(errors);
+    setFormError(null);
+    if (Object.keys(errors).length > 0) return;
+
+    setSaving(true);
+    try {
+      await api.changePassword(form.current, form.next);
+      notify("Password changed. Other devices signed in to your account were signed out.");
+      setForm({ current: "", next: "", repeat: "" });
+    } catch (error) {
+      if (error?.fieldErrors) setFieldErrors(error.fieldErrors);
+      else setFormError(error);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const field = (key, name, label, autoComplete) => (
+    <div className="field">
+      <label htmlFor={`${ids}-${key}`}>{label}</label>
+      <input
+        id={`${ids}-${key}`}
+        type="password"
+        autoComplete={autoComplete}
+        value={form[key]}
+        onChange={set(key)}
+        aria-invalid={fieldErrors[name] ? true : undefined}
+        aria-describedby={fieldErrors[name] ? `${ids}-${key}-error` : undefined}
+      />
+      {fieldErrors[name] && (
+        <p id={`${ids}-${key}-error`} className="inline-error">
+          {fieldErrors[name]}
+        </p>
+      )}
+    </div>
+  );
+
+  return (
+    <section className="card" aria-labelledby={`${ids}-title`}>
+      <div className="card-head">
+        <h2 id={`${ids}-title`}>Your password</h2>
+        <span className="muted">Forgot it? Sign out and use “Forgot password?” on the sign-in page.</span>
+      </div>
+      <form className="admin-form" onSubmit={save} noValidate aria-labelledby={`${ids}-title`}>
+        <div className="admin-form-grid">
+          {field("current", "currentPassword", "Current password", "current-password")}
+          {field("next", "newPassword", "New password", "new-password")}
+          {field("repeat", "repeat", "New password again", "new-password")}
+        </div>
+        <InlineError>{formError ? errorText(formError) : null}</InlineError>
+        <button type="submit" className="btn btn-primary" disabled={saving}>
+          {saving ? "Saving…" : "Change password"}
+        </button>
+      </form>
+    </section>
+  );
+}
+
 export default function Settings({ admin }) {
   return (
     <>
@@ -368,6 +478,7 @@ export default function Settings({ admin }) {
       <RegistrationGate />
       <EventsCard />
       <AdminAccounts admin={admin} />
+      <ChangePassword />
     </>
   );
 }

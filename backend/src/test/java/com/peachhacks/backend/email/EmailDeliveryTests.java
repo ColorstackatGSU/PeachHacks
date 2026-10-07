@@ -215,7 +215,7 @@ class EmailDeliveryTests {
 	void essentialEmailsSayWhyTheyWereSentAndNeverOfferToUnsubscribe() {
 		sendEverySystemEmail("Ada", "Grace");
 
-		assertThat(sent).hasSize(7);
+		assertThat(sent).hasSize(8);
 		for (EmailMessage message : sent) {
 			assertThat(message.headers()).as(message.subject()).doesNotContainKey("List-Unsubscribe");
 			assertThat(message.html()).as(message.subject())
@@ -253,8 +253,9 @@ class EmailDeliveryTests {
 		assertButton(sent.get(3), "View your ticket", "https://www.peachhacks.com/ticket?t=abc");
 		assertButton(sent.get(4), "View your ticket", "https://www.peachhacks.com/ticket?t=abc");
 		assertButton(sent.get(4), "Add to Google Wallet", "https://pay.google.com/gp/v/save/a.b.c");
-		assertButton(sent.get(5), "Sign in to the admin site", "https://admin.peachhacks.com");
-		assertButton(sent.get(6), "Sign in to check-in", "https://admin.peachhacks.com");
+		assertButton(sent.get(5), "Set your password", "https://admin.peachhacks.com/#/set-password?token=tok");
+		assertButton(sent.get(6), "Set your password", "https://admin.peachhacks.com/#/set-password?token=tok");
+		assertButton(sent.get(7), "Choose a new password", "https://admin.peachhacks.com/#/set-password?token=tok");
 		assertThat(sent.get(0).html()).doesNotContain("v:roundrect");
 		assertThat(sent.get(1).html()).doesNotContain("v:roundrect");
 	}
@@ -323,23 +324,24 @@ class EmailDeliveryTests {
 	}
 
 	@Test
-	void adminWelcomeLinksToTheAdminSiteAndNeverCarriesAPassword() {
-		mail.sendAdminWelcome("new@peachhacks.com", "Ada", "Grace");
+	void adminInviteLinksToChoosingAPasswordAndNeverCarriesOne() {
+		mail.sendAdminInvite("new@peachhacks.com", "Ada", "Grace", "tok_en-1", Duration.ofDays(7));
 
 		assertThat(sent).hasSize(1);
 		EmailMessage message = sent.get(0);
 		assertThat(message.to()).isEqualTo("new@peachhacks.com");
 		assertThat(message.text()).contains("Hi Ada,")
 			.contains("Grace added you as an admin")
-			.contains("https://admin.peachhacks.com")
-			.doesNotContain("admin.peachhacks.com/")
+			.contains("Set your password: https://admin.peachhacks.com/#/set-password?token=tok_en-1")
+			.contains("works for 7 days")
+			.contains("ask Grace to send a new one")
 			.doesNotContainIgnoringCase("unsubscribe");
 		assertThat(message.headers()).isEmpty();
 	}
 
 	@Test
-	void volunteerWelcomeExplainsCheckInAndNeverCarriesAPassword() {
-		mail.sendVolunteerWelcome("door@peachhacks.com", "Ada", "Grace");
+	void volunteerInviteExplainsCheckInAndLinksToChoosingAPassword() {
+		mail.sendVolunteerInvite("door@peachhacks.com", "Ada", "Grace", "tok_en-1", Duration.ofDays(1));
 
 		assertThat(sent).hasSize(1);
 		EmailMessage message = sent.get(0);
@@ -348,15 +350,31 @@ class EmailDeliveryTests {
 		assertThat(message.text()).contains("Hi Ada,")
 			.contains("Grace added you as a check-in volunteer")
 			.contains("check them in")
-			.contains("https://admin.peachhacks.com")
-			.contains("ask them for it")
+			.contains("https://admin.peachhacks.com/#/set-password?token=tok_en-1")
+			.contains("works for 1 day and")
 			.doesNotContain("as an admin")
 			.doesNotContainIgnoringCase("unsubscribe");
 	}
 
+	@Test
+	void passwordResetSaysHowLongTheLinkLastsAndThatIgnoringItIsSafe() {
+		mail.sendPasswordReset("new@peachhacks.com", "Ada", "tok_en-1", Duration.ofHours(1));
+
+		assertThat(sent).hasSize(1);
+		EmailMessage message = sent.get(0);
+		assertThat(message.subject()).isEqualTo("Reset your PeachHacks admin password");
+		assertThat(message.text()).contains("Hi Ada,")
+			.contains("Choose a new password: https://admin.peachhacks.com/#/set-password?token=tok_en-1")
+			.contains("works for 1 hour")
+			.contains("your password stays the same")
+			.doesNotContainIgnoringCase("unsubscribe");
+		assertThat(MailService.validity(Duration.ofMinutes(30))).isEqualTo("30 minutes");
+		assertThat(MailService.validity(Duration.ofHours(12))).isEqualTo("12 hours");
+	}
+
 	/**
 	 * In order: pre-registration, registration, school email, ticket, ticket with a wallet
-	 * link, admin welcome, volunteer welcome.
+	 * link, admin invite, volunteer invite, password reset.
 	 */
 	private void sendEverySystemEmail(String name, String addedBy) {
 		mail.sendPreRegistrationConfirmation("ada@example.com", name, "ada@school.edu");
@@ -366,8 +384,9 @@ class EmailDeliveryTests {
 		mail.sendTicket("ada@example.com", name, "https://www.peachhacks.com/ticket?t=abc", PNG, null);
 		mail.sendTicketNow("ada@example.com", name, "https://www.peachhacks.com/ticket?t=abc", PNG,
 				"https://pay.google.com/gp/v/save/a.b.c");
-		mail.sendAdminWelcome("new@peachhacks.com", name, addedBy);
-		mail.sendVolunteerWelcome("door@peachhacks.com", name, addedBy);
+		mail.sendAdminInvite("new@peachhacks.com", name, addedBy, "tok", Duration.ofDays(7));
+		mail.sendVolunteerInvite("door@peachhacks.com", name, addedBy, "tok", Duration.ofDays(7));
+		mail.sendPasswordReset("new@peachhacks.com", name, "tok", Duration.ofHours(1));
 	}
 
 	/** A button for Outlook (VML) and for everyone else, the bare URL under it, and the same URL in the text. */

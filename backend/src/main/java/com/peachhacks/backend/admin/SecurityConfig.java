@@ -54,7 +54,8 @@ public class SecurityConfig {
 			.requestCache(AbstractHttpConfigurer::disable)
 			.authorizeHttpRequests(requests -> requests.requestMatchers(HttpMethod.OPTIONS, "/**")
 				.permitAll()
-				.requestMatchers("/admin/auth/login")
+				.requestMatchers("/admin/auth/login", "/admin/auth/forgot-password", "/admin/auth/set-password",
+						"/admin/auth/set-password/check")
 				.permitAll()
 				.requestMatchers("/admin/auth/**", "/admin/check-in", "/admin/check-in/**")
 				.hasAnyRole(AdminRole.ADMIN.name(), AdminRole.VOLUNTEER.name())

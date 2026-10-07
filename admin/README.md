@@ -194,9 +194,14 @@ Mock mode cannot be turned on in production: it is gated on Vite's
   kind and the count, "Send test to me" sends the kind so the test has the right
   footer, and the history tags each campaign with its kind. The "Registration is
   open" template selects Announcement. Confirmations, the school email link, the
-  acceptance and ticket email and account welcomes are not campaigns: the API
+  acceptance and ticket email and account invites and password resets are not campaigns: the API
   always sends them, without an unsubscribe link. "Unsubscribed" in the
   pre-registrations table therefore means "no announcements".
+- **Passwords** are chosen by the account's owner. Adding an account in Settings
+  emails a one-time link to `#/set-password?token=...`; the same screen serves the
+  "Forgot password?" link on the sign-in page. Settings shows the link once after
+  an invite (or "Resend invite") so it can be passed on by hand, and has a change
+  password form for the signed-in account.
 - **Scanning** uses the camera through `getUserMedia`, which browsers only allow
   on https (or localhost). QR codes are read with the browser's own
   `BarcodeDetector` where it supports them (Android, macOS); elsewhere (iOS

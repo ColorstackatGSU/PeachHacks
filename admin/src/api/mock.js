@@ -168,6 +168,7 @@ const admins = [
   { id: uuid(), email: "logistics@peachhacks.local", name: "Logistics Lead", role: "ADMIN", createdAt: new Date(now - 21 * DAY).toISOString() },
   { id: uuid(), email: "volunteer@peachhacks.local", name: "Door Volunteer", role: "VOLUNTEER", createdAt: new Date(now - 2 * DAY).toISOString() },
 ];
+const MOCK_PASSWORD_URL = `${window.location.origin}/#/set-password?token=mock`;
 const settings = { registrationOpen: false };
 // One token per role so a reload keeps whichever account was signed in.
 const TOKENS = { "mock-token": admins[0], "mock-volunteer-token": admins[2] };
@@ -476,6 +477,19 @@ function handle(method, path, params, body, token) {
     return respond(200, { token: mockToken, expiresAt: new Date(Date.now() + 8 * 3600000).toISOString(), admin: TOKENS[mockToken] });
   }
 
+  if (path === "/admin/auth/forgot-password" && method === "POST") return respond(204);
+  if (path === "/admin/auth/set-password/check" && method === "POST") {
+    if (body.token === "expired") return fail(400, "INVALID_PASSWORD_LINK", "This link has expired or was already used. Ask for a new one.");
+    const invited = admins.find((a) => a.pending) || admins[2];
+    return respond(200, { email: invited.email, name: invited.name, invite: Boolean(invited.pending) });
+  }
+  if (path === "/admin/auth/set-password" && method === "POST") {
+    admins.forEach((a) => {
+      a.pending = false;
+    });
+    return respond(204);
+  }
+
   if (!token || !sessions.has(token)) return fail(401, "UNAUTHORIZED", "Sign in to continue.");
   const currentAdmin = TOKENS[token];
 
@@ -484,6 +498,12 @@ function handle(method, path, params, body, token) {
 
   if (path === "/admin/auth/logout" && method === "POST") {
     sessions.delete(token);
+    return respond(204);
+  }
+  if (path === "/admin/auth/change-password" && method === "POST") {
+    if (body.currentPassword === "wrong") {
+      return fail(400, "VALIDATION_ERROR", "Check the highlighted fields.", { currentPassword: "That is not your current password." });
+    }
     return respond(204);
   }
   if (path === "/admin/auth/me") {
@@ -796,14 +816,20 @@ function handle(method, path, params, body, token) {
       if (!body.name?.trim()) fieldErrors.name = "Name is required";
       if (!/^\S+@\S+\.\S+$/.test(body.email || "")) fieldErrors.email = "Must be a valid email";
       else if (admins.some((a) => a.email.toLowerCase() === body.email.toLowerCase())) fieldErrors.email = "An account with this email already exists";
-      if ((body.password || "").length < 10) fieldErrors.password = "Must be at least 10 characters";
       if (body.role && !["ADMIN", "VOLUNTEER"].includes(body.role)) fieldErrors.role = "Role must be ADMIN or VOLUNTEER";
       if (Object.keys(fieldErrors).length) return fail(400, "VALIDATION_ERROR", "Check the highlighted fields.", fieldErrors);
-      const admin = { id: uuid(), email: body.email, name: body.name, role: body.role || "ADMIN", createdAt: new Date().toISOString() };
+      const admin = { id: uuid(), email: body.email, name: body.name, role: body.role || "ADMIN", createdAt: new Date().toISOString(), pending: true };
       admins.push(admin);
-      return respond(201, admin);
+      return respond(201, { ...admin, setPasswordUrl: MOCK_PASSWORD_URL });
     }
     return respond(200, admins);
+  }
+  const inviteMatch = /^\/admin\/admins\/([^/]+)\/invite$/.exec(path);
+  if (inviteMatch && method === "POST") {
+    const invited = admins.find((a) => a.id === inviteMatch[1]);
+    if (!invited) return fail(404, "NOT_FOUND", "Admin not found.");
+    if (!invited.pending) return fail(400, "VALIDATION_ERROR", "This account already has a password.");
+    return respond(200, { ...invited, setPasswordUrl: MOCK_PASSWORD_URL });
   }
   const adminMatch = /^\/admin\/admins\/([^/]+)$/.exec(path);
   if (adminMatch && method === "DELETE") {

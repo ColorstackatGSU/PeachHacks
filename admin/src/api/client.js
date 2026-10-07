@@ -189,6 +189,13 @@ export const api = {
     json("POST", "/admin/auth/login", { body: { email, password }, auth: false }),
   logout: () => json("POST", "/admin/auth/logout"),
   me: (signal) => json("GET", "/admin/auth/me", { signal }),
+  forgotPassword: (email) => json("POST", "/admin/auth/forgot-password", { body: { email }, auth: false }),
+  checkPasswordLink: (token, signal) =>
+    json("POST", "/admin/auth/set-password/check", { body: { token }, signal, auth: false }),
+  setPassword: (token, password) =>
+    json("POST", "/admin/auth/set-password", { body: { token, password }, auth: false }),
+  changePassword: (currentPassword, newPassword) =>
+    json("POST", "/admin/auth/change-password", { body: { currentPassword, newPassword } }),
 
   stats: (signal) => json("GET", "/admin/stats", { signal }),
 
@@ -254,7 +261,8 @@ export const api = {
   campaigns: (signal) => json("GET", "/admin/emails", { signal }),
 
   admins: (signal) => json("GET", "/admin/admins", { signal }),
-  createAdmin: ({ name, email, password, role }) =>
-    json("POST", "/admin/admins", { body: { name, email, password, role } }),
+  // Both answer with `setPasswordUrl`, the link the invite email carries.
+  createAdmin: ({ name, email, role }) => json("POST", "/admin/admins", { body: { name, email, role } }),
+  resendInvite: (id) => json("POST", `/admin/admins/${encodeURIComponent(id)}/invite`),
   deleteAdmin: (id) => json("DELETE", `/admin/admins/${encodeURIComponent(id)}`),
 };
