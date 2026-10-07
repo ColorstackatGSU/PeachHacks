@@ -1,4 +1,3 @@
-import React from 'react';
 
 // The three groups twinkle out of phase.
 export function renderStarField(className, stars) {

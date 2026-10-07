@@ -3,8 +3,12 @@ package com.peachhacks.backend.email;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * idempotencyKey is null for most messages. When set, the provider treats a second send
+ * with the same key as the first one again instead of delivering another copy.
+ */
 public record EmailMessage(String to, String subject, String html, String text, Map<String, String> headers,
-		List<Attachment> attachments) {
+		List<Attachment> attachments, String idempotencyKey) {
 
 	/** A contentId lets the HTML show the file inline with an img whose src is "cid:" plus that id. */
 	public record Attachment(String filename, String contentType, byte[] content, String contentId) {
@@ -22,11 +26,15 @@ public record EmailMessage(String to, String subject, String html, String text, 
 	}
 
 	public EmailMessage(String to, String subject, String html, String text, Map<String, String> headers) {
-		this(to, subject, html, text, headers, List.of());
+		this(to, subject, html, text, headers, List.of(), null);
 	}
 
 	public EmailMessage withAttachments(List<Attachment> files) {
-		return new EmailMessage(to, subject, html, text, headers, files);
+		return new EmailMessage(to, subject, html, text, headers, files, idempotencyKey);
+	}
+
+	public EmailMessage withIdempotencyKey(String key) {
+		return new EmailMessage(to, subject, html, text, headers, attachments, key);
 	}
 
 }

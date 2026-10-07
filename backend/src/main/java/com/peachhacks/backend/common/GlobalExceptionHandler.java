@@ -39,8 +39,19 @@ public class GlobalExceptionHandler {
 			.body(new ApiError("VALIDATION_ERROR", "Please check the highlighted fields.", fieldErrors));
 	}
 
+	@ExceptionHandler(BodyTooLargeException.class)
+	ResponseEntity<ApiError> handleTooLarge(BodyTooLargeException ex) {
+		return handleApi(ex.answer());
+	}
+
+	/** A body cut off by BodyLimitFilter reaches here wrapped in the JSON reader's own exception. */
 	@ExceptionHandler(HttpMessageNotReadableException.class)
 	ResponseEntity<ApiError> handleUnreadable(HttpMessageNotReadableException ex) {
+		for (Throwable cause = ex.getCause(); cause != null; cause = cause.getCause()) {
+			if (cause instanceof BodyTooLargeException tooLarge) {
+				return handleApi(tooLarge.answer());
+			}
+		}
 		return ResponseEntity.badRequest()
 			.body(new ApiError("VALIDATION_ERROR", "The request body is missing or malformed.", Map.of()));
 	}

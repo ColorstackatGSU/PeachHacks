@@ -2,11 +2,21 @@ import { useId, useState } from "react";
 import { api } from "../api/client.js";
 import { EventsCard } from "../components/EventsCard.jsx";
 import { ConfirmDialog } from "../components/Modal.jsx";
-import { EmptyBlock, ErrorBlock, InlineError, LoadingBlock, PageHeader, Tag, useToast } from "../components/ui.jsx";
+import {
+  EmptyBlock,
+  ErrorBlock,
+  FieldError,
+  InlineError,
+  LoadingBlock,
+  PageHeader,
+  Tag,
+  errorProps,
+  useToast,
+} from "../components/ui.jsx";
 import { ROLES, errorText, formatDate, roleLabel } from "../lib/format.js";
 import { useAsync } from "../lib/hooks.js";
 import { href } from "../lib/router.js";
-import { MIN_PASSWORD_LENGTH } from "./SetPassword.jsx";
+import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from "./SetPassword.jsx";
 
 const EMAIL_SHORTCUT = "/email?template=registration-open&audience=PRE_REGISTRANTS_NOT_REGISTERED";
 
@@ -53,7 +63,7 @@ function RegistrationGate() {
 
       {known && (
         <>
-          <div className={`gate ${open ? "is-open" : "is-closed"}`}>
+          <div className={`gate${open ? " is-open" : ""}`}>
             <div className="gate-text">
               <strong id={`${ids}-label`}>Registration is {open ? "open" : "closed"}</strong>
               <p id={`${ids}-desc`}>
@@ -222,13 +232,7 @@ function AdminAccounts({ admin }) {
     }
   };
 
-  const describe = (key) => (fieldErrors[key] ? `${ids}-${key}-error` : undefined);
-  const fieldError = (key) =>
-    fieldErrors[key] ? (
-      <p id={`${ids}-${key}-error`} className="inline-error">
-        {fieldErrors[key]}
-      </p>
-    ) : null;
+  const fieldError = (key) => <FieldError id={`${ids}-${key}-error`} message={fieldErrors[key]} />;
 
   return (
     <section className="card" aria-labelledby={`${ids}-title`}>
@@ -361,16 +365,16 @@ function AdminAccounts({ admin }) {
         <div className="admin-form-grid">
           <div className="field">
             <label htmlFor={`${ids}-name`}>Name</label>
-            <input id={`${ids}-name`} type="text" autoComplete="off" value={form.name} onChange={set("name")} aria-invalid={fieldErrors.name ? true : undefined} aria-describedby={describe("name")} />
+            <input id={`${ids}-name`} type="text" autoComplete="off" value={form.name} onChange={set("name")} {...errorProps(fieldErrors.name, `${ids}-name-error`)} />
             {fieldError("name")}
           </div>
           <div className="field">
             <label htmlFor={`${ids}-email`}>Email</label>
-            <input id={`${ids}-email`} type="email" autoComplete="off" value={form.email} onChange={set("email")} aria-invalid={fieldErrors.email ? true : undefined} aria-describedby={describe("email")} />
+            <input id={`${ids}-email`} type="email" autoComplete="off" value={form.email} onChange={set("email")} {...errorProps(fieldErrors.email, `${ids}-email-error`)} />
             {fieldError("email")}
           </div>
         </div>
-        <InlineError>{formError ? errorText(formError) : null}</InlineError>
+        <InlineError error={formError} />
         <button type="submit" className="btn btn-primary" disabled={adding}>
           {adding ? "Sending invite…" : form.role === "VOLUNTEER" ? "Invite volunteer" : "Invite admin"}
         </button>
@@ -411,7 +415,7 @@ function ChangePassword() {
     const errors = {};
     if (form.current === "") errors.currentPassword = "Enter your current password.";
     if (form.next.length < MIN_PASSWORD_LENGTH) errors.newPassword = `Use at least ${MIN_PASSWORD_LENGTH} characters.`;
-    else if (form.next.length > 72) errors.newPassword = "Use at most 72 characters.";
+    else if (form.next.length > MAX_PASSWORD_LENGTH) errors.newPassword = `Use at most ${MAX_PASSWORD_LENGTH} characters.`;
     else if (form.next !== form.repeat) errors.repeat = "The two passwords do not match.";
     setFieldErrors(errors);
     setFormError(null);
@@ -439,14 +443,9 @@ function ChangePassword() {
         autoComplete={autoComplete}
         value={form[key]}
         onChange={set(key)}
-        aria-invalid={fieldErrors[name] ? true : undefined}
-        aria-describedby={fieldErrors[name] ? `${ids}-${key}-error` : undefined}
+        {...errorProps(fieldErrors[name], `${ids}-${key}-error`)}
       />
-      {fieldErrors[name] && (
-        <p id={`${ids}-${key}-error`} className="inline-error">
-          {fieldErrors[name]}
-        </p>
-      )}
+      <FieldError id={`${ids}-${key}-error`} message={fieldErrors[name]} />
     </div>
   );
 
@@ -462,7 +461,7 @@ function ChangePassword() {
           {field("next", "newPassword", "New password", "new-password")}
           {field("repeat", "repeat", "New password again", "new-password")}
         </div>
-        <InlineError>{formError ? errorText(formError) : null}</InlineError>
+        <InlineError error={formError} />
         <button type="submit" className="btn btn-primary" disabled={saving}>
           {saving ? "Saving…" : "Change password"}
         </button>

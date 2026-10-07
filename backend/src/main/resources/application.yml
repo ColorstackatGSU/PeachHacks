@@ -62,4 +62,11 @@ app:
     public-per-minute: 60
     login-per-minute: 10
     ticket-per-minute: 300
+    # The two sign-up POSTs: per client address, and across all addresses together.
+    sign-up-per-window: ${SIGN_UP_LIMIT_PER_ADDRESS:30}
+    sign-up-window: 10m
+    sign-up-global-per-hour: ${SIGN_UP_LIMIT_PER_HOUR:1000}
+    # Failed sign-ins for one email, whatever address they come from.
+    login-failures-per-account: 10
+    login-failure-window: 15m
     trust-forwarded-for: false

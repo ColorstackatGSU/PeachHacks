@@ -15,7 +15,7 @@ export const NAV = [
   { path: "/settings", label: "Settings" },
 ];
 
-export const navFor = (account) => (isVolunteer(account) ? NAV.filter((item) => item.volunteer) : NAV);
+const navFor = (account) => (isVolunteer(account) ? NAV.filter((item) => item.volunteer) : NAV);
 
 export function Layout({ admin, path, onSignOut, signingOut, children }) {
   const mainRef = useRef(null);

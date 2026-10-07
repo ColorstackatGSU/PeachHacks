@@ -1,19 +1,18 @@
 import { useEffect, useState } from 'react';
 import { API_BASE_URL, getTicket } from './api.js';
-import { CONTACT_EMAIL } from './options.js';
+import { CONTACT_EMAIL, EVENT_DATES } from '../home/site.js';
+import { readQueryParam } from './page.jsx';
 import { Card, PageShell } from './PageShell.jsx';
+import { describeFailure } from './validation.js';
 
 const TITLE_ID = 'ticket-title';
 
-function readToken() {
-  return new URLSearchParams(window.location.search).get('t')?.trim() || '';
-}
-
 export default function TicketPage() {
-  const [token] = useState(readToken);
+  const [token] = useState(() => readQueryParam('t'));
   // loading | ready | invalid | error
   const [view, setView] = useState(token ? 'loading' : 'invalid');
   const [ticket, setTicket] = useState(null);
+  const [failure, setFailure] = useState('');
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
@@ -26,7 +25,12 @@ export default function TicketPage() {
       })
       .catch((error) => {
         if (error?.name === 'AbortError') return;
-        setView(error?.code === 'NOT_FOUND' ? 'invalid' : 'error');
+        if (error?.code === 'NOT_FOUND') {
+          setView('invalid');
+          return;
+        }
+        setFailure(describeFailure(error));
+        setView('error');
       });
     return () => controller.abort();
   }, [token, attempt]);
@@ -58,7 +62,7 @@ export default function TicketPage() {
             <a className="pf-button" href={ticket.googleWalletUrl}>Add to Google Wallet</a>
           )}
           <p className="pf-muted">
-            PeachHacks · February 5–7, 2027 · Atlanta, GA. Bookmark this page or take a screenshot so you have it
+            PeachHacks · {EVENT_DATES} · Atlanta, GA. Bookmark this page or take a screenshot so you have it
             offline.
           </p>
         </div>
@@ -83,7 +87,7 @@ export default function TicketPage() {
     card = (
       <Card title="Your ticket didn't load" titleId={TITLE_ID}>
         <div className="pf-state">
-          <p>We couldn&apos;t reach the server. Check your connection and try again.</p>
+          <p>{failure}</p>
           <button type="button" className="pf-button" onClick={retry}>Try again</button>
         </div>
       </Card>

@@ -9,18 +9,22 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.peachhacks.backend.common.Texts;
 import com.peachhacks.backend.common.Tokens;
 import jakarta.persistence.Column;
-import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.DynamicUpdate;
 import org.hibernate.annotations.Formula;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
-/** Serialized as-is for the admin detail view. */
+/**
+ * Serialized as-is for the admin detail view. Updates write only the columns that changed,
+ * so saving a status cannot undo an unsubscribe made while the row was loaded.
+ */
 @Entity
+@DynamicUpdate
 @Table(name = "registrations")
 public class Registration {
 
@@ -88,9 +92,6 @@ public class Registration {
 
 	private String tshirtSize;
 
-	@Embedded
-	private ShippingAddress shippingAddress;
-
 	private String majorFieldOfStudy;
 
 	private String majorOther;
@@ -145,7 +146,6 @@ public class Registration {
 		r.highestEducation = Texts.clean(request.highestEducation());
 		r.highestEducationOther = Texts.clean(request.highestEducationOther());
 		r.tshirtSize = Texts.clean(request.tshirtSize());
-		r.shippingAddress = ShippingAddress.cleaned(request.shippingAddress());
 		r.majorFieldOfStudy = Texts.clean(request.majorFieldOfStudy());
 		r.majorOther = Texts.clean(request.majorOther());
 		r.linkedinUrl = Texts.clean(request.linkedinUrl());
@@ -282,10 +282,6 @@ public class Registration {
 		return tshirtSize;
 	}
 
-	public ShippingAddress getShippingAddress() {
-		return shippingAddress;
-	}
-
 	public String getMajorFieldOfStudy() {
 		return majorFieldOfStudy;
 	}
@@ -324,16 +320,6 @@ public class Registration {
 	/** When the acceptance email was handed to the mail provider; null while ACCEPTED means not told yet. */
 	public Instant getAcceptanceNotifiedAt() {
 		return acceptanceNotifiedAt;
-	}
-
-	@JsonIgnore
-	public boolean isUnsubscribed() {
-		return unsubscribed;
-	}
-
-	@JsonIgnore
-	public String getUnsubscribeToken() {
-		return unsubscribeToken;
 	}
 
 	/** Identifies the ticket in its QR code; exposed only through RegistrationDetail. */

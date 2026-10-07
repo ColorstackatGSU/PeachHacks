@@ -1,5 +1,6 @@
 package com.peachhacks.backend.admin;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -12,11 +13,16 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.peachhacks.backend.common.ClientAddress;
 import com.peachhacks.backend.email.MailService;
 
 @RestController
 @RequestMapping("/admin/auth")
 public class AdminAuthController {
+
+	/** The routes under /admin that work without a session. They are rate limited instead. */
+	public static final String[] UNAUTHENTICATED_PATHS = { "/admin/auth/login", "/admin/auth/forgot-password",
+			"/admin/auth/set-password", "/admin/auth/set-password/check" };
 
 	public record LoginRequest(@NotBlank(message = "Email is required") String email,
 			@NotBlank(message = "Password is required") String password) {
@@ -69,9 +75,12 @@ public class AdminAuthController {
 
 	private final MailService mailService;
 
-	public AdminAuthController(AuthService authService, MailService mailService) {
+	private final ClientAddress clientAddress;
+
+	public AdminAuthController(AuthService authService, MailService mailService, ClientAddress clientAddress) {
 		this.authService = authService;
 		this.mailService = mailService;
+		this.clientAddress = clientAddress;
 	}
 
 	/** Answers the same whether or not the account exists. */
@@ -82,12 +91,8 @@ public class AdminAuthController {
 			if (!admin.isPending()) {
 				mailService.sendPasswordReset(admin.getEmail(), admin.getName(), link.token(), link.validFor());
 			}
-			else if (admin.getRole() == AdminRole.VOLUNTEER) {
-				mailService.sendVolunteerInvite(admin.getEmail(), admin.getName(), "An organizer", link.token(),
-						link.validFor());
-			}
 			else {
-				mailService.sendAdminInvite(admin.getEmail(), admin.getName(), "An organizer", link.token(),
+				mailService.sendInvite(admin.getEmail(), admin.getName(), admin.getRole(), "An organizer", link.token(),
 						link.validFor());
 			}
 		});
@@ -113,8 +118,8 @@ public class AdminAuthController {
 	}
 
 	@PostMapping("/login")
-	AuthService.Login login(@Valid @RequestBody LoginRequest request) {
-		return authService.login(request.email(), request.password());
+	AuthService.Login login(@Valid @RequestBody LoginRequest request, HttpServletRequest http) {
+		return authService.login(request.email(), request.password(), clientAddress.of(http));
 	}
 
 	@PostMapping("/logout")

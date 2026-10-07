@@ -23,7 +23,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest(properties = { "app.admin.bootstrap-email=age-review@test.local",
 		"app.admin.bootstrap-password=correct-horse-battery", "app.admin.bootstrap-name=Test Organizer",
-		"app.rate-limit.public-per-minute=100000", "app.rate-limit.login-per-minute=100000",
+		"app.rate-limit.public-per-minute=100000", "app.rate-limit.login-per-minute=100000", "app.rate-limit.sign-up-per-window=100000",
+		"app.rate-limit.sign-up-global-per-hour=100000",
 		"app.acceptance.non-host-minimum-age=21", "app.acceptance.host-school-name=Kennesaw State University" })
 @AutoConfigureMockMvc
 @Testcontainers(disabledWithoutDocker = true)

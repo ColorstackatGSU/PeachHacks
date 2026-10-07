@@ -118,7 +118,7 @@ export default function App() {
   let page;
   switch (volunteer ? CHECK_IN_PATH : route.path) {
     case CHECK_IN_PATH:
-      page = <CheckIn admin={session.admin} />;
+      page = <CheckIn />;
       break;
     case "/":
       page = <Overview />;

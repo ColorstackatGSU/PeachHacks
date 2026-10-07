@@ -1,28 +1,19 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { unsubscribe } from './api.js';
-import { CONTACT_EMAIL } from './options.js';
+import { CONTACT_EMAIL } from '../home/site.js';
+import { useFocusOnChange } from './hooks.js';
+import { readQueryParam } from './page.jsx';
 import { Card, FormAlert, PageShell } from './PageShell.jsx';
 import { describeFailure } from './validation.js';
 
 const TITLE_ID = 'unsubscribe-title';
 
-function readToken() {
-  return new URLSearchParams(window.location.search).get('token')?.trim() || '';
-}
-
 export default function UnsubscribePage() {
-  const [token] = useState(readToken);
+  const [token] = useState(() => readQueryParam('token'));
   // confirm | submitting | done | invalid
   const [view, setView] = useState(token ? 'confirm' : 'invalid');
   const [failure, setFailure] = useState('');
-  const headingRef = useRef(null);
-  const moveFocus = useRef(false);
-
-  useEffect(() => {
-    if (!moveFocus.current || view === 'submitting') return;
-    moveFocus.current = false;
-    headingRef.current?.focus();
-  }, [view]);
+  const { headingRef, requestFocus } = useFocusOnChange(view !== 'submitting');
 
   const handleConfirm = async () => {
     if (view === 'submitting') return;
@@ -30,12 +21,12 @@ export default function UnsubscribePage() {
     setFailure('');
     try {
       await unsubscribe(token);
-      moveFocus.current = true;
+      requestFocus();
       setView('done');
     } catch (error) {
       // 404 is an unknown token; 400 means the token was malformed.
       if (error?.code === 'NOT_FOUND' || error?.code === 'VALIDATION_ERROR') {
-        moveFocus.current = true;
+        requestFocus();
         setView('invalid');
       } else {
         setFailure(describeFailure(error));

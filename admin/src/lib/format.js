@@ -24,11 +24,6 @@ export function formatDateTime(value) {
   return date ? dateTimeFormat.format(date) : "";
 }
 
-export function formatTime(value) {
-  const date = toDate(value);
-  return date ? timeFormat.format(date) : "";
-}
-
 // Check-in times: just the clock time on the day itself, the full date afterwards.
 export function formatWhen(value) {
   const date = toDate(value);
@@ -60,12 +55,12 @@ export const plural = (count, one, many = `${one}s`) => `${formatNumber(count)} 
 
 export const errorText = (error) => error?.message || "Something went wrong.";
 
-// An event update is always delivered, so it may only go to people who registered.
+// An event update is always delivered, so it may only go to accepted hackers who have been told.
 export const CAMPAIGN_KINDS = [
   {
     value: "EVENT_UPDATE",
     label: "Event update",
-    hint: "Logistics for people who are coming. Always delivered, cannot be unsubscribed from. Use it only for information they need.",
+    hint: "Logistics for people who are coming. Goes only to accepted hackers. Always delivered, cannot be unsubscribed from. Use it only for information they need.",
     footer: "You are receiving this because you registered for PeachHacks.",
     unsubscribe: false,
   },
@@ -98,18 +93,16 @@ export const AUDIENCES = [
     label: "Registrants",
     hint: "Everyone who completed the full registration.",
     schoolsFrom: "registrations",
-    registered: true,
   },
   {
     value: "ACCEPTED",
     label: "Accepted hackers",
     hint: "People who are accepted and have already been sent their acceptance email.",
     schoolsFrom: "registrations",
-    registered: true,
   },
 ];
 
-export const audiencesFor = (kind) => AUDIENCES.filter((a) => kind !== "EVENT_UPDATE" || a.registered);
+export const audiencesFor = (kind) => (kind === "EVENT_UPDATE" ? AUDIENCES.filter((a) => a.value === "ACCEPTED") : AUDIENCES);
 
 export const audienceLabel = (value) => AUDIENCES.find((a) => a.value === value)?.label || value;
 

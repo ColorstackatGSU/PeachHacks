@@ -112,10 +112,6 @@
   border: 0;
 }
 
-.pf-fieldset-nested {
-  margin-top: 10px;
-}
-
 .pf-legend {
   display: inline-block;
   margin: 0 0 14px;
@@ -180,7 +176,7 @@
 }
 
 .pf-input::placeholder {
-  color: #6b8092;
+  color: #566b7d;
   opacity: 1;
 }
 
@@ -227,7 +223,7 @@
   border-radius: 50%;
   background: var(--pf-error);
   color: #fff;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 16px;
   text-align: center;
   vertical-align: 1px;

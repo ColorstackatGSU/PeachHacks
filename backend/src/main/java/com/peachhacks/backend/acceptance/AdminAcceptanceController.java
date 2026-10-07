@@ -42,9 +42,4 @@ public class AdminAcceptanceController {
 		return ResponseEntity.status((started.queued() > 0) ? HttpStatus.ACCEPTED : HttpStatus.OK).body(started);
 	}
 
-	@GetMapping("/send")
-	AcceptanceMailer.SendStatus sendStatus() {
-		return mailer.status();
-	}
-
 }

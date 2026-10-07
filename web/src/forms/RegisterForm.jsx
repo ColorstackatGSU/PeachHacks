@@ -1,20 +1,21 @@
-/* eslint-disable react/prop-types -- the project has no prop-types dependency and React 19 ignores propTypes */
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { submitRegistration } from './api.js';
 import { COUNTRIES, PINNED_COUNTRY } from './countries.js';
 import {
   CheckboxGroup, ConsentCheckbox, Honeypot, ResumeField, SelectField, SubmitButton, TextField,
 } from './fields.jsx';
+import { useFormFields } from './hooks.js';
 import {
-  AGES, CONTACT_EMAIL, DIETARY_RESTRICTIONS, GENDERS, GENDER_SELF_DESCRIBE, HIGHEST_EDUCATION, HIGHEST_EDUCATION_OTHER,
+  AGES, DIETARY_RESTRICTIONS, GENDERS, GENDER_SELF_DESCRIBE, HIGHEST_EDUCATION, HIGHEST_EDUCATION_OTHER,
   LEVELS_OF_STUDY, MAJORS, MAJOR_OTHER, MLH_DISCLAIMER, MLH_LINKS, PRONOUNS, PRONOUNS_OTHER, RACE_ETHNICITY,
   RACE_ETHNICITY_OTHER, SEXUAL_ORIENTATION, SEXUAL_ORIENTATION_OTHER, TSHIRT_SIZES, UNDERREPRESENTED_GROUP,
 } from './options.js';
 import { FormAlert } from './PageShell.jsx';
 import SchoolPicker from './SchoolPicker.jsx';
+import { isHostSchool } from './schools.js';
 import {
-  blankToNull, checkResume, describeFailure, focusFirstInvalid, isEmail, isPhone, normalizeLinkedinUrl,
-  readFileAsBase64, sameEmail, splitFieldErrors,
+  anotherLookMessage, apiFailure, blankToNull, checkFields, checkResume, normalizeLinkedinUrl, readFileAsBase64,
+  schoolEmailHint, validateIdentity,
 } from './validation.js';
 
 const INITIAL_VALUES = {
@@ -68,25 +69,15 @@ const COUNTRY_OPTIONS = COUNTRIES.map((country) => ({ value: country.code, label
 const PINNED_COUNTRY_OPTION = { value: PINNED_COUNTRY.code, label: PINNED_COUNTRY.name };
 const OTHER_COUNTRY_OPTIONS = COUNTRY_OPTIONS.filter((option) => option.value !== PINNED_COUNTRY.code);
 
+const ADULT_AGE = 18;
+
 function validate(values) {
-  const errors = {};
-  if (!values.firstName.trim()) errors.firstName = 'Enter your first name.';
-  if (!values.lastName.trim()) errors.lastName = 'Enter your last name.';
-  if (!values.email.trim()) errors.email = 'Enter your email address.';
-  else if (!isEmail(values.email)) errors.email = 'Enter a valid email, like name@example.com.';
-  if (!values.schoolEmail.trim()) errors.schoolEmail = 'Enter your school email address.';
-  else if (!isEmail(values.schoolEmail)) errors.schoolEmail = 'Enter a valid email, like name@school.edu.';
-  if (!values.phone.trim()) errors.phone = 'Enter your phone number.';
-  else if (!isPhone(values.phone)) errors.phone = 'Enter a valid phone number, with area code.';
+  const errors = { ...validateIdentity(values), ...checkFields(values, ['phone', 'linkedinUrl']) };
   if (!AGES.includes(values.age)) errors.age = 'Select your age.';
   if (!values.countryOfResidence) errors.countryOfResidence = 'Select your country of residence.';
-  if (!values.school.trim()) errors.school = 'Choose your school.';
   if (!values.levelOfStudy) errors.levelOfStudy = 'Select your level of study.';
   if (!values.mlhCodeOfConduct) errors.mlhCodeOfConduct = 'You need to agree to the MLH Code of Conduct to register.';
   if (!values.mlhDataSharing) errors.mlhDataSharing = 'You need to agree to this to register.';
-  if (values.linkedinUrl.trim() && normalizeLinkedinUrl(values.linkedinUrl) === null) {
-    errors.linkedinUrl = 'Enter a LinkedIn link, like linkedin.com/in/yourname, or leave this blank.';
-  }
   return errors;
 }
 
@@ -156,27 +147,12 @@ function Section({ id, title, summary, open, onToggle, children }) {
 
 // onSuccess(email, schoolEmail); onClosed(values) when the gate turns out to be shut at submit.
 export default function RegisterForm({ titleId, onSuccess, onClosed }) {
-  const formRef = useRef(null);
-  const [values, setValues] = useState(INITIAL_VALUES);
-  const [errors, setErrors] = useState({});
-  const [formError, setFormError] = useState(null);
+  const form = useFormFields(INITIAL_VALUES, 'register');
+  const { formRef, values, setValues, errors, setErrors, formError, setFormError, setValue, checkOnBlur } = form;
   const [pending, setPending] = useState(false);
-  const [focusRequest, setFocusRequest] = useState(0);
+  // `pending` only updates on the next render; this closes the gap while the resume is being checked.
+  const submitting = useRef(false);
   const [openSections, setOpenSections] = useState({ logistics: true, studies: false, demographics: false });
-
-  useEffect(() => {
-    if (focusRequest > 0) focusFirstInvalid(formRef.current);
-  }, [focusRequest]);
-
-  const setValue = (name, value) => {
-    setValues((current) => ({ ...current, [name]: value }));
-    setErrors((current) => {
-      if (!current[name]) return current;
-      const next = { ...current };
-      delete next[name];
-      return next;
-    });
-  };
 
   const removeResume = () => {
     setValues((current) => ({ ...current, resume: null, resumeOptIn: false }));
@@ -201,8 +177,7 @@ export default function RegisterForm({ titleId, onSuccess, onClosed }) {
   const toggleSection = (id) => setOpenSections((current) => ({ ...current, [id]: !current[id] }));
 
   const fail = (fieldErrors, message) => {
-    setErrors(fieldErrors);
-    setFormError(message);
+    submitting.current = false;
     setPending(false);
     // A collapsed section would hide the field that needs fixing.
     setOpenSections((current) => {
@@ -212,12 +187,13 @@ export default function RegisterForm({ titleId, onSuccess, onClosed }) {
       }
       return next;
     });
-    setFocusRequest((count) => count + 1);
+    form.fail(fieldErrors, message);
   };
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    if (pending) return;
+    if (pending || submitting.current) return;
+    submitting.current = true;
 
     const clientErrors = validate(values);
     // Checked again here because the file can change on disk after it was chosen.
@@ -225,7 +201,7 @@ export default function RegisterForm({ titleId, onSuccess, onClosed }) {
     if (resumeProblem) clientErrors.resume = resumeProblem;
     const errorCount = Object.keys(clientErrors).length;
     if (errorCount > 0) {
-      fail(clientErrors, errorCount === 1 ? 'One field needs another look.' : `${errorCount} fields need another look.`);
+      fail(clientErrors, anotherLookMessage(errorCount));
       return;
     }
 
@@ -237,59 +213,59 @@ export default function RegisterForm({ titleId, onSuccess, onClosed }) {
       try {
         resume = { fileName: values.resume.name, contentBase64: await readFileAsBase64(values.resume) };
       } catch {
-        fail({ resume: "We couldn't read that file. Choose it again." }, 'One field needs another look.');
+        fail({ resume: "We couldn't read that file. Choose it again." }, anotherLookMessage(1));
         return;
       }
     }
 
     try {
       await submitRegistration(buildPayload(values, resume));
+      form.clearDraft();
       onSuccess(values.email.trim(), values.schoolEmail.trim());
     } catch (error) {
       if (error?.code === 'REGISTRATION_CLOSED') {
         onClosed(values);
         return;
       }
-      if (error?.code === 'ALREADY_REGISTERED') {
-        fail(
-          { email: 'This email is already registered.' },
-          <>
-            This email is already registered for PeachHacks, so you&apos;re all set. Need to change something? Email{' '}
-            <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>.
-          </>,
-        );
-        return;
-      }
-      const { matched, unmatched } = splitFieldErrors(error?.fieldErrors, FIELD_NAMES);
-      fail(matched, [describeFailure(error), ...unmatched].join(' '));
+      fail(...apiFailure(error, FIELD_NAMES));
     }
   };
 
   const field = (name) => ({ name, value: values[name], onChange: setValue, error: errors[name] });
+  const needsAdultNote = values.age !== '' && Number(values.age) < ADULT_AGE
+    && values.school.trim() !== '' && !isHostSchool(values.school);
 
   return (
     <form className="pf-form" ref={formRef} onSubmit={handleSubmit} noValidate aria-labelledby={titleId}>
       <fieldset className="pf-fieldset">
         <legend className="pf-legend">About you</legend>
         <div className="pf-grid">
-          <TextField {...field('firstName')} label="First Name" autoComplete="given-name" autoCapitalize="words" maxLength={255} />
-          <TextField {...field('lastName')} label="Last Name" autoComplete="family-name" autoCapitalize="words" maxLength={255} />
+          <TextField
+            {...field('firstName')} label="First Name" autoComplete="given-name" autoCapitalize="words" maxLength={100}
+            onBlur={checkOnBlur('firstName')}
+          />
+          <TextField
+            {...field('lastName')} label="Last Name" autoComplete="family-name" autoCapitalize="words" maxLength={100}
+            onBlur={checkOnBlur('lastName')}
+          />
           <TextField
             {...field('email')} label="Personal email" wide hint="Where we'll contact you. Your confirmation goes here."
             type="email" inputMode="email" autoComplete="email" autoCapitalize="none" spellCheck={false} maxLength={255}
+            onBlur={checkOnBlur('email')}
           />
           <TextField
-            {...field('schoolEmail')} label="School email" wide
-            hint={sameEmail(values.schoolEmail, values.email)
-              ? "Same as your personal email. That's fine if it's the only one you use."
-              : 'The address your school gave you.'}
-            type="email" inputMode="email" autoComplete="off" autoCapitalize="none" spellCheck={false} maxLength={255}
+            {...field('schoolEmail')} label="School email" wide hint={schoolEmailHint(values)}
+            type="email" inputMode="email" autoComplete="email" autoCapitalize="none" spellCheck={false} maxLength={255}
+            onBlur={checkOnBlur('schoolEmail')}
           />
           <TextField
-            {...field('phone')} label="Phone Number"
-            type="tel" inputMode="tel" autoComplete="tel" maxLength={32}
+            {...field('phone')} label="Phone Number" hint="With area code, e.g. 404 555 0123"
+            type="tel" inputMode="tel" autoComplete="tel" maxLength={40} onBlur={checkOnBlur('phone')}
           />
-          <SelectField {...field('age')} label="Age" options={AGES} placeholder="Select your age" />
+          <SelectField
+            {...field('age')} label="Age" options={AGES} placeholder="Select your age"
+            hint={needsAdultNote ? "If you don't attend Georgia State, you need to be at least 18 to take part." : undefined}
+          />
           <SelectField
             {...field('countryOfResidence')} label="Country of Residence" wide
             options={OTHER_COUNTRY_OPTIONS} pinned={PINNED_COUNTRY_OPTION} placeholder="Select a country"
@@ -354,7 +330,7 @@ export default function RegisterForm({ titleId, onSuccess, onClosed }) {
           <CheckboxGroup {...field('dietaryRestrictions')} legend="Dietary Restrictions" options={DIETARY_RESTRICTIONS} />
           <TextField
             {...field('dietaryDetails')} label="Dietary details" optional wide
-            hint="Specific allergies or anything else our caterers should know." maxLength={255}
+            hint="Specific allergies or anything else our caterers should know." maxLength={1000}
           />
           <SelectField {...field('tshirtSize')} label="T-shirt Size" optional options={TSHIRT_SIZES} hint="US unisex sizing." />
         </div>
@@ -379,6 +355,7 @@ export default function RegisterForm({ titleId, onSuccess, onClosed }) {
           <TextField
             {...field('linkedinUrl')} label="LinkedIn URL" optional wide placeholder="linkedin.com/in/yourname"
             type="url" inputMode="url" autoComplete="url" autoCapitalize="none" spellCheck={false} maxLength={255}
+            onBlur={checkOnBlur('linkedinUrl')}
           />
           <ResumeField
             name="resume" file={values.resume} onChoose={chooseResume} onRemove={removeResume} error={errors.resume}
@@ -397,7 +374,7 @@ export default function RegisterForm({ titleId, onSuccess, onClosed }) {
       </Section>
 
       <Section
-        id="demographics" title="Demographics" summary=""
+        id="demographics" title="Demographics" summary="Optional. Skip any question."
         open={openSections.demographics} onToggle={toggleSection}
       >
         <div className="pf-grid">

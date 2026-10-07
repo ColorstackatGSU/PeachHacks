@@ -25,7 +25,7 @@ public class CheckInController {
 	/** code is whatever the scanner read: the bare ticket token or the whole ticket URL. */
 	public record ScanRequest(
 			@NotBlank(message = "Code is required") @Size(max = 2048, message = "Code is too long") String code,
-			UUID eventId, Boolean override) {
+			UUID eventId) {
 	}
 
 	private final CheckInService service;
@@ -44,7 +44,7 @@ public class CheckInController {
 	@PostMapping("/scan")
 	CheckInService.ScanResult scan(@Valid @RequestBody ScanRequest request,
 			@AuthenticationPrincipal AdminPrincipal current) {
-		return service.scan(request.code(), request.eventId(), Boolean.TRUE.equals(request.override()), current);
+		return service.scan(request.code(), request.eventId(), current);
 	}
 
 	@PostMapping("/{id}")

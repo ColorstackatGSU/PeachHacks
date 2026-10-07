@@ -19,7 +19,8 @@ How the panel behaves:
 
 - The URL is the state. Opening pushes `/#register`, so the browser's Back button closes the panel; Escape, the panel's Close button, clicking the parked tag or dragging it back to the left do the same. Opening from further down the page scrolls back to the hero first.
 - The panel waits for the API before showing a form. A failed status check shows a retry, never a form. If registration closes while someone is filling in the registration form, the submit is refused and the panel switches to the pre-registration form with their name, emails and school carried over.
-- Closing the panel keeps what was typed (including a chosen resume) for as long as the page stays open. Nothing is written to storage. After a successful submit the next opening starts with a fresh form.
+- Closing the panel keeps what was typed (including a chosen resume) for as long as the page stays open.
+- Both forms also keep a draft in `sessionStorage` (`peachhacks:draft:pre-register` and `peachhacks:draft:register`), written on every change and restored when the form next mounts in the same tab, so a reload or an accidental navigation does not lose the answers. The draft holds the text, select and checkbox answers, including the optional demographic ones; it never holds the resume file or the honeypot field, it is removed after a successful submit, and it disappears with the tab. If storage is unavailable the forms work without it. After a successful submit the next opening starts with a fresh form.
 - The panel is a dialog: focus moves into it and stays there, the rest of the page is inert and cannot scroll, and focus returns to the control that opened it.
 
 The code lives in `src/forms/`, with the panel shell in `src/home/RegisterLayer.jsx` (dialog, focus, scroll lock), `src/home/registerPanel.js` (the URL state) and `src/forms/RegisterPanel.jsx` (which form to show). The form code is loaded the first time the panel opens, not with the homepage.
@@ -37,6 +38,12 @@ The API base URL comes from `VITE_API_BASE_URL`, falling back to `http://localho
 - School email (required; any well-formed address, `.edu` is not required)
 
 If the school email matches the personal email the form says so in the field's hint and still submits.
+
+### Validation
+
+Every field is checked on submit. First name, last name, both emails, the phone number and the LinkedIn URL are also checked when the field loses focus, once something has been typed in it; nothing is checked while typing, and editing a field clears its message. The rules live in `FIELD_RULES` in `src/forms/validation.js`. Names accept letters and combining marks of any script, spaces, apostrophes, periods and hyphens, the same set the API enforces (`Patterns.NAME` in the backend), with the API's message.
+
+Rate-limit (429) and oversized-request (413) responses show the API's own message.
 
 The success message names the school address and tells the person to open the confirmation link sent there.
 
@@ -105,4 +112,4 @@ To refresh the list, download the raw CSV, drop the first line (a note with the 
 
 ### Spam protection
 
-Both forms include a hidden `website` field. People never see it; the API accepts and discards submissions that fill it in.
+Both forms include a hidden honeypot field. People never see it; the API accepts and discards submissions that fill it in. The API reads it as `website` in the JSON body, but the input itself is named `leave-blank` so browser autofill does not put a URL in it for a real person.

@@ -4,6 +4,7 @@ import { ShareStrip } from "../components/HostShare.jsx";
 import { ConfirmDialog, Modal } from "../components/Modal.jsx";
 import {
   AcceptanceBadge,
+  ConfirmedTag,
   EmptyBlock,
   ErrorBlock,
   InlineError,
@@ -11,6 +12,7 @@ import {
   PageHeader,
   Pagination,
   Tag,
+  ToldTag,
   useToast,
 } from "../components/ui.jsx";
 import {
@@ -24,7 +26,6 @@ import {
 } from "../lib/acceptance.js";
 import {
   STATUSES,
-  errorText,
   formatBytes,
   formatDateTime,
   formatWhen,
@@ -32,7 +33,7 @@ import {
   plural,
   statusLabel,
 } from "../lib/format.js";
-import { schoolOptions, useAcceptanceSummary, useAsync, useDebounced, useStats } from "../lib/hooks.js";
+import { schoolOptions, useAcceptanceSummary, useAsync, useDebounced, useExport, useStats } from "../lib/hooks.js";
 
 const PAGE_SIZE = 25;
 // The bulk endpoint takes at most this many ids in one call.
@@ -155,6 +156,7 @@ function TicketPanel({ reg, onSent }) {
   const notify = useToast();
   const [sending, setSending] = useState(false);
   const [error, setError] = useState(null);
+  const [confirming, setConfirming] = useState(false);
 
   if (reg.status !== "ACCEPTED" || !reg.ticketToken) {
     return (
@@ -175,6 +177,7 @@ function TicketPanel({ reg, onSent }) {
     try {
       await api.sendTicketEmail(reg.id);
       notify(told ? `Ticket email sent to ${reg.email}.` : `Acceptance email sent to ${reg.email}.`);
+      setConfirming(false);
       if (!told) onSent();
     } catch (err) {
       setError(err);
@@ -187,7 +190,7 @@ function TicketPanel({ reg, onSent }) {
     <section className="ticket-panel" aria-label="Ticket">
       <div className="status-panel-head">
         <span className="tile-label">Ticket</span>
-        {told ? <Tag tone="accepted">Told</Tag> : <Tag tone="waitlisted">Not told yet</Tag>}
+        <ToldTag told={told} />
       </div>
       <p className="muted small">
         {told
@@ -212,13 +215,42 @@ function TicketPanel({ reg, onSent }) {
           <p className="muted small">
             Google Wallet: {reg.googleWalletUrl ? "the ticket page and email offer “Add to Google Wallet”." : "not set up, so no wallet link is offered."}
           </p>
-          <button type="button" className="btn btn-small" disabled={sending} onClick={send}>
+          <button
+            type="button"
+            className="btn btn-small"
+            disabled={sending}
+            onClick={() => {
+              if (told) send();
+              else {
+                setError(null);
+                setConfirming(true);
+              }
+            }}
+          >
             {sending ? "Sending…" : told ? "Resend ticket email" : "Send acceptance email now"}
           </button>
           {!told && <p className="muted small">Sends only to this person, ahead of everyone else in the bucket.</p>}
-          <InlineError error={error} />
+          {!confirming && <InlineError error={error} />}
         </div>
       </div>
+      {confirming && (
+        <ConfirmDialog
+          title="Send the acceptance email now?"
+          confirmLabel="Send acceptance email"
+          busy={sending}
+          error={error}
+          onConfirm={send}
+          onCancel={() => {
+            setConfirming(false);
+            setError(null);
+          }}
+        >
+          <p>
+            <strong>{fullName(reg)}</strong> will be emailed “You’re in” and their ticket at {reg.email} right away,
+            ahead of everyone else in the bucket. This cannot be recalled once it is sent.
+          </p>
+        </ConfirmDialog>
+      )}
     </section>
   );
 }
@@ -254,7 +286,7 @@ function SchoolEmailPanel({ reg }) {
     <section className="ticket-panel" aria-label="School email">
       <div className="status-panel-head">
         <span className="tile-label">School email</span>
-        {reg.schoolEmailConfirmed ? <Tag tone="accepted">Confirmed</Tag> : <Tag tone="waitlisted">Unconfirmed</Tag>}
+        <ConfirmedTag confirmed={reg.schoolEmailConfirmed} />
       </div>
       <p className="resume-file">
         <strong className="cell-break">{reg.schoolEmail}</strong>
@@ -493,7 +525,7 @@ function RegistrationDrawer({ id, fallbackName, acceptance, onClose, onChanged }
                 <button
                   key={status}
                   type="button"
-                  className={`btn btn-small status-choice status-${status.toLowerCase()}`}
+                  className="btn btn-small status-choice"
                   aria-pressed={reg.status === status}
                   disabled={Boolean(savingStatus)}
                   onClick={() => {
@@ -613,7 +645,7 @@ export default function Registrations({ query }) {
   const [schoolEmailConfirmed, setSchoolEmailConfirmed] = useState("");
   const [ageReview, setAgeReview] = useState(() => flagFromQuery(query, "ageReview"));
   const [page, setPage] = useState(0);
-  const [exporting, setExporting] = useState(false);
+  const [exporting, runExport] = useExport();
   const [resumeBook, setResumeBook] = useState(false);
   const [open, setOpen] = useState(null);
   // Selected rows by id, kept across pages and filters; each value is the row as last seen.
@@ -689,16 +721,7 @@ export default function Registrations({ query }) {
   };
   const filtered = Boolean(q || school || status || checkedIn || resume || schoolEmailConfirmed || ageReview);
 
-  const exportCsv = async () => {
-    setExporting(true);
-    try {
-      await api.exportRegistrations(filters);
-    } catch (error) {
-      notify(`Export failed: ${errorText(error)}`, "error");
-    } finally {
-      setExporting(false);
-    }
-  };
+  const exportCsv = () => runExport(() => api.exportRegistrations(filters));
 
   const resetTo = (setter) => (event) => {
     setter(event.target.value);
@@ -708,7 +731,7 @@ export default function Registrations({ query }) {
   return (
     <>
       <PageHeader title="Registrations" description="Full registrations with every MLH field. Select a name to see the details.">
-        <button type="button" className="btn" onClick={exportCsv} disabled={exporting}>
+        <button type="button" className="btn" onClick={exportCsv} disabled={Boolean(exporting)}>
           {exporting ? "Preparing…" : filtered ? "Export filtered CSV" : "Export CSV"}
         </button>
         <button type="button" className="btn" onClick={() => setResumeBook(true)}>

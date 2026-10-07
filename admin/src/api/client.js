@@ -1,4 +1,4 @@
-export const API_BASE = (
+const API_BASE = (
   import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? "http://localhost:8080" : "https://api.peachhacks.com")
 ).replace(/\/+$/, "");
 
@@ -20,7 +20,7 @@ function getTransport() {
   return transportReady;
 }
 
-export class ApiError extends Error {
+class ApiError extends Error {
   constructor({ status = 0, code = "UNKNOWN", message, fieldErrors = null }) {
     super(message || "Something went wrong.");
     this.name = "ApiError";
@@ -241,11 +241,11 @@ export const api = {
     download(`/admin/events/${encodeURIComponent(id)}/export.csv`, null, `peachhacks-attendees-${stamp()}.csv`),
 
   checkInList: (query, signal) => json("GET", "/admin/check-in", { query, signal }),
+  // Someone who is not accepted is refused with 409 `NOT_ACCEPTED`.
   checkIn: (id, eventId) => changing(json("POST", `/admin/check-in/${encodeURIComponent(id)}`, { query: { eventId } })),
   undoCheckIn: (id, eventId) =>
     changing(json("DELETE", `/admin/check-in/${encodeURIComponent(id)}`, { query: { eventId } })),
-  scanTicket: ({ code, eventId, override = false }) =>
-    json("POST", "/admin/check-in/scan", { body: { code, eventId: eventId || null, override } }),
+  scanTicket: ({ code, eventId }) => json("POST", "/admin/check-in/scan", { body: { code, eventId: eventId || null } }),
 
   settings: (signal) => json("GET", "/admin/settings", { signal }),
   saveSettings: (registrationOpen) => json("PUT", "/admin/settings", { body: { registrationOpen } }),
@@ -259,6 +259,8 @@ export const api = {
   sendEmail: ({ kind, audience, school, subject, body }) =>
     json("POST", "/admin/emails", { body: { kind, audience, school: school || null, subject, body } }),
   campaigns: (signal) => json("GET", "/admin/emails", { signal }),
+  campaignRecipients: (id, query, signal) =>
+    json("GET", `/admin/emails/${encodeURIComponent(id)}/recipients`, { query, signal }),
 
   admins: (signal) => json("GET", "/admin/admins", { signal }),
   // Both answer with `setPasswordUrl`, the link the invite email carries.

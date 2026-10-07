@@ -6,26 +6,40 @@ import java.util.List;
 import java.util.UUID;
 
 import com.peachhacks.backend.common.ApiException;
+import com.peachhacks.backend.common.PageResponse;
 import com.peachhacks.backend.common.Texts;
 import com.peachhacks.backend.config.EmailProperties;
 import com.peachhacks.backend.email.AudienceService.Recipient;
+import com.peachhacks.backend.email.CampaignRecipients.Pending;
 import com.peachhacks.backend.email.EmailComposer.Footer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.ContextClosedEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
+/**
+ * A campaign's recipients are written to campaign_recipients when it is started and the
+ * send works through the rows that are still PENDING. That is what lets a campaign cut
+ * short by a restart carry on where it stopped.
+ */
 @Service
 public class CampaignService {
+
+	private static final int BATCH_SIZE = 100;
 
 	private static final Logger log = LoggerFactory.getLogger(CampaignService.class);
 
 	private final EmailCampaignRepository campaigns;
+
+	private final CampaignRecipients recipients;
 
 	private final AudienceService audiences;
 
@@ -35,29 +49,63 @@ public class CampaignService {
 
 	private final TaskExecutor campaignExecutor;
 
+	private final TransactionTemplate transaction;
+
 	private final Duration delay;
 
-	public CampaignService(EmailCampaignRepository campaigns, AudienceService audiences, EmailComposer composer,
-			EmailSender sender, @Qualifier("campaignExecutor") TaskExecutor campaignExecutor,
-			EmailProperties properties) {
+	private volatile boolean stopping;
+
+	public CampaignService(EmailCampaignRepository campaigns, CampaignRecipients recipients,
+			AudienceService audiences, EmailComposer composer, EmailSender sender,
+			@Qualifier("campaignExecutor") TaskExecutor campaignExecutor, EmailProperties properties,
+			PlatformTransactionManager transactionManager) {
 		this.campaigns = campaigns;
+		this.recipients = recipients;
 		this.audiences = audiences;
 		this.composer = composer;
 		this.sender = sender;
 		this.campaignExecutor = campaignExecutor;
+		this.transaction = new TransactionTemplate(transactionManager);
 		this.delay = properties.campaignDelay();
 	}
 
+	/**
+	 * Campaigns a previous process left QUEUED or SENDING are queued again and go to the
+	 * people still PENDING. One from before campaign_recipients existed has no rows to
+	 * work from and is marked FAILED with the counts it had reached.
+	 */
 	@EventListener(ApplicationReadyEvent.class)
-	void failInterruptedCampaigns() {
-		int count = campaigns.failInterrupted(Instant.now());
-		if (count > 0) {
-			log.warn("Marked {} email campaign(s) interrupted by a restart as FAILED", count);
+	public void resumeInterrupted() {
+		for (EmailCampaign campaign : campaigns.findUnfinished()) {
+			UUID id = campaign.getId();
+			if (!recipients.exist(id)) {
+				campaigns.fail(id, Instant.now());
+				log.warn("Email campaign {} was interrupted by a restart and has no recipient rows; marked FAILED",
+						id);
+				continue;
+			}
+			log.info("Resuming email campaign {} ({}, \"{}\") interrupted by a restart", id, campaign.getKind(),
+					campaign.getSubject());
+			campaignExecutor.execute(() -> run(id));
 		}
+	}
+
+	/** The run stops after the email in hand and leaves the campaign unfinished for the next start. */
+	@EventListener(ContextClosedEvent.class)
+	void stop() {
+		stopping = true;
 	}
 
 	public List<EmailCampaign> list() {
 		return campaigns.findAllByOrderByCreatedAtDesc();
+	}
+
+	public PageResponse<CampaignRecipients.View> recipients(UUID id, CampaignRecipients.Status status, int page,
+			int size) {
+		if (!campaigns.existsById(id)) {
+			throw ApiException.notFound("Email campaign not found.");
+		}
+		return recipients.page(id, status, PageResponse.pageable(page, size));
 	}
 
 	/** Synchronous so the caller learns whether the send worked. */
@@ -66,7 +114,7 @@ public class CampaignService {
 			sender.send(sample(to, name, kind, subject, body));
 		}
 		catch (RuntimeException ex) {
-			log.warn("Test email to {} failed: {}", to, ex.toString());
+			log.warn("Test email ({}, \"{}\") to {} failed: {}", kind, subject, to, ex.toString());
 			throw new ApiException(HttpStatus.BAD_GATEWAY, "EMAIL_FAILED",
 					"The email provider rejected the test email. Check the server logs.");
 		}
@@ -83,72 +131,115 @@ public class CampaignService {
 		return composer.composeCampaign(to, subject, body, names[0], lastName, footer);
 	}
 
-	public EmailCampaign start(CampaignKind kind, Audience audience, String school, String subject, String body,
-			String createdBy) {
+	/** Synchronized so two identical requests arriving together cannot both pass the duplicate check. */
+	public synchronized EmailCampaign start(CampaignKind kind, Audience audience, String school, String subject,
+			String body, String createdBy) {
 		String schoolFilter = Texts.clean(school);
-		List<Recipient> recipients = audiences.recipients(kind, audience, schoolFilter);
-		if (recipients.isEmpty()) {
+		String cleanSubject = subject.strip();
+		List<Recipient> people = audiences.recipients(kind, audience, schoolFilter);
+		if (people.isEmpty()) {
 			throw ApiException.invalidField("audience", "Nobody matches this audience, so there is nothing to send.");
 		}
-		EmailCampaign campaign = campaigns
-			.save(new EmailCampaign(kind, subject.strip(), body, audience, schoolFilter, recipients.size(),
-					createdBy));
+		if (campaigns.existsUnfinishedCopy(kind, audience, Texts.orEmpty(schoolFilter), cleanSubject, body)) {
+			throw new ApiException(HttpStatus.CONFLICT, "CAMPAIGN_ALREADY_SENDING",
+					"This exact email is already being sent to this audience. Wait for it to finish before"
+							+ " sending it again.");
+		}
+		EmailCampaign campaign = transaction.execute(tx -> {
+			EmailCampaign saved = campaigns.saveAndFlush(
+					new EmailCampaign(kind, cleanSubject, body, audience, schoolFilter, people.size(), createdBy));
+			recipients.add(saved.getId(), people);
+			return saved;
+		});
 		UUID id = campaign.getId();
 		try {
-			campaignExecutor.execute(() -> run(id, kind, subject, body, recipients));
+			campaignExecutor.execute(() -> run(id));
 		}
 		catch (RuntimeException ex) {
-			campaigns.complete(id, EmailCampaign.Status.FAILED, 0, 0, Instant.now());
+			campaigns.fail(id, Instant.now());
 			throw ex;
 		}
-		log.info("Queued email campaign {} ({}) to {} recipient(s), audience {}", id, kind, recipients.size(),
-				audience);
+		log.info("Queued email campaign {} ({}) to {} recipient(s), audience {}", id, kind, people.size(), audience);
 		return campaign;
 	}
 
-	private void run(UUID id, CampaignKind kind, String subject, String body, List<Recipient> recipients) {
-		int sent = 0;
-		int failed = 0;
+	private void run(UUID id) {
 		try {
-			campaigns.updateProgress(id, EmailCampaign.Status.SENDING, 0, 0);
-			for (int i = 0; i < recipients.size(); i++) {
-				Recipient recipient = recipients.get(i);
-				try {
-					Footer footer = (kind == CampaignKind.EVENT_UPDATE) ? Footer.REGISTERED
-							: Footer.announcement(recipient.unsubscribeToken());
-					sender.send(composer.composeCampaign(recipient.email(), subject, body, recipient.firstName(),
-							recipient.lastName(), footer));
-					sent++;
-				}
-				catch (RuntimeException ex) {
-					failed++;
-					log.warn("Campaign {}: could not send to {}: {}", id, recipient.email(), ex.toString());
-				}
-				campaigns.updateProgress(id, EmailCampaign.Status.SENDING, sent, failed);
-				if (i < recipients.size() - 1 && !delay.isZero()) {
-					Thread.sleep(delay);
+			EmailCampaign campaign = stopping ? null : campaigns.findById(id).orElse(null);
+			if (campaign == null) {
+				return;
+			}
+			recipients.recordProgress(id);
+			long lastId = 0;
+			boolean first = true;
+			for (List<Pending> batch = recipients.pending(id, lastId, BATCH_SIZE); !batch.isEmpty(); batch = recipients
+				.pending(id, lastId, BATCH_SIZE)) {
+				for (Pending recipient : batch) {
+					if (!first && !delay.isZero()) {
+						Thread.sleep(delay);
+					}
+					if (stopping) {
+						log.info("Email campaign {} paused by shutdown; it resumes at the next start", id);
+						return;
+					}
+					deliver(campaign, recipient);
+					lastId = recipient.id();
+					first = false;
 				}
 			}
-			EmailCampaign.Status status = (sent > 0) ? EmailCampaign.Status.SENT : EmailCampaign.Status.FAILED;
-			campaigns.complete(id, status, sent, failed, Instant.now());
-			log.info("Email campaign {} finished: {} sent, {} failed", id, sent, failed);
+			recipients.complete(id);
+			EmailCampaign finished = campaigns.findById(id).orElse(campaign);
+			log.info("Email campaign {} finished: {} sent, {} failed", id, finished.getSentCount(),
+					finished.getFailedCount());
 		}
 		catch (InterruptedException ex) {
 			Thread.currentThread().interrupt();
-			finishAsFailed(id, sent, failed);
+			log.warn("Email campaign {} interrupted; it resumes at the next start", id);
 		}
 		catch (RuntimeException ex) {
 			log.error("Email campaign {} aborted", id, ex);
-			finishAsFailed(id, sent, failed);
+			try {
+				campaigns.fail(id, Instant.now());
+			}
+			catch (RuntimeException failure) {
+				log.error("Could not mark email campaign {} as failed; it resumes at the next start", id, failure);
+			}
 		}
 	}
 
-	private void finishAsFailed(UUID id, int sent, int failed) {
+	/**
+	 * Never throws. The key makes a repeat of this row (a resume after a crash between the
+	 * send and the mark, or two instances overlapping during a deploy) the same send to the
+	 * provider. Not being able to record the outcome is logged and the campaign carries on.
+	 */
+	private void deliver(EmailCampaign campaign, Pending recipient) {
+		UUID id = campaign.getId();
+		String error = null;
 		try {
-			campaigns.complete(id, EmailCampaign.Status.FAILED, sent, failed, Instant.now());
+			Footer footer = (campaign.getKind() == CampaignKind.EVENT_UPDATE) ? Footer.REGISTERED
+					: Footer.announcement(recipient.unsubscribeToken());
+			sender.send(composer
+				.composeCampaign(recipient.email(), campaign.getSubject(), campaign.getBody(), recipient.firstName(),
+						recipient.lastName(), footer)
+				.withIdempotencyKey("campaign-" + id + "-" + recipient.id()));
 		}
 		catch (RuntimeException ex) {
-			log.error("Could not mark email campaign {} as failed", id, ex);
+			error = ex.toString();
+			log.warn("Campaign {} ({}, \"{}\"): could not send to {}: {}", id, campaign.getKind(),
+					campaign.getSubject(), recipient.email(), error);
+		}
+		try {
+			if (error == null) {
+				recipients.markSent(recipient.id());
+			}
+			else {
+				recipients.markFailed(recipient.id(), error);
+			}
+			recipients.recordProgress(id);
+		}
+		catch (RuntimeException ex) {
+			log.error("Campaign {}: could not record that the email to {} {}", id, recipient.email(),
+					(error == null) ? "was sent" : "failed", ex);
 		}
 	}
 

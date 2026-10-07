@@ -1,75 +1,41 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { submitPreRegistration } from './api.js';
 import { Honeypot, SubmitButton, TextField } from './fields.jsx';
+import { useFocusOnChange, useFormFields } from './hooks.js';
 import { Card, FormAlert } from './PageShell.jsx';
 import SchoolPicker from './SchoolPicker.jsx';
-import { describeFailure, focusFirstInvalid, isEmail, sameEmail, splitFieldErrors } from './validation.js';
+import { anotherLookMessage, apiFailure, schoolEmailHint, validateIdentity } from './validation.js';
 
 const INITIAL_VALUES = { firstName: '', lastName: '', email: '', school: '', schoolEmail: '', website: '' };
 const FIELD_NAMES = Object.keys(INITIAL_VALUES);
-
-function validate(values) {
-  const errors = {};
-  if (!values.firstName.trim()) errors.firstName = 'Enter your first name.';
-  if (!values.lastName.trim()) errors.lastName = 'Enter your last name.';
-  if (!values.email.trim()) errors.email = 'Enter your email address.';
-  else if (!isEmail(values.email)) errors.email = 'Enter a valid email, like name@example.com.';
-  if (!values.school.trim()) errors.school = 'Pick your school from the list.';
-  if (!values.schoolEmail.trim()) errors.schoolEmail = 'Enter your school email address.';
-  else if (!isEmail(values.schoolEmail)) errors.schoolEmail = 'Enter a valid email, like name@school.edu.';
-  return errors;
-}
 
 // Lives in the homepage's sign-up panel. `notice` explains why this form is
 // showing in place of another one, and `initialValues` carries over what was
 // already typed there. onDone() fires once the pre-registration is saved.
 export default function PreRegisterForm({ titleId, onClose, onDone, notice = null, initialValues = null }) {
-  const formRef = useRef(null);
-  const headingRef = useRef(null);
-  const [values, setValues] = useState(() => ({ ...INITIAL_VALUES, ...initialValues }));
-  const [errors, setErrors] = useState({});
-  const [formError, setFormError] = useState('');
+  const form = useFormFields(INITIAL_VALUES, 'pre-register', initialValues);
+  const { formRef, values, errors, formError, setFormError, setValue, checkOnBlur } = form;
   const [status, setStatus] = useState('idle');
-  const [focusRequest, setFocusRequest] = useState(0);
-
-  useEffect(() => {
-    if (focusRequest > 0) focusFirstInvalid(formRef.current);
-  }, [focusRequest]);
-
-  useEffect(() => {
-    if (status === 'success' || notice) headingRef.current?.focus();
-  }, [status, notice]);
-
-  const setValue = (name, value) => {
-    setValues((current) => ({ ...current, [name]: value }));
-    setErrors((current) => {
-      if (!current[name]) return current;
-      const next = { ...current };
-      delete next[name];
-      return next;
-    });
-  };
+  const { headingRef, requestFocus } = useFocusOnChange(status !== 'submitting', Boolean(notice));
 
   const fail = (fieldErrors, message) => {
-    setErrors(fieldErrors);
-    setFormError(message);
     setStatus('idle');
-    setFocusRequest((count) => count + 1);
+    form.fail(fieldErrors, message);
   };
 
   const handleSubmit = async (event) => {
     event.preventDefault();
     if (status === 'submitting') return;
 
-    const clientErrors = validate(values);
+    const clientErrors = validateIdentity(values);
     const errorCount = Object.keys(clientErrors).length;
     if (errorCount > 0) {
-      fail(clientErrors, errorCount === 1 ? 'One field needs another look.' : `${errorCount} fields need another look.`);
+      fail(clientErrors, anotherLookMessage(errorCount));
       return;
     }
 
     setStatus('submitting');
-    setFormError('');
+    setFormError(null);
 
     try {
       await submitPreRegistration({
@@ -80,11 +46,12 @@ export default function PreRegisterForm({ titleId, onClose, onDone, notice = nul
         schoolEmail: values.schoolEmail.trim(),
         website: values.website,
       });
+      form.clearDraft();
+      requestFocus();
       setStatus('success');
       onDone();
     } catch (error) {
-      const { matched, unmatched } = splitFieldErrors(error?.fieldErrors, FIELD_NAMES);
-      fail(matched, [describeFailure(error), ...unmatched].join(' '));
+      fail(...apiFailure(error, FIELD_NAMES));
     }
   };
 
@@ -115,7 +82,7 @@ export default function PreRegisterForm({ titleId, onClose, onDone, notice = nul
       title="Pre-register"
       titleId={titleId}
       headingRef={headingRef}
-      intro="Be the first to know when PeachHacks registration opens. It takes less than a minute."
+      intro="Five quick fields now, so registering later is faster. We'll email you when registration opens."
       panel
     >
       <form className="pf-form" ref={formRef} onSubmit={handleSubmit} noValidate aria-labelledby={titleId}>
@@ -123,25 +90,24 @@ export default function PreRegisterForm({ titleId, onClose, onDone, notice = nul
         <div className="pf-grid">
           <TextField
             name="firstName" label="First name" value={values.firstName} onChange={setValue} error={errors.firstName}
-            autoComplete="given-name" autoCapitalize="words" maxLength={255}
+            autoComplete="given-name" autoCapitalize="words" maxLength={100} onBlur={checkOnBlur('firstName')}
           />
           <TextField
             name="lastName" label="Last name" value={values.lastName} onChange={setValue} error={errors.lastName}
-            autoComplete="family-name" autoCapitalize="words" maxLength={255}
+            autoComplete="family-name" autoCapitalize="words" maxLength={100} onBlur={checkOnBlur('lastName')}
           />
           <TextField
             name="email" label="Personal email" value={values.email} onChange={setValue} error={errors.email}
             hint="We'll send registration news here." wide
             type="email" inputMode="email" autoComplete="email" autoCapitalize="none" spellCheck={false} maxLength={255}
+            onBlur={checkOnBlur('email')}
           />
           <SchoolPicker value={values.school} onChange={setValue} error={errors.school} />
           <TextField
             name="schoolEmail" label="School email" value={values.schoolEmail} onChange={setValue}
-            error={errors.schoolEmail} wide
-            hint={sameEmail(values.schoolEmail, values.email)
-              ? "Same as your personal email. That's fine if it's the only one you use."
-              : 'The address your school gave you.'}
-            type="email" inputMode="email" autoComplete="off" autoCapitalize="none" spellCheck={false} maxLength={255}
+            error={errors.schoolEmail} wide hint={schoolEmailHint(values)}
+            type="email" inputMode="email" autoComplete="email" autoCapitalize="none" spellCheck={false} maxLength={255}
+            onBlur={checkOnBlur('schoolEmail')}
           />
         </div>
         <Honeypot value={values.website} onChange={setValue} />

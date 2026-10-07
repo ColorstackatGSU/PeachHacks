@@ -1,5 +1,6 @@
 package com.peachhacks.backend.registration;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -10,12 +11,15 @@ import java.util.UUID;
 
 import com.peachhacks.backend.acceptance.AgeReview;
 import com.peachhacks.backend.common.ApiException;
+import com.peachhacks.backend.common.RateLimiter;
 import com.peachhacks.backend.common.RequestValidator;
 import com.peachhacks.backend.common.Texts;
 import com.peachhacks.backend.email.MailService;
 import com.peachhacks.backend.registration.ResumeUpload.ResumeFile;
 import com.peachhacks.backend.schoolemail.SchoolEmailService;
 import com.peachhacks.backend.stats.SettingsService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
@@ -32,6 +36,10 @@ public class RegistrationService {
 
 	private static final Set<String> RESUME_FILTERS = Set.of("opted-in", "any", "none");
 
+	private static final Duration ALREADY_REGISTERED_EMAIL_INTERVAL = Duration.ofHours(1);
+
+	private static final Logger log = LoggerFactory.getLogger(RegistrationService.class);
+
 	private final RegistrationRepository repository;
 
 	private final SettingsService settings;
@@ -46,12 +54,16 @@ public class RegistrationService {
 
 	private final AgeReview ageReview;
 
+	private final RateLimiter rateLimiter;
+
 	private final TransactionTemplate transaction;
 
 	public RegistrationService(RegistrationRepository repository, SettingsService settings,
 			RequestValidator validator, MailService mailService, ResumeService resumes,
-			SchoolEmailService schoolEmails, AgeReview ageReview, PlatformTransactionManager transactionManager) {
+			SchoolEmailService schoolEmails, AgeReview ageReview, RateLimiter rateLimiter,
+			PlatformTransactionManager transactionManager) {
 		this.ageReview = ageReview;
+		this.rateLimiter = rateLimiter;
 		this.repository = repository;
 		this.settings = settings;
 		this.validator = validator;
@@ -61,6 +73,11 @@ public class RegistrationService {
 		this.transaction = new TransactionTemplate(transactionManager);
 	}
 
+	/**
+	 * A submission for an email that is already registered is answered exactly like a new
+	 * one, with an id that belongs to nothing, so the form cannot be used to find out who
+	 * has registered. Nothing is stored from it; the address's owner is told by email.
+	 */
 	public UUID submit(RegistrationRequest request) {
 		if (!settings.isRegistrationOpen()) {
 			throw new ApiException(HttpStatus.FORBIDDEN, "REGISTRATION_CLOSED",
@@ -77,7 +94,7 @@ public class RegistrationService {
 		boolean resumeOptIn = resume != null && Boolean.TRUE.equals(request.resumeOptIn());
 		Registration registration = Registration.from(request);
 		if (repository.existsByEmail(registration.getEmail())) {
-			throw alreadyRegistered();
+			return alreadyRegistered(registration.getEmail());
 		}
 		try {
 			transaction.executeWithoutResult(status -> {
@@ -89,14 +106,28 @@ public class RegistrationService {
 		}
 		catch (DataIntegrityViolationException ex) {
 			// Two submissions for one email at the same moment: the unique index decides.
-			throw alreadyRegistered();
+			return alreadyRegistered(registration.getEmail());
 		}
-		// A pair confirmed at pre-registration stays confirmed, and then nothing is mailed.
-		boolean unconfirmed = schoolEmails.requestConfirmation(registration.getEmail(), registration.getSchoolEmail(),
-				registration.getFirstName());
-		mailService.sendRegistrationConfirmation(registration.getEmail(), registration.getFirstName(),
-				unconfirmed ? registration.getSchoolEmail() : null);
+		try {
+			// A pair confirmed at pre-registration stays confirmed, and then nothing is mailed.
+			boolean unconfirmed = schoolEmails.requestConfirmation(registration.getEmail(),
+					registration.getSchoolEmail(), registration.getFirstName());
+			mailService.sendRegistrationConfirmation(registration.getEmail(), registration.getFirstName(),
+					unconfirmed ? registration.getSchoolEmail() : null);
+		}
+		catch (RuntimeException ex) {
+			// The registration is committed; the person must not be told that it failed.
+			log.error("Registration {} was saved, but its confirmation emails could not be prepared",
+					registration.getId(), ex);
+		}
 		return registration.getId();
+	}
+
+	private UUID alreadyRegistered(String email) {
+		if (rateLimiter.tryAcquire("already-registered:" + email, 1, ALREADY_REGISTERED_EMAIL_INTERVAL)) {
+			mailService.sendAlreadyRegistered(email);
+		}
+		return UUID.randomUUID();
 	}
 
 	public Page<Registration> search(String q, String school, String status, Boolean checkedIn, String resume,
@@ -176,11 +207,6 @@ public class RegistrationService {
 			throw ApiException.invalidField("resume", "Resume filter must be opted-in, any or none");
 		}
 		return filter;
-	}
-
-	private static ApiException alreadyRegistered() {
-		return new ApiException(HttpStatus.CONFLICT, "ALREADY_REGISTERED",
-				"This email address is already registered for PeachHacks.");
 	}
 
 }

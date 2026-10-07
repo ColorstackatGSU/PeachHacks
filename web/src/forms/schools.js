@@ -1,8 +1,8 @@
 // MLH's verified schools list. Source: https://github.com/MLH/mlh-policies/blob/main/schools.csv
 const SCHOOLS_URL = '/data/schools.json';
 
-export const FEATURED_SCHOOL = 'Georgia State University';
-export const MAX_RESULTS = 40;
+const FEATURED_SCHOOL = 'Georgia State University';
+const MAX_RESULTS = 40;
 
 // Only applied when the full name exists in the loaded list.
 const ALIASES = {
@@ -19,7 +19,7 @@ const ALIASES = {
 
 let schoolsPromise = null;
 
-export function normalize(text) {
+function normalize(text) {
   return text
     .normalize('NFD')
     .replace(/\p{M}/gu, '')
@@ -49,6 +49,10 @@ export function loadSchools() {
       });
   }
   return schoolsPromise;
+}
+
+export function isHostSchool(name) {
+  return normalize(name) === normalize(FEATURED_SCHOOL);
 }
 
 export function findExact(index, text) {

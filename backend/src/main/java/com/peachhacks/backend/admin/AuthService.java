@@ -1,5 +1,6 @@
 package com.peachhacks.backend.admin;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -17,6 +18,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AuthService {
@@ -48,7 +50,10 @@ public class AuthService {
 
 	public static final int MIN_PASSWORD_LENGTH = 10;
 
-	/** BCrypt only reads the first 72 bytes; longer input is rejected rather than truncated. */
+	/**
+	 * BCrypt only reads the first 72 bytes; longer input is rejected rather than truncated.
+	 * The limit is in bytes of UTF-8, so see fitsBcrypt for anything but plain ASCII.
+	 */
 	public static final int MAX_PASSWORD_LENGTH = 72;
 
 	private static final Logger log = LoggerFactory.getLogger(AuthService.class);
@@ -61,25 +66,53 @@ public class AuthService {
 
 	private final AdminProperties properties;
 
+	private final LoginThrottle throttle;
+
 	private final String dummyHash;
 
 	public AuthService(AdminRepository admins, AdminSessionRepository sessions, PasswordEncoder passwordEncoder,
-			AdminProperties properties) {
+			AdminProperties properties, LoginThrottle throttle) {
 		this.admins = admins;
 		this.sessions = sessions;
 		this.passwordEncoder = passwordEncoder;
 		this.properties = properties;
+		this.throttle = throttle;
 		this.dummyHash = passwordEncoder.encode(Tokens.random());
 	}
 
-	public Login login(String email, String password) {
+	public static boolean fitsBcrypt(String password) {
+		return password.getBytes(StandardCharsets.UTF_8).length <= MAX_PASSWORD_LENGTH;
+	}
+
+	private static void requireFitsBcrypt(String field, String password) {
+		if (!fitsBcrypt(password)) {
+			throw ApiException.invalidField(field,
+					"Password is too long. Accented letters and emoji count more than once towards the limit of 72.");
+		}
+	}
+
+	/**
+	 * clientAddress is only logged. The throttle is per email and answers the same for an
+	 * email with no account, so it does not reveal which emails have one.
+	 */
+	public Login login(String email, String password, String clientAddress) {
 		String normalized = Texts.email(email);
-		String candidate = (password != null && password.length() <= MAX_PASSWORD_LENGTH) ? password : "";
+		if (normalized != null && throttle.blocked(normalized)) {
+			log.warn("Sign-in for {} from {} refused: too many failed attempts", forLog(normalized), clientAddress);
+			throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "RATE_LIMITED",
+					"Too many failed sign-in attempts for this email. Wait " + throttle.windowMinutes()
+							+ " minutes and try again.");
+		}
+		String candidate = (password != null && fitsBcrypt(password)) ? password : "";
 		Optional<Admin> admin = (normalized != null) ? admins.findByEmail(normalized) : Optional.empty();
 		// Always run one hash comparison so unknown emails take as long as wrong passwords.
 		boolean matches = passwordEncoder.matches(candidate,
 				admin.filter(found -> !found.isPending()).map(Admin::getPasswordHash).orElse(dummyHash));
 		if (admin.isEmpty() || admin.get().isPending() || !matches || candidate.isEmpty()) {
+			if (normalized != null) {
+				throttle.failed(normalized);
+			}
+			log.warn("Failed sign-in for {} from {}", forLog(normalized), clientAddress);
 			throw new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS", "Incorrect email or password.");
 		}
 		Instant now = Instant.now();
@@ -87,6 +120,7 @@ public class AuthService {
 		String token = Tokens.random();
 		Instant expiresAt = now.plus(properties.sessionTtl());
 		sessions.save(new AdminSession(admin.get().getId(), Tokens.sha256(token), expiresAt));
+		throttle.clear(normalized);
 		log.info("Admin {} signed in", admin.get().getEmail());
 		return new Login(token, expiresAt, view(admin.get()));
 	}
@@ -111,32 +145,38 @@ public class AuthService {
 
 	public Admin create(String email, String name, String password, AdminRole role) {
 		String normalized = Texts.email(email);
-		if (admins.findByEmail(normalized).isPresent()) {
-			throw ApiException.invalidField("email", "An account with this email already exists.");
-		}
+		requireUnused(normalized);
 		try {
 			Admin admin = admins.save(new Admin(normalized, name.strip(), passwordEncoder.encode(password), role));
 			log.info("{} account {} created", role, normalized);
 			return admin;
 		}
 		catch (DataIntegrityViolationException ex) {
-			throw ApiException.invalidField("email", "An account with this email already exists.");
+			throw emailTaken();
 		}
 	}
 
 	public PasswordLink invite(String email, String name, AdminRole role) {
 		String normalized = Texts.email(email);
-		if (admins.findByEmail(normalized).isPresent()) {
-			throw ApiException.invalidField("email", "An account with this email already exists.");
-		}
+		requireUnused(normalized);
 		try {
 			PasswordLink link = issueLink(new Admin(normalized, name.strip(), null, role), properties.inviteTtl());
 			log.info("{} account {} invited", role, normalized);
 			return link;
 		}
 		catch (DataIntegrityViolationException ex) {
-			throw ApiException.invalidField("email", "An account with this email already exists.");
+			throw emailTaken();
 		}
+	}
+
+	private void requireUnused(String email) {
+		if (admins.findByEmail(email).isPresent()) {
+			throw emailTaken();
+		}
+	}
+
+	private static ApiException emailTaken() {
+		return ApiException.invalidField("email", "An account with this email already exists.");
 	}
 
 	public PasswordLink reinvite(UUID id) {
@@ -164,18 +204,22 @@ public class AuthService {
 		return new PasswordLinkView(admin.getEmail(), admin.getName(), admin.isPending());
 	}
 
+	@Transactional
 	public void setPassword(String token, String password) {
+		requireFitsBcrypt("password", password);
 		Admin admin = byPasswordToken(token);
 		admin.changePassword(passwordEncoder.encode(password));
 		admins.save(admin);
 		sessions.deleteOthersByAdminId(admin.getId(), "");
+		throttle.clear(admin.getEmail());
 		log.info("Password set for {} from an emailed link", admin.getEmail());
 	}
 
+	@Transactional
 	public void changePassword(AdminPrincipal current, String currentPassword, String newPassword) {
+		requireFitsBcrypt("newPassword", newPassword);
 		Admin admin = admins.findById(current.id()).orElseThrow(() -> ApiException.notFound("Admin not found."));
-		String candidate = (currentPassword != null && currentPassword.length() <= MAX_PASSWORD_LENGTH)
-				? currentPassword : "";
+		String candidate = (currentPassword != null && fitsBcrypt(currentPassword)) ? currentPassword : "";
 		if (admin.isPending() || candidate.isEmpty() || !passwordEncoder.matches(candidate, admin.getPasswordHash())) {
 			throw ApiException.invalidField("currentPassword", "That is not your current password.");
 		}
@@ -210,6 +254,15 @@ public class AuthService {
 		// Sessions are removed by the foreign key's cascade.
 		admins.deleteById(id);
 		log.info("Admin account {} deleted by {}", id, current.email());
+	}
+
+	/** The attempted email is whatever the client sent, so line breaks are kept out of the log. */
+	private static String forLog(String email) {
+		if (email == null) {
+			return "(no email)";
+		}
+		String cleaned = email.replaceAll("\\p{Cntrl}", "?");
+		return (cleaned.length() > 255) ? cleaned.substring(0, 255) + "..." : cleaned;
 	}
 
 	public static AdminView view(Admin admin) {
