@@ -60,6 +60,26 @@ export const plural = (count, one, many = `${one}s`) => `${formatNumber(count)} 
 
 export const errorText = (error) => error?.message || "Something went wrong.";
 
+// An event update is always delivered, so it may only go to people who registered.
+export const CAMPAIGN_KINDS = [
+  {
+    value: "EVENT_UPDATE",
+    label: "Event update",
+    hint: "Logistics for people who are coming. Always delivered, cannot be unsubscribed from. Use it only for information they need.",
+    footer: "You are receiving this because you registered for PeachHacks.",
+    unsubscribe: false,
+  },
+  {
+    value: "ANNOUNCEMENT",
+    label: "Announcement",
+    hint: "News and promotion. People who unsubscribed are skipped.",
+    footer: "You are receiving this because you signed up for PeachHacks.",
+    unsubscribe: true,
+  },
+];
+
+export const campaignKind = (value) => CAMPAIGN_KINDS.find((kind) => kind.value === value) || CAMPAIGN_KINDS[1];
+
 export const AUDIENCES = [
   {
     value: "PRE_REGISTRANTS",
@@ -78,8 +98,18 @@ export const AUDIENCES = [
     label: "Registrants",
     hint: "Everyone who completed the full registration.",
     schoolsFrom: "registrations",
+    registered: true,
+  },
+  {
+    value: "ACCEPTED",
+    label: "Accepted hackers",
+    hint: "People who are accepted and have already been sent their acceptance email.",
+    schoolsFrom: "registrations",
+    registered: true,
   },
 ];
+
+export const audiencesFor = (kind) => AUDIENCES.filter((a) => kind !== "EVENT_UPDATE" || a.registered);
 
 export const audienceLabel = (value) => AUDIENCES.find((a) => a.value === value)?.label || value;
 

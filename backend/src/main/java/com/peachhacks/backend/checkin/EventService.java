@@ -12,6 +12,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -87,7 +88,13 @@ public class EventService {
 		if (event.isGeneral()) {
 			throw ApiException.validation("The general check-in event cannot be deleted.", null);
 		}
-		// Its check-ins are removed by the foreign key's cascade.
+		long checkedIn = checkIns.countByEventId(id);
+		if (checkedIn > 0) {
+			// The foreign key would cascade and silently erase the attendance record.
+			throw new ApiException(HttpStatus.CONFLICT, "EVENT_HAS_CHECK_INS",
+					"\"%s\" has %d check-in%s, so it cannot be deleted. Undo the check-ins first if it really should go."
+						.formatted(event.getName(), checkedIn, (checkedIn == 1) ? "" : "s"));
+		}
 		events.delete(event);
 		log.info("Event \"{}\" deleted", event.getName());
 	}

@@ -109,7 +109,7 @@ export default function App() {
       page = <PreRegistrations />;
       break;
     case "/registrations":
-      page = <Registrations />;
+      page = <Registrations query={route.query} />;
       break;
     case "/acceptances":
       page = <Acceptances />;

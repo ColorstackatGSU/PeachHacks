@@ -13,9 +13,11 @@ import com.peachhacks.backend.checkin.CheckInService;
  * Google Wallet is not configured. resume is null when none was uploaded, and resumeOptIn
  * (sponsors may receive it) is then always false. schoolEmailConfirmed and
  * schoolEmailConfirmedAt come from the registration itself; an unconfirmed school email
- * does not stop any status change, it is there for the organizer to see.
+ * does not stop any status change, it is there for the organizer to see. ageReview is the
+ * same kind of information: under the minimum age for students of other schools and not
+ * at the host school.
  */
 public record RegistrationDetail(@JsonUnwrapped Registration registration, Instant checkedInAt, String checkedInBy,
 		List<CheckInService.EventCheckIn> checkIns, String ticketToken, String ticketUrl,
-		String googleWalletUrl, ResumeInfo resume, boolean resumeOptIn) {
+		String googleWalletUrl, ResumeInfo resume, boolean resumeOptIn, boolean ageReview) {
 }

@@ -18,7 +18,7 @@ import org.springframework.stereotype.Service;
 @Service
 public class PreRegistrationService {
 
-	private record Upserted(UUID id, String unsubscribeToken, boolean inserted) {
+	private record Upserted(UUID id, boolean inserted) {
 	}
 
 	/**
@@ -34,7 +34,7 @@ public class PreRegistrationService {
 				school = excluded.school,
 				school_email = excluded.school_email,
 				updated_at = now()
-			returning id, unsubscribe_token, (xmax = 0) as inserted
+			returning id, (xmax = 0) as inserted
 			""";
 
 	private final JdbcClient jdbc;
@@ -78,13 +78,11 @@ public class PreRegistrationService {
 			.param("school", request.school().strip())
 			.param("schoolEmail", schoolEmail)
 			.param("unsubscribeToken", Tokens.random())
-			.query((rs, rowNum) -> new Upserted(rs.getObject("id", UUID.class), rs.getString("unsubscribe_token"),
-					rs.getBoolean("inserted")))
+			.query((rs, rowNum) -> new Upserted(rs.getObject("id", UUID.class), rs.getBoolean("inserted")))
 			.single();
 		boolean unconfirmed = schoolEmails.requestConfirmation(email, schoolEmail, firstName);
 		if (row.inserted()) {
-			mailService.sendPreRegistrationConfirmation(email, firstName, row.unsubscribeToken(),
-					unconfirmed ? schoolEmail : null);
+			mailService.sendPreRegistrationConfirmation(email, firstName, unconfirmed ? schoolEmail : null);
 		}
 		return row.id();
 	}
@@ -105,12 +103,6 @@ public class PreRegistrationService {
 		PreRegistration preRegistration = get(id);
 		schoolEmails.sendNow(preRegistration.getEmail(), preRegistration.getSchoolEmail(),
 				preRegistration.getFirstName());
-	}
-
-	public void delete(UUID id) {
-		PreRegistration preRegistration = get(id);
-		repository.deleteById(id);
-		schoolEmails.forget(preRegistration.getEmail());
 	}
 
 	private PreRegistration get(UUID id) {

@@ -22,19 +22,20 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/admin/emails")
 public class AdminEmailController {
 
-	public record RecipientCountRequest(@NotNull(message = "Choose an audience") Audience audience,
-			@Size(max = 255) String school) {
+	public record RecipientCountRequest(@NotNull(message = "Choose the kind of email") CampaignKind kind,
+			@NotNull(message = "Choose an audience") Audience audience, @Size(max = 255) String school) {
 	}
 
-	public record TestEmailRequest(
+	/** kind decides which footer the test copy shows; without one it is an announcement. */
+	public record TestEmailRequest(CampaignKind kind,
 			@NotBlank(message = "Subject is required") @Size(max = 200,
 					message = "Subject must be at most 200 characters") String subject,
 			@NotBlank(message = "Body is required") @Size(max = 20000,
 					message = "Body must be at most 20000 characters") String body) {
 	}
 
-	public record CampaignRequest(@NotNull(message = "Choose an audience") Audience audience,
-			@Size(max = 255) String school,
+	public record CampaignRequest(@NotNull(message = "Choose the kind of email") CampaignKind kind,
+			@NotNull(message = "Choose an audience") Audience audience, @Size(max = 255) String school,
 			@NotBlank(message = "Subject is required") @Size(max = 200,
 					message = "Subject must be at most 200 characters") String subject,
 			@NotBlank(message = "Body is required") @Size(max = 20000,
@@ -52,20 +53,32 @@ public class AdminEmailController {
 
 	@PostMapping("/recipient-count")
 	Map<String, Integer> recipientCount(@Valid @RequestBody RecipientCountRequest request) {
-		return Map.of("recipientCount", audiences.recipients(request.audience(), request.school()).size());
+		return Map.of("recipientCount", audiences.recipients(request.kind(), request.audience(), request.school()).size());
 	}
 
 	@PostMapping("/test")
 	ResponseEntity<Void> test(@Valid @RequestBody TestEmailRequest request, @AuthenticationPrincipal AdminPrincipal admin) {
-		campaigns.sendTest(admin.email(), admin.name(), request.subject(), request.body());
+		campaigns.sendTest(admin.email(), admin.name(),
+				(request.kind() != null) ? request.kind() : CampaignKind.ANNOUNCEMENT, request.subject(),
+				request.body());
 		return ResponseEntity.noContent().build();
+	}
+
+	/** The draft rendered exactly as the test copy would be, for the composer's preview. Sends nothing. */
+	@PostMapping("/preview")
+	Map<String, String> preview(@Valid @RequestBody TestEmailRequest request,
+			@AuthenticationPrincipal AdminPrincipal admin) {
+		EmailMessage message = campaigns.sample(admin.email(), admin.name(),
+				(request.kind() != null) ? request.kind() : CampaignKind.ANNOUNCEMENT, request.subject(),
+				request.body());
+		return Map.of("subject", message.subject(), "html", message.html(), "text", message.text());
 	}
 
 	@PostMapping
 	ResponseEntity<EmailCampaign> send(@Valid @RequestBody CampaignRequest request,
 			@AuthenticationPrincipal AdminPrincipal admin) {
-		EmailCampaign campaign = campaigns.start(request.audience(), request.school(), request.subject(),
-				request.body(), admin.email());
+		EmailCampaign campaign = campaigns.start(request.kind(), request.audience(), request.school(),
+				request.subject(), request.body(), admin.email());
 		return ResponseEntity.status(HttpStatus.ACCEPTED).body(campaign);
 	}
 

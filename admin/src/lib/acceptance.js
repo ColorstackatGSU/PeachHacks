@@ -7,6 +7,20 @@ export function isHostSchool(school, hostName) {
   return name !== "" && String(school || "").trim().toLowerCase().startsWith(name);
 }
 
+// Same rule as the API: under the minimum age for students of other schools, and not at
+// the host school. Screens read the API's `ageReview`; this is for the mock API.
+export const needsAgeReview = (item, hostName, minimumAge) =>
+  Number(item.age) < minimumAge && !isHostSchool(item.school, hostName);
+
+// "Under 18, not Georgia State University", from the acceptance summary.
+export const ageReviewLabel = (summary) =>
+  summary?.ageReview ? `Under ${summary.ageReview.minimumAge}, not ${summary.hostSchool.name}` : "Age review needed";
+
+export const ageRuleText = (summary) =>
+  summary?.ageReview
+    ? `${summary.hostSchool.name} students are eligible at any age; students of other schools must be at least ${summary.ageReview.minimumAge}.`
+    : "Students of other schools must meet the minimum age.";
+
 // Mirrors the API's host-school share so a selection's effect can be shown before it is
 // saved. The small tolerance keeps "exactly at target" from failing on float rounding.
 export function hostShare(host, total, target) {

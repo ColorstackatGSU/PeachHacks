@@ -4,6 +4,8 @@ import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 
+import com.peachhacks.backend.acceptance.AgeReview;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -13,6 +15,9 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.transaction.annotation.Transactional;
 
 public interface RegistrationRepository extends JpaRepository<Registration, UUID> {
+
+	String AGE_REVIEW_FILTER = " and (:anyAgeReview = true or (:ageReview = true and " + AgeReview.NEEDED
+			+ ") or (:ageReview = false and not " + AgeReview.NEEDED + "))";
 
 	/** Emails are stored lower-cased; pass a lower-cased value. */
 	boolean existsByEmail(String email);
@@ -30,7 +35,8 @@ public interface RegistrationRepository extends JpaRepository<Registration, UUID
 	/**
 	 * checkedIn is about the general event and only applies when anyAttendance is false.
 	 * resume is '' (no filter), 'any', 'opted-in' or 'none'. confirmed is about the school
-	 * email and only applies when anyConfirmation is false.
+	 * email and only applies when anyConfirmation is false. ageReview only applies when
+	 * anyAgeReview is false; minimumAge, host and hostLength come from AgeReview.
 	 */
 	@Query(value = """
 			select r from Registration r
@@ -53,6 +59,7 @@ public interface RegistrationRepository extends JpaRepository<Registration, UUID
 				and (:anyConfirmation = true
 					or (:confirmed = true and r.schoolEmailConfirmedAt is not null)
 					or (:confirmed = false and r.schoolEmailConfirmedAt is null))
+			""" + AGE_REVIEW_FILTER + """
 			order by r.createdAt desc, r.id desc
 			""", countQuery = """
 			select count(r) from Registration r
@@ -75,12 +82,14 @@ public interface RegistrationRepository extends JpaRepository<Registration, UUID
 				and (:anyConfirmation = true
 					or (:confirmed = true and r.schoolEmailConfirmedAt is not null)
 					or (:confirmed = false and r.schoolEmailConfirmedAt is null))
-			""")
+			""" + AGE_REVIEW_FILTER)
 	Page<Registration> search(@Param("pattern") String pattern, @Param("school") String school,
 			@Param("anyStatus") boolean anyStatus, @Param("status") RegistrationStatus status,
 			@Param("anyAttendance") boolean anyAttendance, @Param("checkedIn") boolean checkedIn,
 			@Param("resume") String resume, @Param("anyConfirmation") boolean anyConfirmation,
-			@Param("confirmed") boolean confirmed, Pageable pageable);
+			@Param("confirmed") boolean confirmed, @Param("anyAgeReview") boolean anyAgeReview,
+			@Param("ageReview") boolean ageReview, @Param("minimumAge") int minimumAge, @Param("host") String host,
+			@Param("hostLength") int hostLength, Pageable pageable);
 
 	/**
 	 * Each row is a Registration and its CheckIn for the event (or null), people who still

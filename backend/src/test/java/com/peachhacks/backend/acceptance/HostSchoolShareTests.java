@@ -96,14 +96,19 @@ class HostSchoolShareTests {
 	}
 
 	@Test
-	void theTargetMustBeAFractionAndBothSettingsHaveDefaults() {
-		AcceptanceProperties defaults = new AcceptanceProperties(" ", null);
+	void theTargetMustBeAFractionAndEverySettingHasADefault() {
+		AcceptanceProperties defaults = new AcceptanceProperties(" ", null, null);
 		assertThat(defaults.hostSchoolName()).isEqualTo("Georgia State University");
 		assertThat(defaults.hostSchoolTarget()).isEqualByComparingTo("0.70");
+		assertThat(defaults.nonHostMinimumAge()).isEqualTo(18);
+		assertThat(new AcceptanceProperties(null, null, 21).nonHostMinimumAge()).isEqualTo(21);
 
-		assertThatThrownBy(() -> new AcceptanceProperties(null, new BigDecimal("70")))
+		assertThatThrownBy(() -> new AcceptanceProperties(null, new BigDecimal("70"), null))
 			.isInstanceOf(IllegalArgumentException.class)
 			.hasMessageContaining("HOST_SCHOOL_TARGET");
+		assertThatThrownBy(() -> new AcceptanceProperties(null, null, -1))
+			.isInstanceOf(IllegalArgumentException.class)
+			.hasMessageContaining("NON_HOST_MINIMUM_AGE");
 	}
 
 }

@@ -24,16 +24,25 @@ public class AudienceService {
 		this.jdbc = jdbc;
 	}
 
-	public List<Recipient> recipients(Audience audience, String school) {
+	/** Only an announcement leaves out people who unsubscribed. */
+	public List<Recipient> recipients(CampaignKind kind, Audience audience, String school) {
+		if (!kind.allows(audience)) {
+			throw ApiException.invalidField("audience",
+					"An event update can only go to people who registered. Choose registrants or accepted hackers.");
+		}
 		String schoolFilter = Texts.clean(school);
-		boolean registrants = (audience == Audience.REGISTRANTS);
-		String table = registrants ? "registrations" : "pre_registrations";
-		String otherTable = registrants ? "pre_registrations" : "registrations";
+		String table = audience.registered() ? "registrations" : "pre_registrations";
+		String otherTable = audience.registered() ? "pre_registrations" : "registrations";
 
 		StringBuilder sql = new StringBuilder(
-				"select t.email, t.first_name, t.last_name, t.unsubscribe_token from " + table + " t"
-						+ " where t.unsubscribed = false and not exists (select 1 from " + otherTable
-						+ " o where o.email = t.email and o.unsubscribed = true)");
+				"select t.email, t.first_name, t.last_name, t.unsubscribe_token from " + table + " t where true");
+		if (kind == CampaignKind.ANNOUNCEMENT) {
+			sql.append(" and t.unsubscribed = false and not exists (select 1 from " + otherTable
+					+ " o where o.email = t.email and o.unsubscribed = true)");
+		}
+		if (audience == Audience.ACCEPTED) {
+			sql.append(" and t.status = 'ACCEPTED' and t.acceptance_notified_at is not null");
+		}
 		if (audience == Audience.PRE_REGISTRANTS_NOT_REGISTERED) {
 			sql.append(" and not exists (select 1 from registrations r where r.email = t.email)");
 		}

@@ -12,6 +12,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import com.jayway.jsonpath.JsonPath;
 import com.peachhacks.backend.common.Csv;
 import com.peachhacks.backend.config.EmailProperties;
+import com.peachhacks.backend.email.EmailComposer.Content;
+import com.peachhacks.backend.email.EmailComposer.Footer;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -24,6 +26,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class EmailDeliveryTests {
 
+	private static final String LOGO = "src=\"https://www.peachhacks.com/assets/email-logo.png\"";
+
+	private static final byte[] PNG = { (byte) 0x89, 'P', 'N', 'G' };
+
 	private final List<String> requestBodies = new CopyOnWriteArrayList<>();
 
 	private final List<String> authorizationHeaders = new CopyOnWriteArrayList<>();
@@ -32,9 +38,14 @@ class EmailDeliveryTests {
 
 	private HttpServer server;
 
-	private final EmailComposer composer = new EmailComposer(new EmailProperties("", null,
-			"PeachHacks <hello@peachhacks.com>", "https://www.peachhacks.com/", "https://admin.peachhacks.com/",
-			Duration.ZERO));
+	private final EmailProperties properties = new EmailProperties("", null, "PeachHacks <hello@peachhacks.com>",
+			"https://www.peachhacks.com/", "https://admin.peachhacks.com/", Duration.ZERO);
+
+	private final EmailComposer composer = new EmailComposer(properties);
+
+	private final List<EmailMessage> sent = new ArrayList<>();
+
+	private final MailService mail = new MailService(sent::add, composer, Runnable::run, properties);
 
 	@BeforeEach
 	void startServer() throws Exception {
@@ -61,8 +72,8 @@ class EmailDeliveryTests {
 		ResendEmailSender sender = new ResendEmailSender("re_test_key", "PeachHacks <hello@peachhacks.com>",
 				"http://127.0.0.1:" + server.getAddress().getPort());
 
-		sender.send(composer.compose("ada@example.com", "Hi {{firstName}}", "Hello {{firstName}} {{lastName}}", "Ada",
-				"Lovelace", "tok123"));
+		sender.send(composer.composeCampaign("ada@example.com", "Hi {{firstName}}",
+				"Hello {{firstName}} {{lastName}}", "Ada", "Lovelace", Footer.announcement("tok123")));
 
 		assertThat(authorizationHeaders).containsExactly("Bearer re_test_key");
 		String json = requestBodies.get(0);
@@ -81,11 +92,9 @@ class EmailDeliveryTests {
 				"http://127.0.0.1:" + server.getAddress().getPort());
 		byte[] png = { (byte) 0x89, 'P', 'N', 'G', 1, 2, 3 };
 
-		sender.send(composer.compose("ada@example.com", "Hi", "Hello", "Ada", "L", null));
-		sender.send(composer.compose("ada@example.com", "Hi", "Hello", "Ada", "L", null)
-			.withAttachments(List.of(new EmailMessage.Attachment("ticket.png", "image/png", png, "ticket"),
-					new EmailMessage.Attachment("notes.txt", "text/plain", "hi".getBytes(StandardCharsets.UTF_8),
-							null))));
+		sender.send(plain());
+		sender.send(plain().withAttachments(List.of(new EmailMessage.Attachment("ticket.png", "image/png", png, "ticket"),
+				new EmailMessage.Attachment("notes.txt", "text/plain", "hi".getBytes(StandardCharsets.UTF_8), null))));
 
 		assertThat(requestBodies.get(0)).doesNotContain("\"attachments\"");
 		String json = requestBodies.get(1);
@@ -101,35 +110,30 @@ class EmailDeliveryTests {
 
 	@Test
 	void ticketEmailLinksToTheTicketAndCarriesTheQrCodeInlineAndAttached() {
-		EmailProperties properties = new EmailProperties("", null, null, "https://www.peachhacks.com/", null,
-				Duration.ZERO);
-		List<EmailMessage> sent = new ArrayList<>();
-		MailService mail = new MailService(sent::add, new EmailComposer(properties), Runnable::run, properties);
-		byte[] png = { (byte) 0x89, 'P', 'N', 'G' };
 		String url = "https://www.peachhacks.com/ticket?t=abc&x=1";
 
-		mail.sendTicket("ada@example.com", "Ada", url, png, null, "tok123");
+		mail.sendTicket("ada@example.com", "Ada", url, PNG, null);
 
 		assertThat(sent).hasSize(1);
 		EmailMessage message = sent.get(0);
 		assertThat(message.subject()).contains("You're in");
 		assertThat(message.text()).contains("Hi Ada,")
 			.contains("accepted")
-			.contains("Your ticket: " + url)
-			.doesNotContainIgnoringCase("wallet")
-			.doesNotContain(EmailComposer.BLOCK_MARKER);
+			.contains("View your ticket: " + url)
+			.doesNotContainIgnoringCase("wallet");
 		assertThat(message.html()).contains("href=\"https://www.peachhacks.com/ticket?t=abc&amp;x=1\"")
+			.contains(">View your ticket</a>")
 			.contains("src=\"cid:peachhacks-ticket\"")
-			.doesNotContainIgnoringCase("wallet")
-			.doesNotContain(EmailComposer.BLOCK_MARKER);
+			.contains(">You&#39;re in!</h1>")
+			.doesNotContainIgnoringCase("wallet");
 		assertThat(message.attachments()).hasSize(1);
 		EmailMessage.Attachment attachment = message.attachments().get(0);
 		assertThat(attachment.filename()).isEqualTo("peachhacks-ticket.png");
 		assertThat(attachment.contentType()).isEqualTo("image/png");
 		assertThat(attachment.contentId()).isEqualTo("peachhacks-ticket");
-		assertThat(attachment.content()).isEqualTo(png);
+		assertThat(attachment.content()).isEqualTo(PNG);
 
-		mail.sendTicket("ada@example.com", "Ada", url, png, "https://pay.google.com/gp/v/save/a.b.c", "tok123");
+		mail.sendTicket("ada@example.com", "Ada", url, PNG, "https://pay.google.com/gp/v/save/a.b.c");
 		assertThat(sent.get(1).text()).contains("Add to Google Wallet: https://pay.google.com/gp/v/save/a.b.c");
 		assertThat(sent.get(1).html())
 			.contains("href=\"https://pay.google.com/gp/v/save/a.b.c\"")
@@ -138,11 +142,7 @@ class EmailDeliveryTests {
 
 	@Test
 	void registrationConfirmationSaysATicketFollowsAcceptance() {
-		EmailProperties properties = new EmailProperties("", null, null, null, null, Duration.ZERO);
-		List<EmailMessage> sent = new ArrayList<>();
-		MailService mail = new MailService(sent::add, new EmailComposer(properties), Runnable::run, properties);
-
-		mail.sendRegistrationConfirmation("ada@example.com", "Ada", "tok123", null);
+		mail.sendRegistrationConfirmation("ada@example.com", "Ada", null);
 
 		assertThat(sent.get(0).text()).contains("We received your application")
 			.contains("If you are accepted, we will email you your ticket");
@@ -155,26 +155,159 @@ class EmailDeliveryTests {
 		ResendEmailSender sender = new ResendEmailSender("re_test_key", "PeachHacks <hello@peachhacks.com>",
 				"http://127.0.0.1:" + server.getAddress().getPort());
 
-		assertThatThrownBy(() -> sender.send(composer.compose("ada@example.com", "Hi", "Hello", "Ada", "L", null)))
-			.isInstanceOf(RestClientException.class);
+		assertThatThrownBy(() -> sender.send(plain())).isInstanceOf(RestClientException.class);
 	}
 
 	@Test
-	void composerEscapesHtmlAndAddsTheUnsubscribeLinkOnlyForBulkMail() {
-		EmailMessage bulk = composer.compose("ada@example.com", "Subject", "Hi {{ firstName }},\n\n<b>bold</b> & more\nnext line",
-				"<script>alert(1)</script>", "L", "tok/1+2");
+	void campaignBodiesAreEscapedAndOnlyAnnouncementsCarryTheUnsubscribeLink() {
+		EmailMessage bulk = composer.composeCampaign("ada@example.com", "Subject",
+				"Hi {{ firstName }},\n\n<b>bold</b> & more\nnext line", "<script>alert(1)</script>", "L",
+				Footer.announcement("tok/1+2"));
 
 		assertThat(bulk.html()).contains("Hi &lt;script&gt;alert(1)&lt;/script&gt;,")
 			.contains("&lt;b&gt;bold&lt;/b&gt; &amp; more<br>next line")
-			.doesNotContain("<script>")
+			.doesNotContain("<script")
+			.doesNotContain("<b>")
+			.contains(LOGO)
 			.contains("https://www.peachhacks.com/unsubscribe.html?token=tok%2F1%2B2");
 		assertThat(bulk.text()).contains("Hi <script>alert(1)</script>,")
 			.contains("Unsubscribe: https://www.peachhacks.com/unsubscribe.html?token=tok%2F1%2B2");
+		assertThat(bulk.headers()).containsEntry("List-Unsubscribe",
+				"<https://www.peachhacks.com/unsubscribe.html?token=tok%2F1%2B2>");
 
-		EmailMessage single = composer.compose("ada@example.com", "Subject", "Hello", "Ada", "L", null);
-		assertThat(single.html()).doesNotContain("unsubscribe");
-		assertThat(single.text()).isEqualTo("Hello");
-		assertThat(single.headers()).isEmpty();
+		EmailMessage update = composer.composeCampaign("ada@example.com", "Subject", "Hello", "Ada", "L",
+				Footer.REGISTERED);
+		assertThat(update.html()).doesNotContainIgnoringCase("unsubscribe")
+			.contains("You are receiving this because you registered for PeachHacks.");
+		assertThat(update.text()).startsWith("Hello")
+			.contains("You are receiving this because you registered for PeachHacks.")
+			.endsWith("https://www.peachhacks.com")
+			.doesNotContainIgnoringCase("unsubscribe");
+		assertThat(update.headers()).isEmpty();
+
+		EmailMessage sample = composer.composeCampaign("ada@example.com", "Subject", "Hello", "Ada", "L",
+				Footer.announcementSample());
+		assertThat(sample.text()).contains("Unsubscribe: https://www.peachhacks.com/unsubscribe.html");
+		assertThat(sample.headers()).as("a test copy has no token to unsubscribe").isEmpty();
+	}
+
+	@Test
+	void campaignUrlsBecomeLinksAndNothingElseIsMarkup() {
+		EmailMessage message = composer.composeCampaign("ada@example.com", "Subject", """
+				Register at https://www.peachhacks.com/register?a=1&b=<2>. Bring ID (see http://example.com/faq).
+
+				Not links: javascript:alert(1) ftp://example.com/file <a href="https://evil.example">click</a>
+				""", "Ada", "L", Footer.REGISTERED);
+
+		assertThat(message.html())
+			.contains("href=\"https://www.peachhacks.com/register?a=1&amp;b=\"")
+			.contains(">https://www.peachhacks.com/register?a=1&amp;b=</a>&lt;2&gt;. Bring ID")
+			.contains("href=\"http://example.com/faq\"")
+			.contains(">http://example.com/faq</a>).</p>")
+			.contains("javascript:alert(1) ftp://example.com/file &lt;a href=&quot;")
+			.doesNotContain("href=\"javascript")
+			.doesNotContain("href=\"ftp")
+			.doesNotContain("<a href=\"https://evil.example\">click");
+		assertThat(message.text()).contains("Register at https://www.peachhacks.com/register?a=1&b=<2>.");
+	}
+
+	@Test
+	void essentialEmailsSayWhyTheyWereSentAndNeverOfferToUnsubscribe() {
+		sendEverySystemEmail("Ada", "Grace");
+
+		assertThat(sent).hasSize(7);
+		for (EmailMessage message : sent) {
+			assertThat(message.headers()).as(message.subject()).doesNotContainKey("List-Unsubscribe");
+			assertThat(message.html()).as(message.subject())
+				.doesNotContainIgnoringCase("unsubscribe")
+				.contains("You are receiving this because");
+			assertThat(message.text()).as(message.subject())
+				.doesNotContainIgnoringCase("unsubscribe")
+				.contains("You are receiving this because");
+		}
+		assertThat(sent.get(0).text()).contains("because you signed up for PeachHacks.");
+		assertThat(sent.get(1).text()).contains("because you registered for PeachHacks.");
+		assertThat(sent.get(3).text()).contains("because you registered for PeachHacks.");
+		assertThat(sent.get(4).text()).contains("because you registered for PeachHacks.");
+	}
+
+	@Test
+	void everySystemEmailIsBrandedHasAHeadingAndATextAlternativeWithTheSameLinks() {
+		sendEverySystemEmail("Ada", "Grace");
+
+		for (EmailMessage message : sent) {
+			assertThat(message.html()).as(message.subject())
+				.startsWith("<!doctype html>")
+				.contains(LOGO)
+				.contains("alt=\"PeachHacks\"")
+				.containsPattern("<h1 [^>]*>[^<]+</h1>")
+				.contains("PeachHacks · ColorStack at Georgia State University")
+				.contains("mso-hide:all")
+				.doesNotContain("{{");
+			assertThat(message.text()).as(message.subject())
+				.contains("PeachHacks · ColorStack at Georgia State University")
+				.doesNotContain("<")
+				.doesNotContain("{{");
+		}
+		assertButton(sent.get(2), "Confirm your school email", "https://www.peachhacks.com/confirm-email?token=t&x=1");
+		assertButton(sent.get(3), "View your ticket", "https://www.peachhacks.com/ticket?t=abc");
+		assertButton(sent.get(4), "View your ticket", "https://www.peachhacks.com/ticket?t=abc");
+		assertButton(sent.get(4), "Add to Google Wallet", "https://pay.google.com/gp/v/save/a.b.c");
+		assertButton(sent.get(5), "Sign in to the admin site", "https://admin.peachhacks.com");
+		assertButton(sent.get(6), "Sign in to check-in", "https://admin.peachhacks.com");
+		assertThat(sent.get(0).html()).doesNotContain("v:roundrect");
+		assertThat(sent.get(1).html()).doesNotContain("v:roundrect");
+	}
+
+	@Test
+	void namesAreEscapedInEverySystemEmail() {
+		String name = "<script>alert('x')</script> & \"Ada\"";
+
+		sendEverySystemEmail(name, name);
+
+		for (EmailMessage message : sent) {
+			assertThat(message.html()).as(message.subject())
+				.doesNotContain("<script")
+				.doesNotContain("\"Ada\"")
+				.contains("&lt;script&gt;alert(&#39;x&#39;)&lt;/script&gt; &amp; &quot;Ada&quot;");
+			assertThat(message.text()).as(message.subject()).contains(name);
+		}
+	}
+
+	@Test
+	void schoolEmailConfirmationSaysWhoWeAreAndMasksThePersonalAddress() {
+		mail.sendSchoolEmailConfirmation("ada@school.edu", "Ada", "jordan.lee@gmail.com",
+				"https://www.peachhacks.com/confirm-email?token=t", 14);
+
+		EmailMessage message = sent.get(0);
+		assertThat(message.to()).isEqualTo("ada@school.edu");
+		assertThat(message.subject()).isEqualTo("Confirm your school email for PeachHacks");
+		assertThat(message.text()).startsWith("Hi Ada,")
+			.contains("a student hackathon run by ColorStack at Georgia State University")
+			.contains("with the personal email j***@gmail.com.")
+			.contains("Confirm your school email: https://www.peachhacks.com/confirm-email?token=t")
+			.contains("The link works for 14 days.")
+			.contains("If this was not you, you can ignore this email")
+			.doesNotContain("jordan")
+			.doesNotContainIgnoringCase("urgent")
+			.doesNotContainIgnoringCase("immediately");
+		assertThat(message.html()).contains("j***@gmail.com").doesNotContain("jordan");
+		assertThat(MailService.mask("a@b.co")).isEqualTo("a***@b.co");
+		assertThat(MailService.mask("not-an-address")).doesNotContain("not-an-address");
+	}
+
+	@Test
+	void aLocalWebBaseUrlStillUsesTheLiveLogoSoItLoadsInARealInbox() {
+		EmailComposer local = new EmailComposer(
+				new EmailProperties("", null, null, "http://localhost:5173", null, Duration.ZERO));
+
+		EmailMessage message = local.compose("ada@example.com", "Subject",
+				Content.of("Preview", "Heading", List.of("Hello")).withPrimary("Open", "http://localhost:5173/x"),
+				Footer.REGISTERED);
+
+		assertThat(message.html()).contains(LOGO)
+			.contains("href=\"http://localhost:5173/x\"")
+			.contains("href=\"http://localhost:5173\"");
 	}
 
 	@Test
@@ -191,11 +324,6 @@ class EmailDeliveryTests {
 
 	@Test
 	void adminWelcomeLinksToTheAdminSiteAndNeverCarriesAPassword() {
-		EmailProperties properties = new EmailProperties("", null, null, null, "https://admin.peachhacks.com/",
-				Duration.ZERO);
-		List<EmailMessage> sent = new ArrayList<>();
-		MailService mail = new MailService(sent::add, new EmailComposer(properties), Runnable::run, properties);
-
 		mail.sendAdminWelcome("new@peachhacks.com", "Ada", "Grace");
 
 		assertThat(sent).hasSize(1);
@@ -206,15 +334,11 @@ class EmailDeliveryTests {
 			.contains("https://admin.peachhacks.com")
 			.doesNotContain("admin.peachhacks.com/")
 			.doesNotContainIgnoringCase("unsubscribe");
+		assertThat(message.headers()).isEmpty();
 	}
 
 	@Test
 	void volunteerWelcomeExplainsCheckInAndNeverCarriesAPassword() {
-		EmailProperties properties = new EmailProperties("", null, null, null, "https://admin.peachhacks.com/",
-				Duration.ZERO);
-		List<EmailMessage> sent = new ArrayList<>();
-		MailService mail = new MailService(sent::add, new EmailComposer(properties), Runnable::run, properties);
-
 		mail.sendVolunteerWelcome("door@peachhacks.com", "Ada", "Grace");
 
 		assertThat(sent).hasSize(1);
@@ -228,6 +352,38 @@ class EmailDeliveryTests {
 			.contains("ask them for it")
 			.doesNotContain("as an admin")
 			.doesNotContainIgnoringCase("unsubscribe");
+	}
+
+	/**
+	 * In order: pre-registration, registration, school email, ticket, ticket with a wallet
+	 * link, admin welcome, volunteer welcome.
+	 */
+	private void sendEverySystemEmail(String name, String addedBy) {
+		mail.sendPreRegistrationConfirmation("ada@example.com", name, "ada@school.edu");
+		mail.sendRegistrationConfirmation("ada@example.com", name, "ada@school.edu");
+		mail.sendSchoolEmailConfirmation("ada@school.edu", name, "ada@example.com",
+				"https://www.peachhacks.com/confirm-email?token=t&x=1", 14);
+		mail.sendTicket("ada@example.com", name, "https://www.peachhacks.com/ticket?t=abc", PNG, null);
+		mail.sendTicketNow("ada@example.com", name, "https://www.peachhacks.com/ticket?t=abc", PNG,
+				"https://pay.google.com/gp/v/save/a.b.c");
+		mail.sendAdminWelcome("new@peachhacks.com", name, addedBy);
+		mail.sendVolunteerWelcome("door@peachhacks.com", name, addedBy);
+	}
+
+	/** A button for Outlook (VML) and for everyone else, the bare URL under it, and the same URL in the text. */
+	private static void assertButton(EmailMessage message, String label, String url) {
+		String escaped = url.replace("&", "&amp;");
+		assertThat(message.html()).as(message.subject())
+			.contains("<v:roundrect xmlns:v=\"urn:schemas-microsoft-com:vml\" xmlns:w=\"urn:schemas-microsoft-com:office:word\" href=\""
+					+ escaped + "\"")
+			.contains(">" + label + "</center>")
+			.contains(">" + label + "</a>")
+			.contains(">" + escaped + "</a>");
+		assertThat(message.text()).as(message.subject()).contains(label + ": " + url);
+	}
+
+	private EmailMessage plain() {
+		return composer.composeCampaign("ada@example.com", "Hi", "Hello", "Ada", "L", Footer.REGISTERED);
 	}
 
 }

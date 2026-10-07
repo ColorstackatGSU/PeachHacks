@@ -13,7 +13,15 @@ import {
   Tag,
   useToast,
 } from "../components/ui.jsx";
-import { formatShare, formatTarget, gapText, isNotified, projectAcceptedShare } from "../lib/acceptance.js";
+import {
+  ageReviewLabel,
+  ageRuleText,
+  formatShare,
+  formatTarget,
+  gapText,
+  isNotified,
+  projectAcceptedShare,
+} from "../lib/acceptance.js";
 import {
   STATUSES,
   errorText,
@@ -429,16 +437,13 @@ function ResumeBookDialog({ onClose }) {
   );
 }
 
-function RegistrationDrawer({ id, fallbackName, onClose, onChanged, onDeleted }) {
+function RegistrationDrawer({ id, fallbackName, acceptance, onClose, onChanged }) {
   const notify = useToast();
   const load = useCallback((signal) => api.registration(id, signal), [id]);
   const detail = useAsync(load);
   const [updated, setUpdated] = useState(null);
   const [savingStatus, setSavingStatus] = useState(null);
   const [statusError, setStatusError] = useState(null);
-  const [confirming, setConfirming] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [deleteError, setDeleteError] = useState(null);
   // A status that needs a confirmation before it is saved.
   const [pendingStatus, setPendingStatus] = useState(null);
 
@@ -461,36 +466,16 @@ function RegistrationDrawer({ id, fallbackName, onClose, onChanged, onDeleted })
     }
   };
 
-  const confirmDelete = async () => {
-    setDeleting(true);
-    setDeleteError(null);
-    try {
-      await api.deleteRegistration(id);
-      notify(`Deleted the registration for ${fullName(reg)}.`);
-      setConfirming(false);
-      onDeleted();
-    } catch (error) {
-      setDeleteError(error);
-      setDeleting(false);
-    }
-  };
-
   return (
     <Modal
       variant="drawer"
       title={reg ? fullName(reg) : fallbackName || "Registration"}
       onDismiss={onClose}
-      busy={deleting}
       footer={
         reg && (
-          <>
-            <button type="button" className="btn btn-danger-quiet" onClick={() => setConfirming(true)}>
-              Delete registration
-            </button>
-            <button type="button" className="btn" onClick={onClose}>
-              Close
-            </button>
-          </>
+          <button type="button" className="btn" onClick={onClose}>
+            Close
+          </button>
         )
       }
     >
@@ -534,6 +519,12 @@ function RegistrationDrawer({ id, fallbackName, onClose, onChanged, onDeleted })
                 You can still change the status.
               </p>
             )}
+            {reg.ageReview && (
+              <p className="notice" role="note">
+                <strong>{ageReviewLabel(acceptance)}.</strong> They gave their age as {reg.age}. {ageRuleText(acceptance)}{" "}
+                You can still change the status.
+              </p>
+            )}
             <InlineError error={statusError} />
           </section>
           <SchoolEmailPanel reg={reg} />
@@ -571,6 +562,12 @@ function RegistrationDrawer({ id, fallbackName, onClose, onChanged, onDeleted })
           {!reg.schoolEmailConfirmed && (
             <p className="notice notice-warn">Their school email is not confirmed. Accept only if you are satisfied they are a current student.</p>
           )}
+          {reg.ageReview && (
+            <p className="notice notice-warn">
+              <strong>{ageReviewLabel(acceptance)}.</strong> They gave their age as {reg.age}. {ageRuleText(acceptance)}{" "}
+              Accept only if you have checked that they are eligible. You can still accept them.
+            </p>
+          )}
         </ConfirmDialog>
       )}
       {pendingStatus && pendingStatus !== "ACCEPTED" && reg && (
@@ -592,35 +589,29 @@ function RegistrationDrawer({ id, fallbackName, onClose, onChanged, onDeleted })
           </p>
         </ConfirmDialog>
       )}
-      {confirming && reg && (
-        <ConfirmDialog
-          title="Delete this registration?"
-          confirmLabel="Delete"
-          danger
-          busy={deleting}
-          error={deleteError}
-          onConfirm={confirmDelete}
-          onCancel={() => setConfirming(false)}
-        >
-          <p>
-            The full registration for <strong>{fullName(reg)}</strong> ({reg.email}) will be permanently deleted,
-            including every answer on the form. This cannot be undone.
-          </p>
-        </ConfirmDialog>
-      )}
     </Modal>
   );
 }
 
-export default function Registrations() {
+const statusFromQuery = (query) => {
+  const value = String(query?.get("status") || "").toUpperCase();
+  return STATUSES.includes(value) ? value : "";
+};
+const flagFromQuery = (query, name) => {
+  const value = query?.get(name);
+  return value === "true" || value === "false" ? value : "";
+};
+
+export default function Registrations({ query }) {
   const notify = useToast();
   const ids = useId();
   const [search, setSearch] = useState("");
   const [school, setSchool] = useState("");
-  const [status, setStatus] = useState("");
+  const [status, setStatus] = useState(() => statusFromQuery(query));
   const [checkedIn, setCheckedIn] = useState("");
   const [resume, setResume] = useState("");
   const [schoolEmailConfirmed, setSchoolEmailConfirmed] = useState("");
+  const [ageReview, setAgeReview] = useState(() => flagFromQuery(query, "ageReview"));
   const [page, setPage] = useState(0);
   const [exporting, setExporting] = useState(false);
   const [resumeBook, setResumeBook] = useState(false);
@@ -634,8 +625,8 @@ export default function Registrations() {
 
   const q = useDebounced(search.trim(), 300);
   const filters = useMemo(
-    () => ({ q, school, status, checkedIn, resume, schoolEmailConfirmed }),
-    [q, school, status, checkedIn, resume, schoolEmailConfirmed],
+    () => ({ q, school, status, checkedIn, resume, schoolEmailConfirmed, ageReview }),
+    [q, school, status, checkedIn, resume, schoolEmailConfirmed, ageReview],
   );
   const load = useCallback((signal) => api.registrations({ page, size: PAGE_SIZE, ...filters }, signal), [page, filters]);
   const result = useAsync(load);
@@ -672,6 +663,8 @@ export default function Registrations() {
   const bulkChanging = bulkStatus ? chosen.filter((item) => item.status !== bulkStatus) : [];
   const bulkProjected = acceptance.data && bulkStatus ? projectAcceptedShare(acceptance.data, chosen, bulkStatus) : null;
   const bulkAlreadyTold = bulkStatus && bulkStatus !== "ACCEPTED" ? chosen.filter(isNotified).length : 0;
+  const bulkAgeReview = bulkStatus === "ACCEPTED" ? bulkChanging.filter((item) => item.ageReview).length : 0;
+  const flagLabel = ageReviewLabel(acceptance.data);
 
   const applyBulk = async () => {
     setBulkSaving(true);
@@ -679,7 +672,11 @@ export default function Registrations() {
     try {
       const outcome = await api.setRegistrationStatuses(chosen.map((item) => item.id), bulkStatus);
       const gone = outcome.notFound > 0 ? ` ${plural(outcome.notFound, "registration")} no longer existed.` : "";
-      notify(`${plural(outcome.changed, "registration")} marked ${statusLabel(bulkStatus).toLowerCase()}.${gone}`);
+      const flagged =
+        outcome.acceptedAgeReview > 0
+          ? ` ${plural(outcome.acceptedAgeReview, "of them needs", "of them need")} an age review (${flagLabel}).`
+          : "";
+      notify(`${plural(outcome.changed, "registration")} marked ${statusLabel(bulkStatus).toLowerCase()}.${gone}${flagged}`);
       setBulkStatus(null);
       setSelected(new Map());
       result.reload();
@@ -690,7 +687,7 @@ export default function Registrations() {
       setBulkSaving(false);
     }
   };
-  const filtered = Boolean(q || school || status || checkedIn || resume || schoolEmailConfirmed);
+  const filtered = Boolean(q || school || status || checkedIn || resume || schoolEmailConfirmed || ageReview);
 
   const exportCsv = async () => {
     setExporting(true);
@@ -771,6 +768,14 @@ export default function Registrations() {
             <option value="false">Unconfirmed</option>
           </select>
         </div>
+        <div className="field">
+          <label htmlFor={`${ids}-age-review`}>Age eligibility</label>
+          <select id={`${ids}-age-review`} value={ageReview} onChange={resetTo(setAgeReview)}>
+            <option value="">Everyone</option>
+            <option value="true">{flagLabel}</option>
+            <option value="false">No age review needed</option>
+          </select>
+        </div>
         {filtered && (
           <button
             type="button"
@@ -782,6 +787,7 @@ export default function Registrations() {
               setCheckedIn("");
               setResume("");
               setSchoolEmailConfirmed("");
+              setAgeReview("");
               setPage(0);
             }}
           >
@@ -882,7 +888,10 @@ export default function Registrations() {
                       <span className="cell-note muted small">School email unconfirmed</span>
                     )}
                   </td>
-                  <td data-label="School">{item.school}</td>
+                  <td data-label="School">
+                    {item.school}
+                    {item.ageReview && <span className="cell-note cell-flag">{flagLabel}</span>}
+                  </td>
                   <td data-label="Level of study">{item.levelOfStudy}</td>
                   <td data-label="Country">{item.countryOfResidence}</td>
                   <td data-label="Age">{item.age}</td>
@@ -944,6 +953,14 @@ export default function Registrations() {
               Target {formatTarget(acceptance.data.hostSchool.target)}: {gapText(bulkProjected, acceptance.data.hostSchool.name).toLowerCase()}.
             </p>
           )}
+          {bulkAgeReview > 0 && (
+            <p className="notice notice-warn">
+              <strong>
+                {plural(bulkAgeReview, "of these people is", "of these people are")} flagged: {flagLabel}.
+              </strong>{" "}
+              {ageRuleText(acceptance.data)} You can still accept them.
+            </p>
+          )}
           {bulkAlreadyTold > 0 && (
             <p className="notice notice-warn">
               <strong>{plural(bulkAlreadyTold, "person", "people")} here {bulkAlreadyTold === 1 ? "has" : "have"} already been told they are accepted.</strong>{" "}
@@ -958,6 +975,7 @@ export default function Registrations() {
           key={open.id}
           id={open.id}
           fallbackName={fullName(open)}
+          acceptance={acceptance.data}
           onClose={() => setOpen(null)}
           onChanged={() => {
             // The row may be selected with its old status; drop it so projections stay right.
@@ -968,12 +986,6 @@ export default function Registrations() {
               return next;
             });
             result.reload();
-            stats.reload();
-          }}
-          onDeleted={() => {
-            setOpen(null);
-            if (items.length === 1 && page > 0) setPage(page - 1);
-            else result.reload();
             stats.reload();
           }}
         />

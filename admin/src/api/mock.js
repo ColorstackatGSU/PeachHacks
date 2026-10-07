@@ -1,7 +1,7 @@
 // Loaded only by the dev server when VITE_MOCK_API=1 (see client.js); never part
 // of a production build. Data resets on every page reload.
 
-import { hostShare, isHostSchool } from "../lib/acceptance.js";
+import { hostShare, isHostSchool, needsAgeReview } from "../lib/acceptance.js";
 
 const DAY = 86400000;
 const now = Date.now();
@@ -24,6 +24,8 @@ const uuid = () => {
 };
 
 const HOST_SCHOOL = { name: "Georgia State University", target: 0.7 };
+const NON_HOST_MINIMUM_AGE = 18;
+const ageReview = (r) => needsAgeReview(r, HOST_SCHOOL.name, NON_HOST_MINIMUM_AGE);
 const SCHOOLS = [
   "Georgia State University",
   "Georgia State University Perimeter College",
@@ -227,6 +229,7 @@ function detail(r) {
     ticketToken: accepted ? ticketToken : null,
     ticketUrl: accepted ? `https://www.peachhacks.com/ticket?t=${ticketToken}` : null,
     googleWalletUrl: null,
+    ageReview: ageReview(r),
   };
 }
 
@@ -239,6 +242,7 @@ function tokenFrom(code) {
 const campaigns = [
   {
     id: uuid(),
+    kind: "ANNOUNCEMENT",
     subject: "Thanks for pre-registering for PeachHacks",
     body: "Hi {{firstName}},\n\nThanks for pre-registering. We will email you the moment registration opens.\n\nThe PeachHacks team",
     audience: "PRE_REGISTRANTS",
@@ -290,6 +294,7 @@ function filterPeople(list, params) {
   const checkedIn = params.get("checkedIn") || "";
   const resume = params.get("resume") || "";
   const schoolEmailConfirmed = params.get("schoolEmailConfirmed") || "";
+  const ageReviewFilter = params.get("ageReview") || "";
   return list
     .filter((item) => {
       if (school && item.school !== school) return false;
@@ -299,6 +304,7 @@ function filterPeople(list, params) {
       if (resume === "none" && item.resume) return false;
       if (resume === "opted-in" && !(item.resume && item.resumeOptIn)) return false;
       if (schoolEmailConfirmed && String(Boolean(item.schoolEmailConfirmed)) !== schoolEmailConfirmed) return false;
+      if (ageReviewFilter && String(ageReview(item)) !== ageReviewFilter) return false;
       if (!q) return true;
       return `${item.firstName} ${item.lastName} ${item.email} ${item.schoolEmail || ""}`.toLowerCase().includes(q);
     })
@@ -323,6 +329,7 @@ function summary(r) {
     id, firstName, lastName, email, schoolEmail, schoolEmailConfirmed, schoolEmailConfirmedAt, school, levelOfStudy, countryOfResidence, age, status, acceptedAt, acceptanceNotifiedAt, createdAt, checkedInAt,
     hasResume: Boolean(r.resume),
     resumeOptIn: Boolean(r.resume && r.resumeOptIn),
+    ageReview: ageReview(r),
   };
 }
 
@@ -341,11 +348,27 @@ const csvResponse = (rows, name) =>
     headers: { "Content-Type": "text/csv", "Content-Disposition": `attachment; filename="${name}"` },
   });
 
-function audienceEmails(audience, school) {
+const REGISTERED_AUDIENCES = ["REGISTRANTS", "ACCEPTED"];
+const CAMPAIGN_KINDS = ["EVENT_UPDATE", "ANNOUNCEMENT"];
+
+function campaignErrors(body) {
+  const fieldErrors = {};
+  if (!CAMPAIGN_KINDS.includes(body.kind)) fieldErrors.kind = "Choose the kind of email";
+  else if (body.kind === "EVENT_UPDATE" && !REGISTERED_AUDIENCES.includes(body.audience)) {
+    fieldErrors.audience = "An event update can only go to people who registered. Choose registrants or accepted hackers.";
+  }
+  return fieldErrors;
+}
+
+// Only an announcement leaves out people who unsubscribed.
+function audienceEmails(kind, audience, school) {
   const registered = registeredEmails();
+  const unsubscribed = new Set(preRegistrations.filter((p) => p.unsubscribed).map((p) => p.email.toLowerCase()));
   let pool;
-  if (audience === "REGISTRANTS") pool = registrations.map((r) => ({ email: r.email, school: r.school }));
-  else pool = preRegistrations.filter((p) => !p.unsubscribed);
+  if (REGISTERED_AUDIENCES.includes(audience)) {
+    pool = registrations.filter((r) => audience === "REGISTRANTS" || (r.status === "ACCEPTED" && r.acceptanceNotifiedAt));
+  } else pool = preRegistrations;
+  if (kind === "ANNOUNCEMENT") pool = pool.filter((p) => !unsubscribed.has(p.email.toLowerCase()));
   if (audience === "PRE_REGISTRANTS_NOT_REGISTERED") pool = pool.filter((p) => !registered.has(p.email.toLowerCase()));
   if (school) pool = pool.filter((p) => p.school === school);
   return new Set(pool.map((p) => p.email.toLowerCase()));
@@ -434,6 +457,11 @@ function acceptanceSummary() {
       checkedIn: shareOf(registrations.filter((r) => findCheckIn(r.id, generalEvent.id))),
     },
     acceptedBySchool: bySchool(accepted).map((row) => ({ ...row, host: isHostSchool(row.school, HOST_SCHOOL.name) })),
+    ageReview: {
+      minimumAge: NON_HOST_MINIMUM_AGE,
+      total: registrations.filter(ageReview).length,
+      accepted: accepted.filter(ageReview).length,
+    },
     send: acceptanceSend,
   };
 }
@@ -502,10 +530,11 @@ function handle(method, path, params, body, token) {
     }
     if (method === "DELETE") {
       if (events[index].general) return fail(400, "VALIDATION_ERROR", "The general check-in event cannot be deleted.");
-      const [removed] = events.splice(index, 1);
-      for (let i = checkIns.length - 1; i >= 0; i -= 1) {
-        if (checkIns[i].eventId === removed.id) checkIns.splice(i, 1);
+      const checkedIn = checkIns.filter((c) => c.eventId === events[index].id).length;
+      if (checkedIn > 0) {
+        return fail(409, "EVENT_HAS_CHECK_INS", `"${events[index].name}" has ${checkedIn} check-in${checkedIn === 1 ? "" : "s"}, so it cannot be deleted. Undo the check-ins first if it really should go.`);
       }
+      events.splice(index, 1);
       return respond(204);
     }
   }
@@ -600,20 +629,13 @@ function handle(method, path, params, body, token) {
           resume_opt_in: Boolean(r.resume && r.resumeOptIn),
           school_email: r.schoolEmail,
           school_email_confirmed: r.schoolEmailConfirmed,
+          age_review: ageReview(r),
         };
         ["ticketToken", "resume", "resumeOptIn", "schoolEmail", "schoolEmailConfirmed", "schoolEmailConfirmedAt"].forEach((key) => delete row[key]);
         return row;
       }),
       "registrations.csv",
     );
-  }
-
-  const preMatch = /^\/admin\/pre-registrations\/([^/]+)$/.exec(path);
-  if (preMatch && method === "DELETE") {
-    const index = preRegistrations.findIndex((p) => p.id === preMatch[1]);
-    if (index < 0) return fail(404, "NOT_FOUND", "Pre-registration not found.");
-    preRegistrations.splice(index, 1);
-    return respond(204);
   }
 
   const schoolEmailResend = /^\/admin\/(pre-registrations|registrations)\/([^/]+)\/school-email\/resend$/.exec(path);
@@ -641,8 +663,13 @@ function handle(method, path, params, body, token) {
     if (ids.length > 500) return fail(400, "VALIDATION_ERROR", "Please check the highlighted fields.", { ids: "At most 500 registrations at a time" });
     if (!VALID_STATUSES.includes(body.status)) return fail(400, "VALIDATION_ERROR", "Invalid status.", { status: "Unknown status" });
     const found = registrations.filter((r) => ids.includes(r.id));
-    const changed = found.filter((r) => changeStatus(r, body.status)).length;
-    return respond(200, { changed, unchanged: found.length - changed, notFound: ids.length - found.length });
+    const changed = found.filter((r) => changeStatus(r, body.status));
+    return respond(200, {
+      changed: changed.length,
+      unchanged: found.length - changed.length,
+      notFound: ids.length - found.length,
+      acceptedAgeReview: body.status === "ACCEPTED" ? changed.filter(ageReview).length : 0,
+    });
   }
 
   if (path === "/admin/acceptances/summary") {
@@ -656,7 +683,7 @@ function handle(method, path, params, body, token) {
       registrations
         .filter(isWaiting)
         .sort((a, b) => (a.acceptedAt < b.acceptedAt ? -1 : 1))
-        .map((r) => ({ id: r.id, firstName: r.firstName, lastName: r.lastName, email: r.email, school: r.school, host: isHost(r), acceptedAt: r.acceptedAt })),
+        .map((r) => ({ id: r.id, firstName: r.firstName, lastName: r.lastName, email: r.email, school: r.school, host: isHost(r), ageReview: ageReview(r), acceptedAt: r.acceptedAt })),
     );
   }
   if (path === "/admin/acceptances/send") {
@@ -706,13 +733,6 @@ function handle(method, path, params, body, token) {
       changeStatus(registrations[index], body.status);
       return respond(200, detail(registrations[index]));
     }
-    if (method === "DELETE") {
-      const [removed] = registrations.splice(index, 1);
-      for (let i = checkIns.length - 1; i >= 0; i -= 1) {
-        if (checkIns[i].registrationId === removed.id) checkIns.splice(i, 1);
-      }
-      return respond(204);
-    }
   }
 
   if (path === "/admin/settings") {
@@ -721,7 +741,22 @@ function handle(method, path, params, body, token) {
   }
 
   if (path === "/admin/emails/recipient-count" && method === "POST") {
-    return respond(200, { recipientCount: audienceEmails(body.audience, body.school).size });
+    const fieldErrors = campaignErrors(body);
+    if (Object.keys(fieldErrors).length) return fail(400, "VALIDATION_ERROR", "Check the highlighted fields.", fieldErrors);
+    return respond(200, { recipientCount: audienceEmails(body.kind, body.audience, body.school).size });
+  }
+  if (path === "/admin/emails/preview" && method === "POST") {
+    const escape = (value) => String(value || "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+    const [firstName = "", ...rest] = currentAdmin.name.split(/\s+/);
+    const personal = (value) => String(value || "").replaceAll("{{firstName}}", firstName).replaceAll("{{lastName}}", rest.join(" "));
+    const paragraphs = personal(body.body).split(/\n\s*\n/).map((p) => `<p>${escape(p.trim()).replaceAll("\n", "<br>")}</p>`).join("");
+    const footer = body.kind === "EVENT_UPDATE"
+      ? "You are receiving this because you registered for PeachHacks."
+      : "You are receiving this because you signed up for PeachHacks. <u>Unsubscribe</u>";
+    return respond(200, {
+      subject: personal(body.subject),
+      html: `<!doctype html><html><body style="margin:0;font-family:Arial,sans-serif;color:#233e56;background:#f4f6ed"><div style="background:#001f3a;color:#FCA324;padding:24px;font-size:24px;font-weight:bold;text-align:center">PeachHacks</div><div style="background:#fff;padding:24px">${paragraphs}</div><div style="background:#001f3a;color:#b9d3dc;padding:16px 24px;font-size:12px">${footer}<br>Mock preview: the real API renders the full design.</div></body></html>`,
+    });
   }
   if (path === "/admin/emails/test" && method === "POST") {
     if (!body.subject || !body.body) return fail(400, "VALIDATION_ERROR", "Subject and body are required.");
@@ -729,17 +764,18 @@ function handle(method, path, params, body, token) {
   }
   if (path === "/admin/emails") {
     if (method === "POST") {
-      const fieldErrors = {};
+      const fieldErrors = campaignErrors(body);
       if (!body.subject?.trim()) fieldErrors.subject = "Subject is required";
       if (!body.body?.trim()) fieldErrors.body = "Body is required";
       if (Object.keys(fieldErrors).length) return fail(400, "VALIDATION_ERROR", "Check the highlighted fields.", fieldErrors);
       const campaign = {
         id: uuid(),
+        kind: body.kind,
         subject: body.subject,
         body: body.body,
         audience: body.audience,
         school: body.school || null,
-        recipientCount: audienceEmails(body.audience, body.school).size,
+        recipientCount: audienceEmails(body.kind, body.audience, body.school).size,
         sentCount: 0,
         failedCount: 0,
         status: "QUEUED",

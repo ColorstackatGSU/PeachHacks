@@ -4,7 +4,7 @@ import { BarList } from "../components/Charts.jsx";
 import { ShareHeadline, ShareRow } from "../components/HostShare.jsx";
 import { ConfirmDialog } from "../components/Modal.jsx";
 import { EmptyBlock, ErrorBlock, LoadingBlock, PageHeader, Spinner, Tag, useToast } from "../components/ui.jsx";
-import { formatShare, formatTarget, gapText } from "../lib/acceptance.js";
+import { ageReviewLabel, ageRuleText, formatShare, formatTarget, gapText } from "../lib/acceptance.js";
 import { errorText, formatDateTime, formatNumber, fullName, plural } from "../lib/format.js";
 import { useAcceptanceSummary, useAsync } from "../lib/hooks.js";
 import { href } from "../lib/router.js";
@@ -120,7 +120,7 @@ function SendPanel({ summary, onSent }) {
   );
 }
 
-function Bucket({ waiting }) {
+function Bucket({ waiting, flagLabel }) {
   const notify = useToast();
   const [moving, setMoving] = useState(null);
   const items = waiting.data || [];
@@ -176,6 +176,7 @@ function Bucket({ waiting }) {
                   </td>
                   <td data-label="School">
                     {person.school} {person.host && <Tag tone="accepted">Host school</Tag>}
+                    {person.ageReview && <span className="cell-note cell-flag">{flagLabel}</span>}
                   </td>
                   <td data-label="Accepted" className="cell-nowrap">
                     {person.acceptedAt ? formatDateTime(person.acceptedAt) : <span className="muted">Not recorded</span>}
@@ -226,6 +227,7 @@ export default function Acceptances() {
   }
 
   const { totals, shares, hostSchool } = data;
+  const flaggedAccepted = data.ageReview?.accepted || 0;
   return (
     <>
       <PageHeader title="Acceptances" description={description}>
@@ -237,6 +239,17 @@ export default function Acceptances() {
 
       {summary.error && (
         <ErrorBlock title="Could not refresh; showing the last numbers loaded" error={summary.error} onRetry={summary.reload} />
+      )}
+
+      {flaggedAccepted > 0 && (
+        <p className="notice notice-warn" role="note">
+          <strong>
+            {plural(flaggedAccepted, "accepted person is", "accepted people are")} under {data.ageReview.minimumAge} and not
+            at {hostSchool.name}.
+          </strong>{" "}
+          {ageRuleText(data)} Nothing is blocked; check that they are eligible.{" "}
+          <a href={href("/registrations?status=ACCEPTED&ageReview=true")}>Review them in Registrations</a>
+        </p>
       )}
 
       <section className="card share-card" aria-labelledby="share-heading">
@@ -271,7 +284,7 @@ export default function Acceptances() {
       </section>
 
       <SendPanel summary={data} onSent={reloadAll} />
-      <Bucket waiting={waiting} />
+      <Bucket waiting={waiting} flagLabel={ageReviewLabel(data)} />
 
       <section className="card" aria-labelledby="accepted-school-heading">
         <div className="card-head">

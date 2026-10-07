@@ -9,6 +9,7 @@ import com.peachhacks.backend.common.ApiException;
 import com.peachhacks.backend.common.Texts;
 import com.peachhacks.backend.config.EmailProperties;
 import com.peachhacks.backend.email.AudienceService.Recipient;
+import com.peachhacks.backend.email.EmailComposer.Footer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -60,12 +61,9 @@ public class CampaignService {
 	}
 
 	/** Synchronous so the caller learns whether the send worked. */
-	public void sendTest(String to, String name, String subject, String body) {
-		String[] names = Texts.orEmpty(name).split("\\s+", 2);
-		String firstName = names[0];
-		String lastName = (names.length > 1) ? names[1] : "";
+	public void sendTest(String to, String name, CampaignKind kind, String subject, String body) {
 		try {
-			sender.send(composer.compose(to, subject, body, firstName, lastName, null));
+			sender.send(sample(to, name, kind, subject, body));
 		}
 		catch (RuntimeException ex) {
 			log.warn("Test email to {} failed: {}", to, ex.toString());
@@ -74,27 +72,41 @@ public class CampaignService {
 		}
 	}
 
-	public EmailCampaign start(Audience audience, String school, String subject, String body, String createdBy) {
+	/**
+	 * The message as the named person would get it. An announcement shows the unsubscribe
+	 * link, but it is not live: there is no recipient whose token it could carry.
+	 */
+	public EmailMessage sample(String to, String name, CampaignKind kind, String subject, String body) {
+		String[] names = Texts.orEmpty(name).split("\\s+", 2);
+		String lastName = (names.length > 1) ? names[1] : "";
+		Footer footer = (kind == CampaignKind.EVENT_UPDATE) ? Footer.REGISTERED : Footer.announcementSample();
+		return composer.composeCampaign(to, subject, body, names[0], lastName, footer);
+	}
+
+	public EmailCampaign start(CampaignKind kind, Audience audience, String school, String subject, String body,
+			String createdBy) {
 		String schoolFilter = Texts.clean(school);
-		List<Recipient> recipients = audiences.recipients(audience, schoolFilter);
+		List<Recipient> recipients = audiences.recipients(kind, audience, schoolFilter);
 		if (recipients.isEmpty()) {
 			throw ApiException.invalidField("audience", "Nobody matches this audience, so there is nothing to send.");
 		}
 		EmailCampaign campaign = campaigns
-			.save(new EmailCampaign(subject.strip(), body, audience, schoolFilter, recipients.size(), createdBy));
+			.save(new EmailCampaign(kind, subject.strip(), body, audience, schoolFilter, recipients.size(),
+					createdBy));
 		UUID id = campaign.getId();
 		try {
-			campaignExecutor.execute(() -> run(id, subject, body, recipients));
+			campaignExecutor.execute(() -> run(id, kind, subject, body, recipients));
 		}
 		catch (RuntimeException ex) {
 			campaigns.complete(id, EmailCampaign.Status.FAILED, 0, 0, Instant.now());
 			throw ex;
 		}
-		log.info("Queued email campaign {} to {} recipient(s), audience {}", id, recipients.size(), audience);
+		log.info("Queued email campaign {} ({}) to {} recipient(s), audience {}", id, kind, recipients.size(),
+				audience);
 		return campaign;
 	}
 
-	private void run(UUID id, String subject, String body, List<Recipient> recipients) {
+	private void run(UUID id, CampaignKind kind, String subject, String body, List<Recipient> recipients) {
 		int sent = 0;
 		int failed = 0;
 		try {
@@ -102,8 +114,10 @@ public class CampaignService {
 			for (int i = 0; i < recipients.size(); i++) {
 				Recipient recipient = recipients.get(i);
 				try {
-					sender.send(composer.compose(recipient.email(), subject, body, recipient.firstName(),
-							recipient.lastName(), recipient.unsubscribeToken()));
+					Footer footer = (kind == CampaignKind.EVENT_UPDATE) ? Footer.REGISTERED
+							: Footer.announcement(recipient.unsubscribeToken());
+					sender.send(composer.composeCampaign(recipient.email(), subject, body, recipient.firstName(),
+							recipient.lastName(), footer));
 					sent++;
 				}
 				catch (RuntimeException ex) {

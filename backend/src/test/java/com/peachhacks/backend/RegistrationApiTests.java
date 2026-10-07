@@ -17,6 +17,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
 import javax.imageio.ImageIO;
+import javax.sql.DataSource;
 
 import com.google.zxing.BinaryBitmap;
 import com.google.zxing.RGBLuminanceSource;
@@ -30,6 +31,7 @@ import com.peachhacks.backend.common.ApiException;
 import com.peachhacks.backend.common.Tokens;
 import com.peachhacks.backend.email.EmailMessage;
 import com.peachhacks.backend.email.EmailSender;
+import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -102,6 +104,9 @@ class RegistrationApiTests {
 
 	@Autowired
 	private AuthService authService;
+
+	@Autowired
+	private DataSource dataSource;
 
 	@Test
 	void preRegistrationIsIdempotentOnEmail() throws Exception {
@@ -228,12 +233,11 @@ class RegistrationApiTests {
 			.andExpect(content().string(containsString(",'+1 404 555 0100,")))
 			.andExpect(content().string(containsString("Vegetarian; Halal")));
 
-		mockMvc.perform(delete("/admin/registrations/" + id).header("Authorization", token))
-			.andExpect(status().isNoContent());
-		mockMvc.perform(get("/admin/registrations/" + id).header("Authorization", token))
+		mockMvc.perform(get("/admin/registrations/" + UUID.randomUUID()).header("Authorization", token))
 			.andExpect(status().isNotFound())
 			.andExpect(jsonPath("$.code").value("NOT_FOUND"));
 		setRegistrationOpen(token, false);
+		deleteRegistrations(id);
 	}
 
 	@Test
@@ -474,11 +478,11 @@ class RegistrationApiTests {
 		mockMvc
 			.perform(get("/admin/registrations/export.csv").param("school", school).header("Authorization", admin))
 			.andExpect(content()
-				.string(containsString(",linkedinUrl,checked_in_at,has_resume,resume_opt_in,school_email,school_email_confirmed\r\n")))
+				.string(containsString(",linkedinUrl,checked_in_at,has_resume,resume_opt_in,school_email,school_email_confirmed,age_review\r\n")))
 			.andExpect(content().string(containsString(prefix + "a@example.com")))
 			.andExpect(content().string(containsString(prefix + "b@example.com")))
 			.andExpect(content()
-				.string(containsString("," + checkedInAt + ",false,false,ada.lovelace@school.edu,false\r\n")));
+				.string(containsString("," + checkedInAt + ",false,false,ada.lovelace@school.edu,false,false\r\n")));
 		mockMvc
 			.perform(get("/admin/registrations/export.csv").param("school", school)
 				.param("checkedIn", "true")
@@ -511,7 +515,7 @@ class RegistrationApiTests {
 			.andExpect(status().isNoContent());
 		mockMvc.perform(get("/admin/check-in").header("Authorization", volunteer.token()))
 			.andExpect(status().isUnauthorized());
-		deleteRegistrations(admin, firstId, secondId);
+		deleteRegistrations(firstId, secondId);
 	}
 
 	@Test
@@ -621,14 +625,30 @@ class RegistrationApiTests {
 				.header("Authorization", admin))
 			.andExpect(status().isOk());
 		mockMvc.perform(delete("/admin/events/" + eventId).header("Authorization", admin))
+			.andExpect(status().isConflict())
+			.andExpect(jsonPath("$.code").value("EVENT_HAS_CHECK_INS"))
+			.andExpect(jsonPath("$.message", containsString("1 check-in,")));
+		mockMvc.perform(get("/admin/events").header("Authorization", admin))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$[?(@.id == '%s')].checkedIn".formatted(eventId)).value(1));
+		assertThat(jdbc.sql("select count(*) from check_ins where registration_id = :id")
+			.param("id", UUID.fromString(registrationId))
+			.query(Long.class)
+			.single()).as("a refused delete removes no check-in").isEqualTo(2);
+
+		mockMvc
+			.perform(delete("/admin/check-in/" + registrationId).param("eventId", eventId)
+				.header("Authorization", admin))
+			.andExpect(status().isOk());
+		mockMvc.perform(delete("/admin/events/" + eventId).header("Authorization", admin))
 			.andExpect(status().isNoContent());
 		mockMvc.perform(delete("/admin/events/" + eventId).header("Authorization", admin))
 			.andExpect(status().isNotFound());
 		assertThat(jdbc.sql("select count(*) from check_ins where registration_id = :id")
 			.param("id", UUID.fromString(registrationId))
 			.query(Long.class)
-			.single()).as("only the general check-in survives the workshop").isEqualTo(1);
-		deleteRegistrations(admin, registrationId);
+			.single()).as("the general check-in is untouched").isEqualTo(1);
+		deleteRegistrations(registrationId);
 	}
 
 	@Test
@@ -699,11 +719,10 @@ class RegistrationApiTests {
 			.andExpect(jsonPath("$.item.generalCheckedIn").value(true));
 		scan(volunteer.token(), token, UUID.randomUUID().toString(), false).andExpect(status().isNotFound());
 
-		mockMvc.perform(delete("/admin/events/" + eventId).header("Authorization", admin))
-			.andExpect(status().isNoContent());
 		mockMvc.perform(delete("/admin/admins/" + volunteer.id()).header("Authorization", admin))
 			.andExpect(status().isNoContent());
-		deleteRegistrations(admin, acceptedId, pendingId);
+		deleteRegistrations(acceptedId, pendingId);
+		jdbc.sql("delete from events where id = :id").param("id", UUID.fromString(eventId)).update();
 	}
 
 	@Test
@@ -774,7 +793,7 @@ class RegistrationApiTests {
 		setStatus(admin, registrationId, "REJECTED");
 		mockMvc.perform(get("/public/tickets/" + token)).andExpect(status().isNotFound());
 		mockMvc.perform(get("/public/tickets/" + token + "/qr.png")).andExpect(status().isNotFound());
-		deleteRegistrations(admin, registrationId);
+		deleteRegistrations(registrationId);
 	}
 
 	@Test
@@ -812,7 +831,7 @@ class RegistrationApiTests {
 		mockMvc
 			.perform(post("/admin/registrations/" + UUID.randomUUID() + "/ticket-email").header("Authorization", admin))
 			.andExpect(status().isNotFound());
-		deleteRegistrations(admin, registrationId);
+		deleteRegistrations(registrationId);
 	}
 
 	@Test
@@ -828,7 +847,7 @@ class RegistrationApiTests {
 				get("/admin/registrations/" + registrationId),
 				patch("/admin/registrations/" + registrationId).contentType(MediaType.APPLICATION_JSON)
 					.content("{\"status\":\"REJECTED\"}"),
-				delete("/admin/registrations/" + registrationId), get("/admin/registrations/export.csv"),
+				get("/admin/registrations/export.csv"),
 				post("/admin/registrations/" + registrationId + "/ticket-email"),
 				post("/admin/registrations/status").contentType(MediaType.APPLICATION_JSON)
 					.content("{\"ids\":[\"%s\"],\"status\":\"REJECTED\"}".formatted(registrationId)),
@@ -839,7 +858,7 @@ class RegistrationApiTests {
 				get("/admin/registrations/" + registrationId + "/resume"),
 				delete("/admin/registrations/" + registrationId + "/resume"), get("/admin/resumes/export.zip"),
 				get("/admin/pre-registrations"),
-				get("/admin/pre-registrations/export.csv"), delete("/admin/pre-registrations/" + UUID.randomUUID()),
+				get("/admin/pre-registrations/export.csv"),
 				get("/admin/stats"), get("/admin/settings"),
 				put("/admin/settings").contentType(MediaType.APPLICATION_JSON).content("{\"registrationOpen\":true}"),
 				get("/admin/emails"), post("/admin/emails").contentType(MediaType.APPLICATION_JSON).content(json),
@@ -875,7 +894,7 @@ class RegistrationApiTests {
 			.andExpect(status().isNoContent());
 		mockMvc.perform(delete("/admin/admins/" + volunteer.id()).header("Authorization", admin))
 			.andExpect(status().isNoContent());
-		deleteRegistrations(admin, registrationId);
+		deleteRegistrations(registrationId);
 	}
 
 	@Test
@@ -913,7 +932,7 @@ class RegistrationApiTests {
 	}
 
 	@Test
-	void campaignAudienceCountsSkipUnsubscribedAndRegistered() throws Exception {
+	void announcementAudienceCountsSkipUnsubscribedAndRegistered() throws Exception {
 		String token = bearer();
 		String school = uniqueSchool();
 		String registeredEmail = unique() + "@example.com";
@@ -926,7 +945,8 @@ class RegistrationApiTests {
 		register(registrationJson(registeredEmail, school, true, true)).andExpect(status().isCreated());
 		setRegistrationOpen(token, false);
 
-		recipientCount(token, "PRE_REGISTRANTS", school).andExpect(jsonPath("$.recipientCount").value(3));
+		recipientCount(token, "ANNOUNCEMENT", "PRE_REGISTRANTS", school)
+			.andExpect(jsonPath("$.recipientCount").value(3));
 
 		mockMvc
 			.perform(post("/public/unsubscribe").contentType(MediaType.APPLICATION_JSON)
@@ -942,16 +962,24 @@ class RegistrationApiTests {
 				.content("{\"token\":\"%s\"}".formatted(unsubscribeToken)))
 			.andExpect(status().isNoContent());
 
-		recipientCount(token, "PRE_REGISTRANTS", school).andExpect(jsonPath("$.recipientCount").value(2));
-		recipientCount(token, "PRE_REGISTRANTS_NOT_REGISTERED", school)
+		recipientCount(token, "ANNOUNCEMENT", "PRE_REGISTRANTS", school)
+			.andExpect(jsonPath("$.recipientCount").value(2));
+		recipientCount(token, "ANNOUNCEMENT", "PRE_REGISTRANTS_NOT_REGISTERED", school)
 			.andExpect(jsonPath("$.recipientCount").value(1));
-		recipientCount(token, "REGISTRANTS", school).andExpect(jsonPath("$.recipientCount").value(1));
+		recipientCount(token, "ANNOUNCEMENT", "REGISTRANTS", school).andExpect(jsonPath("$.recipientCount").value(1));
 		mockMvc
 			.perform(post("/admin/emails/recipient-count").header("Authorization", token)
 				.contentType(MediaType.APPLICATION_JSON)
-				.content("{\"audience\":\"PRE_REGISTRANTS\",\"school\":null}"))
+				.content("{\"kind\":\"ANNOUNCEMENT\",\"audience\":\"PRE_REGISTRANTS\",\"school\":null}"))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.recipientCount").isNumber());
+		mockMvc
+			.perform(post("/admin/emails/recipient-count").header("Authorization", token)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"audience\":\"PRE_REGISTRANTS\"}"))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+			.andExpect(jsonPath("$.fieldErrors.kind").isNotEmpty());
 
 		mockMvc
 			.perform(post("/admin/emails/test").header("Authorization", token)
@@ -962,10 +990,11 @@ class RegistrationApiTests {
 			.perform(post("/admin/emails").header("Authorization", token)
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("""
-						{"audience":"PRE_REGISTRANTS","school":"%s","subject":"Registration is open","body":"Hi {{firstName}},\\n\\nCome register."}
+						{"kind":"ANNOUNCEMENT","audience":"PRE_REGISTRANTS","school":"%s","subject":"Registration is open","body":"Hi {{firstName}},\\n\\nCome register."}
 						""".formatted(school)))
 			.andExpect(status().isAccepted())
 			.andExpect(jsonPath("$.recipientCount").value(2))
+			.andExpect(jsonPath("$.kind").value("ANNOUNCEMENT"))
 			.andExpect(jsonPath("$.audience").value("PRE_REGISTRANTS"))
 			.andExpect(jsonPath("$.createdBy").value(ADMIN_EMAIL))
 			.andReturn()
@@ -985,9 +1014,190 @@ class RegistrationApiTests {
 		mockMvc.perform(get("/admin/emails").header("Authorization", token))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$[0].id").value(campaignId))
+			.andExpect(jsonPath("$[0].kind").value("ANNOUNCEMENT"))
 			.andExpect(jsonPath("$[0].sentCount").value(2))
 			.andExpect(jsonPath("$[0].failedCount").value(0))
 			.andExpect(jsonPath("$[0].completedAt").isNotEmpty());
+	}
+
+	@Test
+	void eventUpdatesReachUnsubscribedRegistrantsAndAnnouncementsSkipThem() throws Exception {
+		String token = bearer();
+		String school = uniqueSchool();
+		String staysEmail = unique() + "@example.com";
+		String unsubscribedEmail = unique() + "@example.com";
+		String preOnlyEmail = unique() + "@example.com";
+		preRegister("Mary", "Jackson", preOnlyEmail, school, "mary@school.edu").andExpect(status().isCreated());
+		setRegistrationOpen(token, true);
+		String stays = registeredId(staysEmail, school);
+		String unsubscribed = registeredId(unsubscribedEmail, school);
+		setRegistrationOpen(token, false);
+		mockMvc
+			.perform(post("/public/unsubscribe").contentType(MediaType.APPLICATION_JSON)
+				.content("{\"token\":\"%s\"}".formatted(jdbc
+					.sql("select unsubscribe_token from registrations where email = :email")
+					.param("email", unsubscribedEmail)
+					.query(String.class)
+					.single())))
+			.andExpect(status().isNoContent());
+
+		recipientCount(token, "ANNOUNCEMENT", "REGISTRANTS", school).andExpect(jsonPath("$.recipientCount").value(1));
+		recipientCount(token, "EVENT_UPDATE", "REGISTRANTS", school).andExpect(jsonPath("$.recipientCount").value(2));
+		recipientCount(token, "ANNOUNCEMENT", "PRE_REGISTRANTS", school)
+			.andExpect(jsonPath("$.recipientCount").value(1));
+
+		for (String audience : List.of("PRE_REGISTRANTS", "PRE_REGISTRANTS_NOT_REGISTERED")) {
+			String json = """
+					{"kind":"EVENT_UPDATE","audience":"%s","school":"%s","subject":"Doors open at 9","body":"Bring a laptop."}
+					""".formatted(audience, school);
+			for (String path : List.of("/admin/emails/recipient-count", "/admin/emails")) {
+				mockMvc
+					.perform(post(path).header("Authorization", token)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(json))
+					.andExpect(status().isBadRequest())
+					.andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+					.andExpect(jsonPath("$.fieldErrors.audience").isNotEmpty());
+			}
+		}
+		mockMvc
+			.perform(post("/admin/emails").header("Authorization", token)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"audience\":\"REGISTRANTS\",\"subject\":\"Doors open at 9\",\"body\":\"Bring a laptop.\"}"))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.fieldErrors.kind").isNotEmpty());
+
+		sendCampaign(token, "EVENT_UPDATE", "REGISTRANTS", school, "Doors open at 9", 2);
+		for (String email : List.of(staysEmail, unsubscribedEmail)) {
+			EmailMessage update = emailsTo(email, "Doors open at 9", 1).get(0);
+			assertThat(update.headers()).doesNotContainKey("List-Unsubscribe");
+			assertThat(update.html()).doesNotContainIgnoringCase("unsubscribe");
+			assertThat(update.text()).doesNotContainIgnoringCase("unsubscribe")
+				.contains("You are receiving this because you registered for PeachHacks.");
+		}
+		assertThat(emailsTo(preOnlyEmail, "Doors open at 9", 0)).isEmpty();
+
+		sendCampaign(token, "ANNOUNCEMENT", "REGISTRANTS", school, "Sponsor news", 1);
+		EmailMessage announcement = emailsTo(staysEmail, "Sponsor news", 1).get(0);
+		assertThat(announcement.headers().get("List-Unsubscribe")).contains("/unsubscribe.html?token=");
+		assertThat(announcement.html()).contains(">Unsubscribe</a>");
+		assertThat(announcement.text()).contains("Unsubscribe: ");
+		assertThat(emailsTo(unsubscribedEmail, "Sponsor news", 0)).isEmpty();
+
+		mockMvc
+			.perform(post("/admin/emails/test").header("Authorization", token)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"kind\":\"EVENT_UPDATE\",\"subject\":\"Footer check update\",\"body\":\"Hello\"}"))
+			.andExpect(status().isNoContent());
+		mockMvc
+			.perform(post("/admin/emails/test").header("Authorization", token)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"kind\":\"ANNOUNCEMENT\",\"subject\":\"Footer check news\",\"body\":\"Hello\"}"))
+			.andExpect(status().isNoContent());
+		assertThat(emailsTo(ADMIN_EMAIL, "Footer check update", 1).get(0).text())
+			.doesNotContainIgnoringCase("unsubscribe")
+			.contains("because you registered for PeachHacks.");
+		assertThat(emailsTo(ADMIN_EMAIL, "Footer check news", 1).get(0).text()).contains("Unsubscribe: ");
+
+		mockMvc
+			.perform(post("/admin/emails/preview").header("Authorization", token)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"kind\":\"EVENT_UPDATE\",\"subject\":\"Preview only {{firstName}}\",\"body\":\"<b>Hello</b> https://www.peachhacks.com\"}"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.subject").value("Preview only Test"))
+			.andExpect(jsonPath("$.html", containsString("&lt;b&gt;Hello&lt;/b&gt; <a ")))
+			.andExpect(jsonPath("$.html", containsString("/assets/email-logo.png")))
+			.andExpect(jsonPath("$.html", not(containsString("nsubscribe"))))
+			.andExpect(jsonPath("$.text", containsString("because you registered for PeachHacks.")));
+		mockMvc
+			.perform(post("/admin/emails/preview").header("Authorization", token)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"kind\":\"ANNOUNCEMENT\",\"subject\":\"Preview only\",\"body\":\"Hello\"}"))
+			.andExpect(jsonPath("$.html", containsString(">Unsubscribe</a>")));
+		assertThat(emailsTo(ADMIN_EMAIL, "Preview only", 0)).as("a preview sends nothing").isEmpty();
+
+		mockMvc.perform(get("/admin/emails").header("Authorization", token))
+			.andExpect(jsonPath("$[0].kind").value("ANNOUNCEMENT"))
+			.andExpect(jsonPath("$[0].subject").value("Sponsor news"))
+			.andExpect(jsonPath("$[1].kind").value("EVENT_UPDATE"));
+		deleteRegistrations(stays, unsubscribed);
+	}
+
+	@Test
+	void theAcceptedAudienceIsOnlyPeopleWhoHaveBeenToldTheyAreAccepted() throws Exception {
+		String token = bearer();
+		String school = uniqueSchool();
+		String toldEmail = unique() + "@example.com";
+		String waitingEmail = unique() + "@example.com";
+		String pendingEmail = unique() + "@example.com";
+		setRegistrationOpen(token, true);
+		String told = registeredId(toldEmail, school);
+		String waiting = registeredId(waitingEmail, school);
+		String pending = registeredId(pendingEmail, school);
+		setRegistrationOpen(token, false);
+		setStatus(token, told, "ACCEPTED");
+		setStatus(token, waiting, "ACCEPTED");
+		mockMvc.perform(post("/admin/registrations/" + told + "/ticket-email").header("Authorization", token))
+			.andExpect(status().isNoContent());
+
+		recipientCount(token, "EVENT_UPDATE", "ACCEPTED", school).andExpect(jsonPath("$.recipientCount").value(1));
+		recipientCount(token, "ANNOUNCEMENT", "ACCEPTED", school).andExpect(jsonPath("$.recipientCount").value(1));
+		recipientCount(token, "EVENT_UPDATE", "REGISTRANTS", school).andExpect(jsonPath("$.recipientCount").value(3));
+
+		sendCampaign(token, "EVENT_UPDATE", "ACCEPTED", school, "Where to park", 1);
+		assertThat(emailsTo(toldEmail, "Where to park", 1)).hasSize(1);
+		assertThat(emailsTo(waitingEmail, "Where to park", 0)).as("accepted but not told yet").isEmpty();
+		assertThat(emailsTo(pendingEmail, "Where to park", 0)).isEmpty();
+
+		deleteRegistrations(told, waiting, pending);
+	}
+
+	@Test
+	void campaignsSentBeforeTheKindExistedBecomeAnnouncements() {
+		String schema = "v7_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+		Flyway.configure().dataSource(dataSource).schemas(schema).target("6").load().migrate();
+		jdbc.sql("""
+				insert into %s.email_campaigns (id, subject, body, audience, created_by)
+				values (gen_random_uuid(), 'Old', 'Body', 'REGISTRANTS', 'someone@peachhacks.com')
+				""".formatted(schema)).update();
+
+		Flyway.configure().dataSource(dataSource).schemas(schema).load().migrate();
+
+		assertThat(jdbc.sql("select kind from %s.email_campaigns".formatted(schema)).query(String.class).list())
+			.containsExactly("ANNOUNCEMENT");
+		jdbc.sql("drop schema %s cascade".formatted(schema)).update();
+	}
+
+	@Test
+	void registrationsAndPreRegistrationsCannotBeDeletedThroughTheApi() throws Exception {
+		String token = bearer();
+		String school = uniqueSchool();
+		String email = unique() + "@example.com";
+		String created = preRegister("Ada", "Lovelace", email, school, "ada@school.edu")
+			.andExpect(status().isCreated())
+			.andReturn()
+			.getResponse()
+			.getContentAsString();
+		String preRegistrationId = JsonPath.read(created, "$.id");
+		setRegistrationOpen(token, true);
+		String registrationId = registeredId(email, school);
+		setRegistrationOpen(token, false);
+
+		mockMvc.perform(delete("/admin/registrations/" + registrationId).header("Authorization", token))
+			.andExpect(status().isMethodNotAllowed())
+			.andExpect(jsonPath("$.code").value("METHOD_NOT_ALLOWED"));
+		mockMvc.perform(delete("/admin/pre-registrations/" + preRegistrationId).header("Authorization", token))
+			.andExpect(status().is4xxClientError());
+
+		mockMvc.perform(get("/admin/registrations/" + registrationId).header("Authorization", token))
+			.andExpect(status().isOk());
+		mockMvc.perform(get("/admin/pre-registrations").param("school", school).header("Authorization", token))
+			.andExpect(jsonPath("$.total").value(1));
+
+		deleteRegistrations(registrationId);
+		jdbc.sql("delete from pre_registrations where id = :id")
+			.param("id", UUID.fromString(preRegistrationId))
+			.update();
 	}
 
 	@Test
@@ -1062,7 +1272,7 @@ class RegistrationApiTests {
 		mockMvc
 			.perform(get("/admin/registrations/export.csv").param("school", school).header("Authorization", admin))
 			.andExpect(status().isOk())
-			.andExpect(content().string(containsString(",true,true,ada.lovelace@school.edu,false\r\n")));
+			.andExpect(content().string(containsString(",true,true,ada.lovelace@school.edu,false,false\r\n")));
 		mockMvc.perform(get("/admin/stats").header("Authorization", admin))
 			.andExpect(jsonPath("$.registrations.withResume")
 				.value((int) count("select count(*) from registration_resumes")))
@@ -1083,7 +1293,7 @@ class RegistrationApiTests {
 		mockMvc.perform(get("/admin/registrations").param("school", school).header("Authorization", admin))
 			.andExpect(jsonPath("$.items[0].hasResume").value(false))
 			.andExpect(jsonPath("$.items[0].resumeOptIn").value(false));
-		deleteRegistrations(admin, id);
+		deleteRegistrations(id);
 	}
 
 	@Test
@@ -1125,7 +1335,7 @@ class RegistrationApiTests {
 			.getResponse()
 			.getContentAsString();
 		setRegistrationOpen(admin, false);
-		deleteRegistrations(admin, JsonPath.<String>read(created, "$.id"));
+		deleteRegistrations(JsonPath.<String>read(created, "$.id"));
 	}
 
 	@Test
@@ -1160,7 +1370,7 @@ class RegistrationApiTests {
 			.andExpect(jsonPath("$.total").value(0));
 		mockMvc.perform(get("/admin/registrations/" + id + "/resume").header("Authorization", admin))
 			.andExpect(status().isNotFound());
-		deleteRegistrations(admin, id);
+		deleteRegistrations(id);
 	}
 
 	@Test
@@ -1230,7 +1440,7 @@ class RegistrationApiTests {
 				.header("Authorization", admin))
 			.andExpect(jsonPath("$.total").value(2));
 
-		deleteRegistrations(admin, shared, attended, pending, notOptedIn, noResume);
+		deleteRegistrations(shared, attended, pending, notOptedIn, noResume);
 		assertThat(count("select count(*) from registration_resumes")).isZero();
 	}
 
@@ -1247,7 +1457,11 @@ class RegistrationApiTests {
 		assertThat(links).hasSize(1);
 		assertThat(links.get(0).subject()).isEqualTo("Confirm your school email for PeachHacks");
 		assertThat(links.get(0).text()).contains("Hi Ada,").contains("http://localhost:5173/confirm-email?token=");
-		assertThat(links.get(0).html()).contains("confirm-email?token=").contains("Confirm my school email");
+		assertThat(links.get(0).text()).contains("with the personal email " + email.charAt(0) + "***@example.com")
+			.doesNotContain(email);
+		assertThat(links.get(0).html()).contains("confirm-email?token=")
+			.contains(">Confirm your school email</a>")
+			.doesNotContain(email);
 		assertThat(links.get(0).headers()).isEmpty();
 		assertThat(confirmationEmails(email, 0)).as("nothing to confirm is sent to the personal address").isEmpty();
 		assertThat(emailsTo(email, "You're pre-registered", 1).get(0).text())
@@ -1375,8 +1589,8 @@ class RegistrationApiTests {
 			.perform(get("/admin/registrations/export.csv").param("school", school)
 				.param("schoolEmailConfirmed", "true")
 				.header("Authorization", admin))
-			.andExpect(content().string(containsString("resume_opt_in,school_email,school_email_confirmed\r\n")))
-			.andExpect(content().string(containsString("," + sameSchoolEmail + ",true\r\n")))
+			.andExpect(content().string(containsString("resume_opt_in,school_email,school_email_confirmed,age_review\r\n")))
+			.andExpect(content().string(containsString("," + sameSchoolEmail + ",true,false\r\n")))
 			.andExpect(content().string(not(containsString(otherSchoolEmail))));
 		mockMvc.perform(get("/admin/stats").header("Authorization", admin))
 			.andExpect(jsonPath("$.registrations.schoolEmailConfirmed").isNumber());
@@ -1384,9 +1598,7 @@ class RegistrationApiTests {
 		// Acceptance is the organizers' call: an unconfirmed school email does not block it.
 		setStatus(admin, changed, "ACCEPTED");
 
-		deleteRegistrations(admin, same, changed);
-		assertThat(pairCount(changedEmail, otherSchoolEmail)).as("the registration's pair goes with it").isZero();
-		assertThat(pairCount(sameEmail, sameSchoolEmail)).as("the pre-registration still uses this pair").isEqualTo(1);
+		deleteRegistrations(same, changed);
 	}
 
 	@Test
@@ -1507,11 +1719,10 @@ class RegistrationApiTests {
 			.andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
 		assertThat(confirmationEmails(schoolEmail, 3)).hasSize(2);
 
-		deleteRegistrations(admin, registrationId);
-		mockMvc.perform(delete("/admin/pre-registrations/" + preRegistrationId).header("Authorization", admin))
-			.andExpect(status().isNoContent());
-		assertThat(count("select count(*) from school_email_confirmations where school_email in ('" + schoolEmail
-				+ "', '" + preSchoolEmail + "')")).isZero();
+		deleteRegistrations(registrationId);
+		jdbc.sql("delete from pre_registrations where id = :id")
+			.param("id", UUID.fromString(preRegistrationId))
+			.update();
 	}
 
 	@Test
@@ -1536,7 +1747,7 @@ class RegistrationApiTests {
 					admin))
 			.andExpect(status().isBadRequest())
 			.andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
-		deleteRegistrations(admin, registrationId);
+		deleteRegistrations(registrationId);
 	}
 
 	private ResultActions confirm(String token) throws Exception {
@@ -1575,14 +1786,6 @@ class RegistrationApiTests {
 		Matcher matcher = CONFIRM_LINK.matcher(message.text());
 		assertThat(matcher.find()).as("confirmation link in %s", message.text()).isTrue();
 		return matcher.group(1);
-	}
-
-	private long pairCount(String email, String schoolEmail) {
-		return jdbc.sql("select count(*) from school_email_confirmations where email = :email and school_email = :schoolEmail")
-			.param("email", email)
-			.param("schoolEmail", schoolEmail)
-			.query(Long.class)
-			.single();
 	}
 
 	private static String withSchoolEmail(String json, String schoolEmail) {
@@ -1646,10 +1849,10 @@ class RegistrationApiTests {
 		return JsonPath.read(created, "$.id");
 	}
 
-	private void deleteRegistrations(String adminToken, String... ids) throws Exception {
+	/** Test clean-up only: the API has no way to delete a registration. */
+	private void deleteRegistrations(String... ids) {
 		for (String id : ids) {
-			mockMvc.perform(delete("/admin/registrations/" + id).header("Authorization", adminToken))
-				.andExpect(status().isNoContent());
+			jdbc.sql("delete from registrations where id = :id").param("id", UUID.fromString(id)).update();
 		}
 	}
 
@@ -1716,12 +1919,49 @@ class RegistrationApiTests {
 			.andExpect(jsonPath("$.registrationOpen").value(open));
 	}
 
-	private ResultActions recipientCount(String token, String audience, String school) throws Exception {
+	private ResultActions recipientCount(String token, String kind, String audience, String school)
+			throws Exception {
 		return mockMvc
 			.perform(post("/admin/emails/recipient-count").header("Authorization", token)
 				.contentType(MediaType.APPLICATION_JSON)
-				.content("{\"audience\":\"%s\",\"school\":\"%s\"}".formatted(audience, school)))
+				.content("{\"kind\":\"%s\",\"audience\":\"%s\",\"school\":\"%s\"}".formatted(kind, audience,
+						school)))
 			.andExpect(status().isOk());
+	}
+
+	private String registeredId(String email, String school) throws Exception {
+		String created = register(registrationJson(email, school, true, true)).andExpect(status().isCreated())
+			.andReturn()
+			.getResponse()
+			.getContentAsString();
+		return JsonPath.read(created, "$.id");
+	}
+
+	/** Starts a campaign to one school and waits until it has been sent. */
+	private void sendCampaign(String token, String kind, String audience, String school, String subject,
+			int recipients) throws Exception {
+		String campaign = mockMvc
+			.perform(post("/admin/emails").header("Authorization", token)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+						{"kind":"%s","audience":"%s","school":"%s","subject":"%s","body":"Hi {{firstName}},\\n\\nDetails inside."}
+						""".formatted(kind, audience, school, subject)))
+			.andExpect(status().isAccepted())
+			.andExpect(jsonPath("$.kind").value(kind))
+			.andExpect(jsonPath("$.recipientCount").value(recipients))
+			.andReturn()
+			.getResponse()
+			.getContentAsString();
+		UUID id = UUID.fromString(JsonPath.read(campaign, "$.id"));
+		String status = null;
+		for (int attempt = 0; attempt < 100 && !"SENT".equals(status); attempt++) {
+			Thread.sleep(100);
+			status = jdbc.sql("select status from email_campaigns where id = :id")
+				.param("id", id)
+				.query(String.class)
+				.single();
+		}
+		assertThat(status).isEqualTo("SENT");
 	}
 
 	private static String registrationJson(String email, String school, boolean codeOfConduct, boolean dataSharing) {

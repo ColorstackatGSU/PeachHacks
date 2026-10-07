@@ -22,6 +22,9 @@ public class EmailCampaign {
 	@Id
 	private UUID id;
 
+	@Enumerated(EnumType.STRING)
+	private CampaignKind kind;
+
 	private String subject;
 
 	private String body;
@@ -49,9 +52,10 @@ public class EmailCampaign {
 	protected EmailCampaign() {
 	}
 
-	public EmailCampaign(String subject, String body, Audience audience, String school, int recipientCount,
-			String createdBy) {
+	public EmailCampaign(CampaignKind kind, String subject, String body, Audience audience, String school,
+			int recipientCount, String createdBy) {
 		this.id = UUID.randomUUID();
+		this.kind = kind;
 		this.subject = subject;
 		this.body = body;
 		this.audience = audience;
@@ -64,6 +68,10 @@ public class EmailCampaign {
 
 	public UUID getId() {
 		return id;
+	}
+
+	public CampaignKind getKind() {
+		return kind;
 	}
 
 	public String getSubject() {

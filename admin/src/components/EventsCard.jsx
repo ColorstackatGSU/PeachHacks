@@ -2,7 +2,7 @@ import { useId, useState } from "react";
 import { api } from "../api/client.js";
 import { ConfirmDialog, Modal } from "./Modal.jsx";
 import { ErrorBlock, InlineError, LoadingBlock, Tag, useToast } from "./ui.jsx";
-import { errorText, formatDateTime, formatNumber } from "../lib/format.js";
+import { errorText, formatDateTime, formatNumber, plural } from "../lib/format.js";
 import { useEvents } from "../lib/hooks.js";
 
 const pad = (n) => String(n).padStart(2, "0");
@@ -134,6 +134,8 @@ export function EventsCard() {
       events.reload();
     } catch (error) {
       setRemoveError(error);
+      // The count that made deleting possible is out of date; show the current one.
+      if (error?.code === "EVENT_HAS_CHECK_INS") events.reload();
     } finally {
       setRemoveBusy(false);
     }
@@ -219,6 +221,8 @@ export function EventsCard() {
                           type="button"
                           className="btn btn-small btn-danger-quiet"
                           aria-label={`Delete ${row.name}`}
+                          aria-describedby={row.checkedIn > 0 ? `${row.id}-keep` : undefined}
+                          disabled={row.checkedIn > 0}
                           onClick={() => {
                             setRemoveError(null);
                             setRemoving(row);
@@ -228,6 +232,11 @@ export function EventsCard() {
                         </button>
                       )}
                     </span>
+                    {!row.general && row.checkedIn > 0 && (
+                      <span id={`${row.id}-keep`} className="cell-note muted small">
+                        Has {plural(row.checkedIn, "check-in")}, so it cannot be deleted
+                      </span>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -281,8 +290,8 @@ export function EventsCard() {
           onCancel={() => setRemoving(null)}
         >
           <p>
-            <strong>{removing.name}</strong> and its {formatNumber(removing.checkedIn)} check-in
-            {removing.checkedIn === 1 ? "" : "s"} will be permanently deleted. General check-in is not affected.
+            <strong>{removing.name}</strong> has no check-ins and will be permanently deleted. General check-in is not
+            affected. If someone is checked in to it in the meantime, it is kept.
           </p>
         </ConfirmDialog>
       )}

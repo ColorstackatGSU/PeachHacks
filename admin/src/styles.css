@@ -246,6 +246,7 @@ main:focus { outline: none; }
 .cell-break { overflow-wrap: anywhere; }
 .cell-nowrap { white-space: nowrap; }
 .cell-note { display: block; }
+.cell-flag { color: var(--peach); font-size: 12.5px; }
 .cell-actions { text-align: right !important; white-space: nowrap; }
 .row-link { color: var(--cream); font-weight: 700; }
 .row-link:hover { color: var(--peach); }
@@ -294,6 +295,7 @@ main:focus { outline: none; }
 .preview-body { display: grid; gap: 12px; font-size: 14.5px; line-height: 1.6; }
 .preview-body p { white-space: pre-line; overflow-wrap: anywhere; }
 .preview-empty { color: rgba(0, 31, 58, .55); font-weight: 400; }
+.preview-frame { display: block; width: 100%; height: 620px; border: 0; border-radius: 6px; background: #f4f6ed; }
 .preview-footer { padding-top: 12px; border-top: 1px solid rgba(0, 31, 58, .18); color: rgba(0, 31, 58, .7); font-size: 12px; }
 
 .campaigns { display: grid; gap: 12px; }
@@ -431,6 +433,9 @@ main:focus { outline: none; }
 
 .resume-file { display: grid; gap: 2px; min-width: 0; }
 .resume-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.kind-choice { display: grid; gap: 10px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.kind-choice legend { margin-bottom: 6px; padding: 0; color: var(--peach); font-size: 11px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+.kind-choice label { display: grid; gap: 2px; }
 .check-line { display: flex; align-items: flex-start; gap: 10px; }
 .check-line input { flex: none; width: 18px; height: 18px; margin: 2px 0 0; accent-color: var(--peach); }
 .check-line input:focus-visible { outline: 2px solid var(--peach); outline-offset: 2px; }

@@ -133,21 +133,6 @@ public class SchoolEmailService {
 		});
 	}
 
-	/**
-	 * Removes what is kept about a person once neither table refers to the pair any more,
-	 * so deleting their records leaves no addresses behind.
-	 */
-	public void forget(String email) {
-		jdbc.sql("""
-				delete from school_email_confirmations c
-				where c.email = :email
-					and not exists (select 1 from registrations r
-						where r.email = c.email and r.school_email = c.school_email)
-					and not exists (select 1 from pre_registrations p
-						where p.email = c.email and p.school_email = c.school_email)
-				""").param("email", email).update();
-	}
-
 	private boolean isConfirmed(String email, String schoolEmail) {
 		return jdbc.sql("""
 				select exists (select 1 from school_email_confirmations
@@ -181,7 +166,7 @@ public class SchoolEmailService {
 			return true;
 		}));
 		if (claimed) {
-			mailService.sendSchoolEmailConfirmation(schoolEmail, firstName,
+			mailService.sendSchoolEmailConfirmation(schoolEmail, firstName, email,
 					properties.webBaseUrl() + "/confirm-email?token=" + token, LINK_VALID_DAYS);
 		}
 		return claimed;

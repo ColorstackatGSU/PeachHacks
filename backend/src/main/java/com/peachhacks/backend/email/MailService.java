@@ -1,5 +1,6 @@
 package com.peachhacks.backend.email;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import org.slf4j.Logger;
@@ -9,16 +10,24 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.core.task.TaskRejectedException;
 import org.springframework.stereotype.Service;
-import org.springframework.web.util.HtmlUtils;
 
 import com.peachhacks.backend.config.EmailProperties;
+import com.peachhacks.backend.email.EmailComposer.Content;
+import com.peachhacks.backend.email.EmailComposer.Footer;
+import com.peachhacks.backend.email.EmailComposer.InlineImage;
 
+/**
+ * The emails the system sends on its own. They are essential: always delivered, with no
+ * unsubscribe link.
+ */
 @Service
 public class MailService {
 
 	private static final Logger log = LoggerFactory.getLogger(MailService.class);
 
 	private static final String TICKET_CONTENT_ID = "peachhacks-ticket";
+
+	private static final String SIGN_OFF = "See you soon,\nThe PeachHacks team";
 
 	private final EmailSender sender;
 
@@ -37,155 +46,146 @@ public class MailService {
 	}
 
 	/** schoolEmailToConfirm is null when the school address is already confirmed. */
-	public void sendPreRegistrationConfirmation(String email, String firstName, String unsubscribeToken,
-			String schoolEmailToConfirm) {
-		String body = """
-				Hi {{firstName}},
-
-				Thanks for pre-registering for PeachHacks! You are on the list.
-				%s
-				We will email you as soon as full registration opens, along with dates, venue details and everything else you need to know.
-
-				See you soon,
-				The PeachHacks team""".formatted(schoolInboxParagraph(schoolEmailToConfirm));
-		sendInBackground(composer.compose(email, "You're pre-registered for PeachHacks", body, firstName, null,
-				unsubscribeToken));
+	public void sendPreRegistrationConfirmation(String email, String firstName, String schoolEmailToConfirm) {
+		List<String> paragraphs = new ArrayList<>();
+		paragraphs.add(greeting(firstName));
+		paragraphs.add("Thanks for pre-registering for PeachHacks! You are on the list.");
+		addSchoolInboxParagraph(paragraphs, schoolEmailToConfirm);
+		paragraphs.add("We will email you as soon as full registration opens, along with dates, venue details and"
+				+ " everything else you need to know.");
+		paragraphs.add(SIGN_OFF);
+		Content content = Content.of("You are on the list. We will email you when registration opens.",
+				"You're pre-registered", paragraphs);
+		sendInBackground(composer.compose(email, "You're pre-registered for PeachHacks", content, Footer.SIGNED_UP));
 	}
 
 	/** schoolEmailToConfirm is null when the school address is already confirmed. */
-	public void sendRegistrationConfirmation(String email, String firstName, String unsubscribeToken,
-			String schoolEmailToConfirm) {
-		String body = """
-				Hi {{firstName}},
-
-				We received your application for PeachHacks. Thank you!
-				%s
-				It is now pending review. If you are accepted, we will email you your ticket: a QR code to show at check-in.
-
-				See you soon,
-				The PeachHacks team""".formatted(schoolInboxParagraph(schoolEmailToConfirm));
-		sendInBackground(composer.compose(email, "We received your PeachHacks registration", body, firstName, null,
-				unsubscribeToken));
+	public void sendRegistrationConfirmation(String email, String firstName, String schoolEmailToConfirm) {
+		List<String> paragraphs = new ArrayList<>();
+		paragraphs.add(greeting(firstName));
+		paragraphs.add("We received your application for PeachHacks. Thank you!");
+		addSchoolInboxParagraph(paragraphs, schoolEmailToConfirm);
+		paragraphs.add("It is now pending review. If you are accepted, we will email you your ticket: a QR code to"
+				+ " show at check-in.");
+		paragraphs.add(SIGN_OFF);
+		Content content = Content.of("Your application is in and pending review.", "We received your registration",
+				paragraphs);
+		sendInBackground(
+				composer.compose(email, "We received your PeachHacks registration", content, Footer.REGISTERED));
 	}
 
-	private static String schoolInboxParagraph(String schoolEmail) {
-		if (schoolEmail == null) {
-			return "";
+	private static void addSchoolInboxParagraph(List<String> paragraphs, String schoolEmail) {
+		if (schoolEmail != null) {
+			paragraphs.add("One more step: look in your school inbox (" + schoolEmail
+					+ ") for a confirmation link from us and open it, so we know you are a current student.");
 		}
-		return "\nOne more step: look in your school inbox (" + schoolEmail
-				+ ") for a confirmation link from us and open it, so we know you are a current student.\n";
 	}
 
-	/** Goes to the school address itself; the link is the only proof that the person can read it. */
-	public void sendSchoolEmailConfirmation(String schoolEmail, String firstName, String confirmUrl,
-			int validDays) {
-		String body = """
-				Hi {{firstName}},
+	/**
+	 * Goes to the school address itself; the link is the only proof that the person can read
+	 * it. That inbox has never heard from us, so the message opens with who we are and which
+	 * sign-up it belongs to, naming the personal address only in masked form.
+	 */
+	public void sendSchoolEmailConfirmation(String schoolEmail, String firstName, String personalEmail,
+			String confirmUrl, int validDays) {
+		Content content = Content
+			.of("Someone signed up for PeachHacks with this school address. Confirm that it is yours.",
+					"Confirm your school email",
+					List.of(greeting(firstName),
+							"You, or someone using this address, signed up for PeachHacks, a student hackathon run by"
+									+ " ColorStack at Georgia State University, with the personal email "
+									+ mask(personalEmail) + ".",
+							"PeachHacks is for current students, so we ask everyone to confirm a school email"
+									+ " address. If this address is yours, confirm it here:"))
+			.withPrimary("Confirm your school email", confirmUrl)
+			.withClosing(List.of("The link works for " + validDays + " days.",
+					"If this was not you, you can ignore this email and nothing will be confirmed.",
+					"The PeachHacks team"));
+		sendInBackground(composer.compose(schoolEmail, "Confirm your school email for PeachHacks", content,
+				Footer.SCHOOL_EMAIL));
+	}
 
-				You gave this address as your school email for PeachHacks. PeachHacks is open to current university students, so please confirm that it is yours.
-
-				%s
-
-				The link works for %d days. If you did not sign up for PeachHacks, ignore this email and nothing will happen.
-
-				The PeachHacks team""".formatted(EmailComposer.BLOCK_MARKER, validDays);
-		String escapedUrl = HtmlUtils.htmlEscape(confirmUrl, "UTF-8");
-		String html = "<p style=\"margin:0 0 16px\"><a href=\"" + escapedUrl + "\" style=\"display:inline-block;"
-				+ "background:#e8703a;color:#ffffff;font-size:18px;font-weight:bold;text-decoration:none;"
-				+ "padding:14px 28px;border-radius:8px\">Confirm my school email</a></p>"
-				+ "<p style=\"font-size:14px;line-height:1.5;margin:0 0 16px;word-break:break-all\">" + escapedUrl
-				+ "</p>";
-		EmailComposer.Block block = new EmailComposer.Block(html, "Confirm your school email: " + confirmUrl);
-		sendInBackground(composer.compose(schoolEmail, "Confirm your school email for PeachHacks", body, firstName, null,
-				null, block));
+	/** j***@gmail.com: enough for the owner to recognise, not enough to tell anyone else. */
+	static String mask(String email) {
+		int at = (email != null) ? email.lastIndexOf('@') : -1;
+		if (at < 1) {
+			return "the one you signed up with";
+		}
+		return email.charAt(0) + "***" + email.substring(at);
 	}
 
 	/**
 	 * The QR code travels inside the message (shown inline and listed as an attachment)
 	 * because many mail clients block images loaded from a server.
 	 */
-	public void sendTicket(String email, String firstName, String ticketUrl, byte[] qrPng, String googleWalletUrl,
-			String unsubscribeToken) {
-		sendInBackground(ticketMessage(email, firstName, ticketUrl, qrPng, googleWalletUrl, unsubscribeToken));
+	public void sendTicket(String email, String firstName, String ticketUrl, byte[] qrPng, String googleWalletUrl) {
+		sendInBackground(ticketMessage(email, firstName, ticketUrl, qrPng, googleWalletUrl));
 	}
 
 	/**
 	 * Sends on the calling thread so the caller knows the provider took the message.
 	 * @throws RuntimeException when it did not
 	 */
-	public void sendTicketNow(String email, String firstName, String ticketUrl, byte[] qrPng, String googleWalletUrl,
-			String unsubscribeToken) {
-		sender.send(ticketMessage(email, firstName, ticketUrl, qrPng, googleWalletUrl, unsubscribeToken));
+	public void sendTicketNow(String email, String firstName, String ticketUrl, byte[] qrPng,
+			String googleWalletUrl) {
+		sender.send(ticketMessage(email, firstName, ticketUrl, qrPng, googleWalletUrl));
 	}
 
 	private EmailMessage ticketMessage(String email, String firstName, String ticketUrl, byte[] qrPng,
-			String googleWalletUrl, String unsubscribeToken) {
-		String body = """
-				Hi {{firstName}},
-
-				You're in! Your application to PeachHacks has been accepted, and we can't wait to see you.
-
-				Below is your ticket. Open it on your phone and show the QR code when you arrive; we scan the same code at workshops.
-
-				%s
-
-				Keep this email. If the QR code does not show above, it is attached as an image, and the link always works.
-
-				See you soon,
-				The PeachHacks team""".formatted(EmailComposer.BLOCK_MARKER);
-		String escapedUrl = HtmlUtils.htmlEscape(ticketUrl, "UTF-8");
-		String html = "<p style=\"margin:0 0 16px\"><a href=\"" + escapedUrl + "\" style=\"display:inline-block;"
-				+ "background:#e8703a;color:#ffffff;font-size:18px;font-weight:bold;text-decoration:none;"
-				+ "padding:14px 28px;border-radius:8px\">Open your ticket</a></p>"
-				+ "<p style=\"margin:0 0 16px\"><img src=\"cid:" + TICKET_CONTENT_ID + "\" width=\"240\" height=\"240\""
-				+ " alt=\"Your PeachHacks ticket QR code\" style=\"display:block;border:0\"></p>"
-				+ "<p style=\"font-size:14px;line-height:1.5;margin:0 0 16px;word-break:break-all\">" + escapedUrl
-				+ "</p>";
-		String text = "Your ticket: " + ticketUrl;
+			String googleWalletUrl) {
+		Content content = Content
+			.of("Your application was accepted. Your ticket is inside.", "You're in!",
+					List.of(greeting(firstName),
+							"Your application to PeachHacks has been accepted, and we can't wait to see you.",
+							"Below is your ticket. Open it on your phone and show the QR code when you arrive; we"
+									+ " scan the same code at workshops."))
+			.withPrimary("View your ticket", ticketUrl)
+			.withImage(new InlineImage(TICKET_CONTENT_ID, "Your PeachHacks ticket QR code", 240))
+			.withClosing(List.of(
+					"Keep this email. If the QR code does not show above, it is attached as an image, and the"
+							+ " link always works.",
+					SIGN_OFF));
 		if (googleWalletUrl != null) {
-			html += "<p style=\"font-size:16px;line-height:1.5;margin:0 0 16px\"><a href=\""
-					+ HtmlUtils.htmlEscape(googleWalletUrl, "UTF-8")
-					+ "\" style=\"color:#e8703a;font-weight:bold\">Add to Google Wallet</a></p>";
-			text += "\n\nAdd to Google Wallet: " + googleWalletUrl;
+			content = content.withSecondary("Add to Google Wallet", googleWalletUrl);
 		}
-		EmailComposer.Block block = new EmailComposer.Block(html, text);
-		return composer
-			.compose(email, "You're in! Your PeachHacks ticket", body, firstName, null, unsubscribeToken, block)
+		return composer.compose(email, "You're in! Your PeachHacks ticket", content, Footer.REGISTERED)
 			.withAttachments(List.of(
 					new EmailMessage.Attachment("peachhacks-ticket.png", "image/png", qrPng, TICKET_CONTENT_ID)));
 	}
 
 	public void sendAdminWelcome(String email, String name, String addedBy) {
-		String body = """
-				Hi {{firstName}},
-
-				%s added you as an admin for PeachHacks.
-
-				Sign in here with this email address:
-				%s
-
-				Your password was set by the person who added you, so ask them for it. If you were not expecting this, you can ignore this email.
-
-				The PeachHacks team""".formatted(addedBy, properties.adminBaseUrl());
-		sendInBackground(composer.compose(email, "You've been added as a PeachHacks admin", body, name, null, null));
+		Content content = Content
+			.of(addedBy + " added you as an admin for PeachHacks.", "You're a PeachHacks admin",
+					List.of(greeting(name), addedBy + " added you as an admin for PeachHacks.",
+							"Sign in with this email address:"))
+			.withPrimary("Sign in to the admin site", properties.adminBaseUrl())
+			.withClosing(List.of(
+					"Your password was set by the person who added you, so ask them for it. If you were not"
+							+ " expecting this, you can ignore this email.",
+					"The PeachHacks team"));
+		sendInBackground(
+				composer.compose(email, "You've been added as a PeachHacks admin", content, Footer.ADMIN_ACCOUNT));
 	}
 
 	public void sendVolunteerWelcome(String email, String name, String addedBy) {
-		String body = """
-				Hi {{firstName}},
+		Content content = Content
+			.of(addedBy + " added you as a check-in volunteer for PeachHacks.", "You're a check-in volunteer",
+					List.of(greeting(name), addedBy + " added you as a check-in volunteer for PeachHacks.",
+							"On the day, you can look hackers up by name or email and check them in as they"
+									+ " arrive. Your account only opens the check-in screen; if someone is not on"
+									+ " the list or something looks wrong, ask an organizer.",
+							"Sign in with this email address:"))
+			.withPrimary("Sign in to check-in", properties.adminBaseUrl())
+			.withClosing(List.of(
+					"Your password was set by the person who added you, so ask them for it. If you were not"
+							+ " expecting this, you can ignore this email.",
+					"The PeachHacks team"));
+		sendInBackground(composer.compose(email, "You've been added as a PeachHacks check-in volunteer", content,
+				Footer.ADMIN_ACCOUNT));
+	}
 
-				%s added you as a check-in volunteer for PeachHacks.
-
-				On the day, you can look hackers up by name or email and check them in as they arrive. Your account only opens the check-in screen; if someone is not on the list or something looks wrong, ask an organizer.
-
-				Sign in here with this email address:
-				%s
-
-				Your password was set by the person who added you, so ask them for it. If you were not expecting this, you can ignore this email.
-
-				The PeachHacks team""".formatted(addedBy, properties.adminBaseUrl());
-		sendInBackground(
-				composer.compose(email, "You've been added as a PeachHacks check-in volunteer", body, name, null, null));
+	private static String greeting(String firstName) {
+		return (firstName != null && !firstName.isBlank()) ? "Hi " + firstName.strip() + "," : "Hi,";
 	}
 
 	private void sendInBackground(EmailMessage message) {

@@ -195,7 +195,6 @@ export const api = {
   preRegistrations: (query, signal) => json("GET", "/admin/pre-registrations", { query, signal }),
   exportPreRegistrations: (query) =>
     download("/admin/pre-registrations/export.csv", query, `peachhacks-pre-registrations-${stamp()}.csv`),
-  deletePreRegistration: (id) => json("DELETE", `/admin/pre-registrations/${encodeURIComponent(id)}`),
   resendPreRegistrationSchoolEmail: (id) =>
     json("POST", `/admin/pre-registrations/${encodeURIComponent(id)}/school-email/resend`),
 
@@ -207,7 +206,6 @@ export const api = {
     changing(json("POST", "/admin/registrations/status", { body: { ids, status } })),
   exportRegistrations: (query) =>
     download("/admin/registrations/export.csv", query, `peachhacks-registrations-${stamp()}.csv`),
-  deleteRegistration: (id) => changing(json("DELETE", `/admin/registrations/${encodeURIComponent(id)}`)),
   // Tells someone still in the acceptance bucket now; resends for someone already told.
   sendTicketEmail: (id) => changing(json("POST", `/admin/registrations/${encodeURIComponent(id)}/ticket-email`)),
 
@@ -245,11 +243,14 @@ export const api = {
   settings: (signal) => json("GET", "/admin/settings", { signal }),
   saveSettings: (registrationOpen) => json("PUT", "/admin/settings", { body: { registrationOpen } }),
 
-  recipientCount: (audience, school, signal) =>
-    json("POST", "/admin/emails/recipient-count", { body: { audience, school: school || null }, signal }),
-  sendTestEmail: (subject, body) => json("POST", "/admin/emails/test", { body: { subject, body } }),
-  sendEmail: ({ audience, school, subject, body }) =>
-    json("POST", "/admin/emails", { body: { audience, school: school || null, subject, body } }),
+  recipientCount: (kind, audience, school, signal) =>
+    json("POST", "/admin/emails/recipient-count", { body: { kind, audience, school: school || null }, signal }),
+  // The draft as the server would render it for the signed-in admin; nothing is sent.
+  emailPreview: (kind, subject, body, signal) =>
+    json("POST", "/admin/emails/preview", { body: { kind, subject, body }, signal }),
+  sendTestEmail: (kind, subject, body) => json("POST", "/admin/emails/test", { body: { kind, subject, body } }),
+  sendEmail: ({ kind, audience, school, subject, body }) =>
+    json("POST", "/admin/emails", { body: { kind, audience, school: school || null, subject, body } }),
   campaigns: (signal) => json("GET", "/admin/emails", { signal }),
 
   admins: (signal) => json("GET", "/admin/admins", { signal }),

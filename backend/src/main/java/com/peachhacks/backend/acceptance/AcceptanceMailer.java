@@ -207,7 +207,7 @@ public class AcceptanceMailer {
 		if (registration.getAcceptanceNotifiedAt() != null) {
 			mailService.sendTicket(registration.getEmail(), registration.getFirstName(), ticketUrl,
 					tickets.qrPng(registration.getTicketToken()),
-					googleWallet.saveUrl(registration, ticketUrl).orElse(null), registration.getUnsubscribeToken());
+					googleWallet.saveUrl(registration, ticketUrl).orElse(null));
 			return;
 		}
 		if (!inFlight.add(id)) {
@@ -236,8 +236,7 @@ public class AcceptanceMailer {
 		String token = registration.getTicketToken();
 		String ticketUrl = tickets.url(token);
 		mailService.sendTicketNow(registration.getEmail(), registration.getFirstName(), ticketUrl,
-				tickets.qrPng(token), googleWallet.saveUrl(registration, ticketUrl).orElse(null),
-				registration.getUnsubscribeToken());
+				tickets.qrPng(token), googleWallet.saveUrl(registration, ticketUrl).orElse(null));
 		if (registrations.markAcceptanceNotified(registration.getId(), Instant.now()) == 0) {
 			log.warn("Registration {} stopped waiting while its acceptance email was being sent",
 					registration.getId());

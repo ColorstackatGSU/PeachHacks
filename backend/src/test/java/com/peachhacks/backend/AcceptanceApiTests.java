@@ -481,6 +481,122 @@ class AcceptanceApiTests {
 	}
 
 	@Test
+	void anAgeReviewIsFlaggedForYoungerStudentsOfOtherSchoolsOnly() throws Exception {
+		Hacker hostMinor = register("Ada", GSU, 17);
+		Hacker perimeterMinor = register("Grace", "  georgia state university perimeter college ", 16);
+		Hacker otherMinor = register("Linus", TECH, 17);
+		Hacker otherAtMinimum = register("Margaret", TECH, 18);
+		Hacker lookalikeMinor = register("Alan", "Georgia Southern University", 17);
+
+		for (Hacker hacker : List.of(hostMinor, perimeterMinor, otherAtMinimum)) {
+			mockMvc.perform(get("/admin/registrations/" + hacker.id()).header("Authorization", admin))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.ageReview").value(false));
+		}
+		for (Hacker hacker : List.of(otherMinor, lookalikeMinor)) {
+			mockMvc.perform(get("/admin/registrations/" + hacker.id()).header("Authorization", admin))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.ageReview").value(true));
+		}
+		mockMvc.perform(get("/admin/registrations").header("Authorization", admin))
+			.andExpect(jsonPath("$.total").value(5))
+			.andExpect(jsonPath("$.items[?(@.ageReview == true)]", hasSize(2)))
+			.andExpect(jsonPath("$.items[?(@.ageReview == false)]", hasSize(3)))
+			.andExpect(jsonPath("$.items[?(@.id == '%s')].ageReview".formatted(otherMinor.id())).value(true))
+			.andExpect(jsonPath("$.items[?(@.id == '%s')].ageReview".formatted(hostMinor.id())).value(false));
+
+		mockMvc.perform(get("/admin/registrations").param("ageReview", "true").header("Authorization", admin))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.total").value(2))
+			.andExpect(jsonPath("$.items[?(@.ageReview == true)]", hasSize(2)));
+		mockMvc.perform(get("/admin/registrations").param("ageReview", "false").header("Authorization", admin))
+			.andExpect(jsonPath("$.total").value(3))
+			.andExpect(jsonPath("$.items[?(@.ageReview == false)]", hasSize(3)));
+		mockMvc
+			.perform(get("/admin/registrations").param("ageReview", "true")
+				.param("status", "ACCEPTED")
+				.header("Authorization", admin))
+			.andExpect(jsonPath("$.total").value(0));
+
+		String csv = mockMvc.perform(get("/admin/registrations/export.csv").header("Authorization", admin))
+			.andExpect(status().isOk())
+			.andReturn()
+			.getResponse()
+			.getContentAsString();
+		assertThat(csv.lines().findFirst().orElseThrow()).endsWith(",school_email_confirmed,age_review");
+		assertThat(csvLine(csv, otherMinor)).endsWith(",true");
+		assertThat(csvLine(csv, lookalikeMinor)).endsWith(",true");
+		assertThat(csvLine(csv, hostMinor)).endsWith(",false");
+		assertThat(csvLine(csv, perimeterMinor)).endsWith(",false");
+		assertThat(csvLine(csv, otherAtMinimum)).endsWith(",false");
+		String flaggedCsv = mockMvc
+			.perform(get("/admin/registrations/export.csv").param("ageReview", "true")
+				.header("Authorization", admin))
+			.andReturn()
+			.getResponse()
+			.getContentAsString();
+		assertThat(flaggedCsv.lines()).hasSize(3);
+		assertThat(flaggedCsv).contains(otherMinor.email(), lookalikeMinor.email())
+			.doesNotContain(hostMinor.email(), otherAtMinimum.email());
+
+		mockMvc.perform(get("/public/status"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.ageReview").doesNotExist());
+	}
+
+	@Test
+	void acceptingSomeoneWhoNeedsAnAgeReviewWorksAndIsCounted() throws Exception {
+		Hacker hostMinor = register("Ada", GSU, 17);
+		Hacker otherMinor = register("Linus", TECH, 17);
+		Hacker secondOtherMinor = register("Alan", TECH, 15);
+		Hacker otherAdult = register("Margaret", TECH, 18);
+		Hacker thirdOtherMinor = register("Edsger", TECH, 17);
+
+		summary().andExpect(jsonPath("$.ageReview.minimumAge").value(18))
+			.andExpect(jsonPath("$.ageReview.total").value(3))
+			.andExpect(jsonPath("$.ageReview.accepted").value(0));
+
+		setStatus(otherMinor.id(), "ACCEPTED").andExpect(jsonPath("$.ageReview").value(true))
+			.andExpect(jsonPath("$.ticketUrl").isNotEmpty());
+		setStatus(hostMinor.id(), "ACCEPTED").andExpect(jsonPath("$.ageReview").value(false));
+		summary().andExpect(jsonPath("$.ageReview.total").value(3))
+			.andExpect(jsonPath("$.ageReview.accepted").value(1));
+
+		// otherMinor is already accepted, so only the two newly accepted minors are counted.
+		bulk("ACCEPTED",
+				List.of(otherMinor.id(), secondOtherMinor.id(), thirdOtherMinor.id(), otherAdult.id(),
+						UUID.randomUUID().toString()))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.changed").value(3))
+			.andExpect(jsonPath("$.unchanged").value(1))
+			.andExpect(jsonPath("$.notFound").value(1))
+			.andExpect(jsonPath("$.acceptedAgeReview").value(2));
+		summary().andExpect(jsonPath("$.totals.accepted").value(5))
+			.andExpect(jsonPath("$.ageReview.total").value(3))
+			.andExpect(jsonPath("$.ageReview.accepted").value(3));
+		mockMvc
+			.perform(get("/admin/registrations").param("ageReview", "true")
+				.param("status", "ACCEPTED")
+				.header("Authorization", admin))
+			.andExpect(jsonPath("$.total").value(3));
+		mockMvc.perform(get("/admin/acceptances/waiting").header("Authorization", admin))
+			.andExpect(jsonPath("$", hasSize(5)))
+			.andExpect(jsonPath("$[?(@.ageReview == true)]", hasSize(3)))
+			.andExpect(jsonPath("$[?(@.id == '%s')].ageReview".formatted(hostMinor.id())).value(false))
+			.andExpect(jsonPath("$[?(@.id == '%s')].ageReview".formatted(otherAdult.id())).value(false));
+
+		bulk("WAITLISTED", List.of(secondOtherMinor.id(), thirdOtherMinor.id()))
+			.andExpect(jsonPath("$.changed").value(2))
+			.andExpect(jsonPath("$.acceptedAgeReview").value(0));
+		summary().andExpect(jsonPath("$.ageReview.total").value(3))
+			.andExpect(jsonPath("$.ageReview.accepted").value(1));
+
+		send().andExpect(status().isAccepted()).andExpect(jsonPath("$.queued").value(3));
+		awaitIdle();
+		assertThat(ticketEmails(otherMinor)).hasSize(1);
+	}
+
+	@Test
 	void volunteersCannotSeeOrSendAcceptances() throws Exception {
 		Hacker ada = register("Ada", GSU);
 		setStatus(ada.id(), "ACCEPTED");
@@ -556,18 +672,26 @@ class AcceptanceApiTests {
 	}
 
 	private Hacker register(String firstName, String school) throws Exception {
+		return register(firstName, school, 19);
+	}
+
+	private Hacker register(String firstName, String school, int age) throws Exception {
 		String email = firstName.toLowerCase() + "-" + UUID.randomUUID().toString().substring(0, 8) + "@example.com";
 		String created = mockMvc
 			.perform(post("/public/registrations").contentType(MediaType.APPLICATION_JSON).content("""
-					{"firstName":"%s","lastName":"Example","age":19,"phone":"404 555 0100","email":"%s",
+					{"firstName":"%s","lastName":"Example","age":%d,"phone":"404 555 0100","email":"%s",
 					 "schoolEmail":"%s","school":"%s","levelOfStudy":"Undergraduate University (3+ year)",
 					 "countryOfResidence":"US","mlhCodeOfConduct":true,"mlhDataSharing":true,"mlhEmailOptIn":false}
-					""".formatted(firstName, email, email, school)))
+					""".formatted(firstName, age, email, email, school)))
 			.andExpect(status().isCreated())
 			.andReturn()
 			.getResponse()
 			.getContentAsString();
 		return new Hacker(JsonPath.read(created, "$.id"), email);
+	}
+
+	private static String csvLine(String csv, Hacker hacker) {
+		return csv.lines().filter(line -> line.contains(hacker.email())).findFirst().orElseThrow();
 	}
 
 	private ResultActions setStatus(String id, String status) throws Exception {

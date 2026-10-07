@@ -2,10 +2,21 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { WEB_BASE, api } from "../api/client.js";
 import { ConfirmDialog } from "../components/Modal.jsx";
 import { EmptyBlock, ErrorBlock, LoadingBlock, PageHeader, Spinner, Tag, useToast } from "../components/ui.jsx";
-import { AUDIENCES, audienceLabel, errorText, formatDateTime, formatNumber, plural } from "../lib/format.js";
-import { schoolOptions, useAsync, useStats } from "../lib/hooks.js";
+import {
+  AUDIENCES,
+  CAMPAIGN_KINDS,
+  audienceLabel,
+  audiencesFor,
+  campaignKind,
+  errorText,
+  formatDateTime,
+  formatNumber,
+  plural,
+} from "../lib/format.js";
+import { schoolOptions, useAsync, useDebounced, useStats } from "../lib/hooks.js";
 
 export const REGISTRATION_OPEN_TEMPLATE = {
+  kind: "ANNOUNCEMENT",
   audience: "PRE_REGISTRANTS_NOT_REGISTERED",
   subject: "PeachHacks registration is now open",
   body: [
@@ -18,13 +29,16 @@ export const REGISTRATION_OPEN_TEMPLATE = {
 };
 
 const KNOWN_PLACEHOLDERS = ["firstName", "lastName"];
-const isAudience = (value) => AUDIENCES.some((a) => a.value === value);
+const isAudience = (kind, value) => audiencesFor(kind).some((a) => a.value === value);
 
 function initialDraft(query) {
   const useTemplate = query.get("template") === "registration-open";
+  const kind = !useTemplate && query.get("kind") === "EVENT_UPDATE" ? "EVENT_UPDATE" : "ANNOUNCEMENT";
   const requested = query.get("audience");
+  const fallback = useTemplate ? REGISTRATION_OPEN_TEMPLATE.audience : audiencesFor(kind)[0].value;
   return {
-    audience: isAudience(requested) ? requested : useTemplate ? REGISTRATION_OPEN_TEMPLATE.audience : "PRE_REGISTRANTS",
+    kind,
+    audience: isAudience(kind, requested) ? requested : fallback,
     school: "",
     subject: useTemplate ? REGISTRATION_OPEN_TEMPLATE.subject : "",
     body: useTemplate ? REGISTRATION_OPEN_TEMPLATE.body : "",
@@ -59,7 +73,10 @@ function Campaign({ campaign }) {
     <li className="campaign">
       <div className="campaign-head">
         <strong>{campaign.subject}</strong>
-        <Tag tone={CAMPAIGN_TONE[campaign.status] || "neutral"}>{CAMPAIGN_LABEL[campaign.status] || campaign.status}</Tag>
+        <span className="tag-row">
+          <Tag tone="neutral">{campaignKind(campaign.kind).label}</Tag>
+          <Tag tone={CAMPAIGN_TONE[campaign.status] || "neutral"}>{CAMPAIGN_LABEL[campaign.status] || campaign.status}</Tag>
+        </span>
       </div>
       <p className="campaign-meta">
         To {audienceLabel(campaign.audience).toLowerCase()}
@@ -111,19 +128,32 @@ export default function Email({ admin, query }) {
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState(null);
 
-  const { audience, school, subject, body } = draft;
+  const { kind, audience, school, subject, body } = draft;
+  const ready = subject.trim() !== "" && body.trim() !== "";
+  const kindInfo = campaignKind(kind);
+  const audiences = audiencesFor(kind);
   const update = (patch) => {
     setDraft((prev) => ({ ...prev, ...patch }));
     setTest({ status: "idle", message: "" });
   };
 
   const stats = useStats();
-  const audienceInfo = AUDIENCES.find((a) => a.value === audience) || AUDIENCES[0];
+  const audienceInfo = AUDIENCES.find((a) => a.value === audience) || audiences[0];
   const schools = schoolOptions(stats.data, audienceInfo.schoolsFrom);
 
-  const loadCount = useCallback((signal) => api.recipientCount(audience, school, signal), [audience, school]);
+  const loadCount = useCallback((signal) => api.recipientCount(kind, audience, school, signal), [kind, audience, school]);
   const count = useAsync(loadCount);
   const recipientCount = !count.loading && !count.error ? (count.data?.recipientCount ?? null) : null;
+
+  const draftSubject = useDebounced(subject, 500);
+  const draftBody = useDebounced(body, 500);
+  const loadRendered = useCallback(
+    (signal) =>
+      draftSubject.trim() && draftBody.trim() ? api.emailPreview(kind, draftSubject, draftBody, signal) : Promise.resolve(null),
+    [kind, draftSubject, draftBody],
+  );
+  const rendered = useAsync(loadRendered);
+  const renderedHtml = !rendered.error && ready ? rendered.data?.html : null;
 
   const history = useAsync(loadCampaigns);
   const campaigns = Array.isArray(history.data) ? history.data : [];
@@ -142,7 +172,6 @@ export default function Email({ admin, query }) {
     .map((p) => p.trim())
     .filter(Boolean);
   const unknown = unknownPlaceholders(`${subject}\n${body}`);
-  const ready = subject.trim() !== "" && body.trim() !== "";
 
   const validate = () => {
     const errors = {};
@@ -153,7 +182,7 @@ export default function Email({ admin, query }) {
   };
 
   const applyTemplate = () => {
-    setDraft({ audience: REGISTRATION_OPEN_TEMPLATE.audience, school: "", subject: REGISTRATION_OPEN_TEMPLATE.subject, body: REGISTRATION_OPEN_TEMPLATE.body });
+    setDraft({ ...REGISTRATION_OPEN_TEMPLATE, school: "" });
     setFieldErrors({});
     setTest({ status: "idle", message: "" });
     setReplaceTemplate(false);
@@ -175,7 +204,7 @@ export default function Email({ admin, query }) {
     if (!validate()) return;
     setTest({ status: "busy", message: "" });
     try {
-      await api.sendTestEmail(subject.trim(), body);
+      await api.sendTestEmail(kind, subject.trim(), body);
       setTest({ status: "done", message: `Test sent to ${admin?.email || "your email"}. Check your inbox.` });
     } catch (error) {
       setFieldErrors(error?.fieldErrors || {});
@@ -193,9 +222,9 @@ export default function Email({ admin, query }) {
     setSending(true);
     setSendError(null);
     try {
-      const campaign = await api.sendEmail({ audience, school, subject: subject.trim(), body });
+      const campaign = await api.sendEmail({ kind, audience, school, subject: subject.trim(), body });
       setConfirming(false);
-      notify(`Email queued for ${plural(campaign?.recipientCount ?? recipientCount ?? 0, "recipient")}.`);
+      notify(`${kindInfo.label} queued for ${plural(campaign?.recipientCount ?? recipientCount ?? 0, "recipient")}.`);
       setDraft((prev) => ({ ...prev, subject: "", body: "" }));
       setTest({ status: "idle", message: "" });
       history.reload();
@@ -211,7 +240,7 @@ export default function Email({ admin, query }) {
 
   return (
     <>
-      <PageHeader title="Email" description="Write to pre-registrants or registrants. Unsubscribed addresses are always skipped.">
+      <PageHeader title="Email" description="Write to pre-registrants or registrants. Choose the kind first: it decides who can receive it and whether they can unsubscribe.">
         <button
           type="button"
           className="btn"
@@ -230,10 +259,35 @@ export default function Email({ admin, query }) {
             openConfirm();
           }}
         >
+          <fieldset className="kind-choice">
+            <legend>Kind of email</legend>
+            {CAMPAIGN_KINDS.map((option) => (
+              <div key={option.value} className="check-line">
+                <input
+                  id={`${ids}-kind-${option.value}`}
+                  type="radio"
+                  name={`${ids}-kind`}
+                  value={option.value}
+                  checked={kind === option.value}
+                  onChange={() =>
+                    update({
+                      kind: option.value,
+                      ...(isAudience(option.value, audience) ? {} : { audience: audiencesFor(option.value)[0].value, school: "" }),
+                    })
+                  }
+                />
+                <label htmlFor={`${ids}-kind-${option.value}`}>
+                  <strong>{option.label}</strong>
+                  <span className="hint">{option.hint}</span>
+                </label>
+              </div>
+            ))}
+          </fieldset>
+
           <div className="field">
             <label htmlFor={`${ids}-audience`}>Audience</label>
             <select id={`${ids}-audience`} value={audience} aria-describedby={`${ids}-audience-hint`} onChange={(e) => update({ audience: e.target.value, school: "" })}>
-              {AUDIENCES.map((a) => (
+              {audiences.map((a) => (
                 <option key={a.value} value={a.value}>
                   {a.label}
                 </option>
@@ -241,6 +295,7 @@ export default function Email({ admin, query }) {
             </select>
             <p id={`${ids}-audience-hint`} className="hint">
               {audienceInfo.hint}
+              {kind === "EVENT_UPDATE" && " Pre-registrants cannot be sent an event update."}
             </p>
           </div>
 
@@ -273,7 +328,11 @@ export default function Email({ admin, query }) {
             {recipientCount !== null && (
               <span>
                 <strong>{formatNumber(recipientCount)}</strong> {recipientCount === 1 ? "person" : "people"} will receive this email
-                {recipientCount === 0 ? ". Nobody matches this audience yet." : " (unsubscribed and duplicate addresses excluded)."}
+                {recipientCount === 0
+                  ? ". Nobody matches this audience yet."
+                  : kindInfo.unsubscribe
+                    ? " (unsubscribed and duplicate addresses excluded)."
+                    : " (including people who unsubscribed from announcements; duplicate addresses excluded)."}
               </span>
             )}
           </div>
@@ -354,7 +413,14 @@ export default function Email({ admin, query }) {
               As seen by {sample.firstName} {sample.lastName}
             </span>
           </div>
-          <div className="preview-mail">
+          {renderedHtml && (
+            <>
+              <p className="preview-subject">{rendered.data.subject}</p>
+              {/* An empty sandbox: the rendered email can run no script and open no link in this page. */}
+              <iframe className="preview-frame" title="Email preview" sandbox="" srcDoc={renderedHtml} />
+            </>
+          )}
+          <div className="preview-mail" hidden={Boolean(renderedHtml)}>
             <p className="preview-subject">{fill(subject, sample) || <span className="preview-empty">Subject</span>}</p>
             <div className="preview-body">
               {paragraphs.length === 0 && <p className="preview-empty">Your message will appear here as you type.</p>}
@@ -362,11 +428,16 @@ export default function Email({ admin, query }) {
                 <p key={index}>{paragraph}</p>
               ))}
             </div>
-            <p className="preview-footer">Unsubscribe link (added automatically to bulk emails)</p>
+            <p className="preview-footer">
+              {kindInfo.footer}
+              {kindInfo.unsubscribe && <> <u>Unsubscribe</u></>}
+            </p>
           </div>
           <p className="hint">
-            This shows the wording with placeholders filled in. The server adds the PeachHacks email design; use “Send test to me” to
-            see the real thing.
+            {renderedHtml
+              ? "This is the email as the server renders it, with your name filled in. Mail apps differ a little; use “Send test to me” to see it in a real inbox."
+              : "This shows the wording with placeholders filled in. Once there is a subject and a message, the email appears here in the PeachHacks design."}
+            {rendered.error && ` The designed preview could not be loaded: ${errorText(rendered.error)}`}
           </p>
         </section>
       </div>
@@ -403,13 +474,13 @@ export default function Email({ admin, query }) {
           onConfirm={applyTemplate}
           onCancel={() => setReplaceTemplate(false)}
         >
-          <p>The “Registration is open” template will replace the subject and message you have written, and set the audience to people who pre-registered but have not registered yet.</p>
+          <p>The “Registration is open” template will replace the subject and message you have written, make this an announcement, and set the audience to people who pre-registered but have not registered yet.</p>
         </ConfirmDialog>
       )}
 
       {confirming && (
         <ConfirmDialog
-          title={`Send this email to ${plural(recipientCount ?? 0, "person", "people")}?`}
+          title={`Send this ${kindInfo.label.toLowerCase()} to ${plural(recipientCount ?? 0, "person", "people")}?`}
           confirmLabel={`Send to ${plural(recipientCount ?? 0, "person", "people")}`}
           busy={sending}
           error={sendError}
@@ -417,6 +488,12 @@ export default function Email({ admin, query }) {
           onCancel={() => setConfirming(false)}
         >
           <dl className="confirm-summary">
+            <div>
+              <dt>Kind</dt>
+              <dd>
+                <strong>{kindInfo.label}</strong>
+              </dd>
+            </div>
             <div>
               <dt>Recipients</dt>
               <dd>
@@ -435,6 +512,11 @@ export default function Email({ admin, query }) {
               <dd>{subject.trim()}</dd>
             </div>
           </dl>
+          <p>
+            {kindInfo.unsubscribe
+              ? "People who unsubscribed are skipped, and the email carries an unsubscribe link."
+              : "This goes to everyone in the audience, including people who unsubscribed from announcements, and has no unsubscribe link. Use it only for information they need."}
+          </p>
           <p>Sending starts right away and cannot be undone or recalled.</p>
         </ConfirmDialog>
       )}

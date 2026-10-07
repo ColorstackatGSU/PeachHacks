@@ -49,7 +49,7 @@ Without `RESEND_API_KEY` no email leaves the machine: every message (confirmatio
 ./mvnw test
 ```
 
-The integration tests run the real application against Testcontainers (`postgres:16-alpine`) and are skipped automatically when Docker is not available. They cover pre-registration, the registration gate, validation, admin authentication and roles, events and check-in, tickets and scanning, the acceptance bucket (accepting sends nothing, the send-all run, a provider failure, the host-school share, bulk status changes, and the V6 migration on rows accepted before it), the acceptance email, Google Wallet links, CSV export, campaign audiences, resume upload, download, removal and the sponsor resume book, and school email confirmation (the link, its expiry, the resend limit, carry-over from pre-registration to registration, and the admin filters and resend).
+The integration tests run the real application against Testcontainers (`postgres:16-alpine`) and are skipped automatically when Docker is not available. They cover pre-registration, the registration gate, validation, admin authentication and roles, events and check-in, tickets and scanning, the acceptance bucket (accepting sends nothing, the send-all run, a provider failure, the host-school share, the age review flag, bulk status changes, and the V6 migration on rows accepted before it), the acceptance email, Google Wallet links, CSV export, campaign kinds and audiences (who an event update and an announcement reach, their footers, and the V7 migration), resume upload, download, removal and the sponsor resume book, and school email confirmation (the link, its expiry, the resend limit, carry-over from pre-registration to registration, and the admin filters and resend).
 
 ## Container image
 
@@ -85,6 +85,7 @@ Standard Spring Boot environment variables; see `.env.example`.
 | `GOOGLE_WALLET_CLASS_ID` | Suffix of the event ticket class created in the Google Pay & Wallet Console (default `peachhacks_2027`, so the class is `<issuerId>.peachhacks_2027`) |
 | `HOST_SCHOOL_NAME` | The host school (default `Georgia State University`). A registration counts towards the host-school share when its school name equals or starts with this, case-insensitive, so `Georgia State University Perimeter College` counts too |
 | `HOST_SCHOOL_TARGET` | The share of accepted hackers that must come from the host school, as a fraction from 0 to 1 (default `0.70`). A value outside that range stops the application at startup |
+| `NON_HOST_MINIMUM_AGE` | The minimum age for students of other schools (default `18`); host-school students are eligible at any age. A registration under it from a school that is not the host school is flagged `ageReview` for organizers and is never refused. See [Age review](#age-review) |
 | `PORT` | HTTP port (default 8080) |
 
 The URL must be in JDBC form (`jdbc:postgresql://...`), not the `postgres://user:pass@...` form providers display; put the user and password in their own variables.
@@ -97,7 +98,7 @@ JSON everywhere, timestamps in ISO-8601 UTC. Errors always look like this (`fiel
 { "code": "VALIDATION_ERROR", "message": "Please check the highlighted fields.", "fieldErrors": { "email": "Must be a valid email" } }
 ```
 
-Codes: `VALIDATION_ERROR` (400), `INVALID_CREDENTIALS` and `UNAUTHORIZED` (401), `REGISTRATION_CLOSED` and `FORBIDDEN` (403), `NOT_FOUND` (404), `ALREADY_REGISTERED` and `ACCEPTANCE_SEND_RUNNING` (409), `RATE_LIMITED` (429), `EMAIL_FAILED` (502, the test email and the one-person acceptance email), `INTERNAL_ERROR` (500).
+Codes: `VALIDATION_ERROR` (400), `INVALID_CREDENTIALS` and `UNAUTHORIZED` (401), `REGISTRATION_CLOSED` and `FORBIDDEN` (403), `NOT_FOUND` (404), `ALREADY_REGISTERED`, `ACCEPTANCE_SEND_RUNNING` and `EVENT_HAS_CHECK_INS` (409), `RATE_LIMITED` (429), `EMAIL_FAILED` (502, the test email and the one-person acceptance email), `INTERNAL_ERROR` (500).
 
 ### Public
 
@@ -106,7 +107,7 @@ Codes: `VALIDATION_ERROR` (400), `INVALID_CREDENTIALS` and `UNAUTHORIZED` (401),
 | `GET /public/status` | `{ "registrationOpen": false }` |
 | `POST /public/pre-registrations` | Pre-register. `schoolEmail` is required. Idempotent on `email` (case-insensitive): a repeat updates the row and returns the same `id` with 201 |
 | `POST /public/registrations` | Full MLH registration. `schoolEmail` is required. Optional `resume` and `resumeOptIn`, see [Resumes](#resumes). 403 while the gate is closed, 409 if the `email` is already registered |
-| `POST /public/unsubscribe` | `{ "token": "..." }` from an email link; 204, or 404 for an unknown token |
+| `POST /public/unsubscribe` | `{ "token": "..." }` from the link in an announcement; 204, or 404 for an unknown token. It stops announcements only, see [Email](#email) |
 | `POST /public/school-email/confirm` | `{ "token": "..." }` from the link mailed to the school address; 200 `{ "schoolEmail": "ada@school.edu" }`, also when that link was already used; 404 `NOT_FOUND` for an unknown or expired token. See [School email confirmation](#school-email-confirmation) |
 | `POST /public/school-email/resend` | `{ "email": "<personal email>" }`; always 204, whether or not the email is known. Mails a new link to the school address if there is an unconfirmed one and none was sent in the last 10 minutes |
 | `GET /public/tickets/{token}` | The ticket behind a QR code: `{ "firstName", "lastName", "school", "checkedIn", "googleWalletUrl" }`. `checkedIn` is the general check-in; `googleWalletUrl` is null unless Google Wallet is configured. 404 `NOT_FOUND` unless the registration is `ACCEPTED` |
@@ -124,7 +125,6 @@ PeachHacks is for current students, and the school address is how that is checke
 - Nothing is confirmed by a GET: mail scanners open links. The page posts the token to `POST /public/school-email/confirm`.
 - Rows that existed before this feature are unconfirmed and are not mailed automatically; use the admin resend, or the public resend from the page.
 - An unconfirmed school email does not block any status change. Organizers see `schoolEmailConfirmed` and decide.
-- Deleting a pre-registration or registration also deletes the pair's confirmation and links once neither table uses that pair.
 
 Both forms accept a hidden `website` honeypot field: when it is filled in, the request gets a normal 201 and nothing is stored. Public POSTs are limited to 60 per minute per client address, login to 10 per minute and the ticket endpoints to 300 per minute (a whole door queue can share one venue address); all in memory, per instance, see `app.rate-limit.*`.
 
@@ -141,14 +141,14 @@ Every account is an `ADMIN` (full access) or a `VOLUNTEER` (check-in only); the 
 | `POST /admin/auth/login`, `POST /admin/auth/logout`, `GET /admin/auth/me` | Sign in, invalidate the token, current account (`{ id, email, name, role }`) |
 | `GET /admin/stats` | Totals, per school, per day, per level of study and per status; `preRegistrations.schoolEmailConfirmed` and `registrations.schoolEmailConfirmed` (how many have a confirmed school email); `registrations.checkedIn` (general check-in), `registrations.withResume` and `registrations.resumeOptIn` (resumes uploaded, and how many of those may be shared with sponsors) and `events`, a list of `{ eventId, name, checkedIn }` |
 | `GET /admin/pre-registrations?page=&size=&q=&school=&schoolEmailConfirmed=` | Paged list, newest first (`size` is capped at 200). Items carry `schoolEmailConfirmed` and `schoolEmailConfirmedAt` (null until confirmed); `schoolEmailConfirmed=true` or `false` filters on it |
-| `GET /admin/pre-registrations/export.csv`, `DELETE /admin/pre-registrations/{id}` | CSV export with the same filters, `school_email_confirmed` appended last; delete |
+| `GET /admin/pre-registrations/export.csv` | CSV export with the same filters, `school_email_confirmed` appended last. Pre-registrations cannot be deleted through the API |
 | `POST /admin/pre-registrations/{id}/school-email/resend` | Mail a new confirmation link to the school address, ignoring the 10-minute limit; 204, or 400 if it is already confirmed |
-| `GET /admin/registrations?page=&size=&q=&school=&status=&checkedIn=&resume=&schoolEmailConfirmed=` | Paged summaries with `schoolEmail`, `schoolEmailConfirmed`, `schoolEmailConfirmedAt`, `acceptedAt`, `acceptanceNotifiedAt`, `checkedInAt` (general check-in), `hasResume` and `resumeOptIn`. `q` matches the name, `email` or `schoolEmail`. `checkedIn=true` or `false` filters on the check-in; `resume=any` (uploaded one), `none`, or `opted-in` (uploaded one and agreed to share it) filters on the resume; `schoolEmailConfirmed=true` or `false` filters on the school email (`false` includes registrations that have none) |
-| `GET`, `PATCH`, `DELETE /admin/registrations/{id}` | Detail, set `status` (`PENDING`, `ACCEPTED`, `WAITLISTED`, `REJECTED`), delete. The detail adds `checkedInAt`, `checkedInBy`, `checkIns` (every event: `{ eventId, name, general, checkedInAt, checkedInBy }`) and, only while `ACCEPTED`, `ticketToken`, `ticketUrl` and `googleWalletUrl`; also `resume` (`null` or `{ fileName, size, uploadedAt }`, never the file itself) and `resumeOptIn`, and `schoolEmailConfirmed` with `schoolEmailConfirmedAt`, which the admin site turns into a warning on the status control. An unconfirmed school email does not block `ACCEPTED`. Deleting a registration deletes its resume. No status change sends an email; `acceptedAt` and `acceptanceNotifiedAt` say where an accepted registration stands, see [Acceptances](#acceptances) |
-| `POST /admin/registrations/status` | Bulk status change: `{ "ids": ["..."], "status": "ACCEPTED" }`, 1 to 500 ids, same rules as the single `PATCH`. Returns `{ "changed", "unchanged", "notFound" }`: `unchanged` already had the status, `notFound` no longer exist (they do not fail the call); repeated ids count once |
+| `GET /admin/registrations?page=&size=&q=&school=&status=&checkedIn=&resume=&schoolEmailConfirmed=&ageReview=` | Paged summaries with `schoolEmail`, `schoolEmailConfirmed`, `schoolEmailConfirmedAt`, `acceptedAt`, `acceptanceNotifiedAt`, `checkedInAt` (general check-in), `hasResume`, `resumeOptIn` and `ageReview`. `q` matches the name, `email` or `schoolEmail`. `checkedIn=true` or `false` filters on the check-in; `resume=any` (uploaded one), `none`, or `opted-in` (uploaded one and agreed to share it) filters on the resume; `schoolEmailConfirmed=true` or `false` filters on the school email (`false` includes registrations that have none); `ageReview=true` or `false` filters on the [age review](#age-review) flag |
+| `GET`, `PATCH /admin/registrations/{id}` | Detail, set `status` (`PENDING`, `ACCEPTED`, `WAITLISTED`, `REJECTED`). Registrations cannot be deleted through the API (`DELETE` answers 405). The detail adds `checkedInAt`, `checkedInBy`, `checkIns` (every event: `{ eventId, name, general, checkedInAt, checkedInBy }`) and, only while `ACCEPTED`, `ticketToken`, `ticketUrl` and `googleWalletUrl`; also `resume` (`null` or `{ fileName, size, uploadedAt }`, never the file itself) and `resumeOptIn`, and `schoolEmailConfirmed` with `schoolEmailConfirmedAt`, which the admin site turns into a warning on the status control, and `ageReview` (see [Age review](#age-review)). Neither an unconfirmed school email nor an age review blocks `ACCEPTED`. No status change sends an email; `acceptedAt` and `acceptanceNotifiedAt` say where an accepted registration stands, see [Acceptances](#acceptances) |
+| `POST /admin/registrations/status` | Bulk status change: `{ "ids": ["..."], "status": "ACCEPTED" }`, 1 to 500 ids, same rules as the single `PATCH`. Returns `{ "changed", "unchanged", "notFound", "acceptedAgeReview" }`: `unchanged` already had the status, `notFound` no longer exist (they do not fail the call); repeated ids count once. `acceptedAgeReview` is how many of the registrations this call moved to `ACCEPTED` need an [age review](#age-review) (0 for any other status) |
 | `POST /admin/registrations/{id}/ticket-email` | For someone already told, sends the ticket email again in the background. For someone accepted and still waiting, sends their acceptance email now and marks them told, so one person can be let in early; 502 `EMAIL_FAILED` if the provider does not take it (they stay waiting) and 409 `ACCEPTANCE_SEND_RUNNING` if the send-all run is mailing that person at that moment. 204 otherwise, 400 if the registration is not `ACCEPTED` |
-| `GET /admin/acceptances/summary` | Counts, host-school share and the state of the last send, recomputed on every call. See [Acceptances](#acceptances) |
-| `GET /admin/acceptances/waiting` | The bucket: everyone `ACCEPTED` and not yet told, longest-waiting first, as `[{ id, firstName, lastName, email, school, host, acceptedAt }]` |
+| `GET /admin/acceptances/summary` | Counts, host-school share, age review counts and the state of the last send, recomputed on every call. See [Acceptances](#acceptances) |
+| `GET /admin/acceptances/waiting` | The bucket: everyone `ACCEPTED` and not yet told, longest-waiting first, as `[{ id, firstName, lastName, email, school, host, ageReview, acceptedAt }]` |
 | `POST /admin/acceptances/send` | Emails everyone in the bucket. 202 `{ "queued": 12, "send": { ... } }` when a run was queued, 200 with `"queued": 0` when nobody is waiting (nothing is sent), 409 `ACCEPTANCE_SEND_RUNNING` while a run is going |
 | `GET /admin/acceptances/send` | Progress of the run, the same object as `send` in the summary |
 | `POST /admin/registrations/{id}/school-email/resend` | Mail a new confirmation link to the school address, ignoring the 10-minute limit; 204, or 400 if it is already confirmed or the registration has no school email |
@@ -157,13 +157,14 @@ Every account is an `ADMIN` (full access) or a `VOLUNTEER` (check-in only); the 
 | `DELETE /admin/registrations/{id}/resume` | Deletes the file and the opt-in, for a removal request; 204, or 404 if there is none. The registration stays |
 | `GET /admin/resumes/export.zip?checkedIn=` | The sponsor resume book, see [Resumes](#resumes) |
 | `GET`, `PUT /admin/settings` | The registration gate, `{ "registrationOpen": true }` |
-| `POST /admin/emails/recipient-count` | How many people an audience (and optional school) reaches |
-| `POST /admin/emails/test` | Send one copy to the signed-in admin |
-| `POST /admin/emails`, `GET /admin/emails` | Start a campaign (202, sent in the background); list campaigns |
+| `POST /admin/emails/recipient-count` | `{ kind, audience, school? }`: how many people a campaign of that kind would reach. `kind` is required; see [Email](#email) |
+| `POST /admin/emails/test` | `{ kind?, subject, body }`: send one copy to the signed-in admin, with the footer of that kind (`ANNOUNCEMENT` when omitted) |
+| `POST /admin/emails/preview` | `{ kind?, subject, body }`: the draft rendered as the test copy would be, `{ subject, html, text }`. Sends nothing; the admin site shows `html` in a sandboxed frame |
+| `POST /admin/emails`, `GET /admin/emails` | `{ kind, audience, school?, subject, body }` starts a campaign (202, sent in the background); list campaigns, each with its `kind` |
 | `GET`, `POST /admin/admins`, `DELETE /admin/admins/{id}` | Accounts. `POST` takes an optional `role` (`ADMIN` by default, or `VOLUNTEER`). You cannot delete yourself or the last `ADMIN`; volunteers do not count towards that |
 | `GET /admin/events` | Both roles. Every check-in event with its count: `[{ id, name, startsAt, general, checkedIn }]`, the built-in general event first |
 | `POST /admin/events`, `PATCH /admin/events/{id}` | `{ "name", "startsAt" }` (`startsAt` optional, ISO-8601 UTC). `PATCH` changes only the keys sent; `"startsAt": null` clears it. Names are unique |
-| `DELETE /admin/events/{id}` | Deletes a workshop and its check-ins. 400 for the general event |
+| `DELETE /admin/events/{id}` | Deletes a workshop that has no check-ins; 204. 409 `EVENT_HAS_CHECK_INS` when it has any (the message says how many; undo them first), 400 for the general event, which can never be deleted |
 | `GET /admin/events/{id}/export.csv` | That event's attendees: name, email, school, status, `checked_in_at`, `checked_in_by` |
 | `GET /admin/check-in?eventId=&q=&page=&size=` | Both roles. `{ event, items, total, page, size, checkedInTotal, registrationTotal }`; `q` matches first name, last name or email. Not-yet-checked-in people first, then by last name |
 | `POST`, `DELETE /admin/check-in/{registrationId}?eventId=` | Both roles. Check in (idempotent: a repeat keeps the first time and name) or undo; returns the item |
@@ -192,7 +193,7 @@ Accepting someone sends nothing. A registration that becomes `ACCEPTED` gets `ac
 - The send runs in the background on the campaign executor: one recipient at a time, `app.email.campaign-delay` apart, behind a campaign that is already sending. Each person is marked told only once the provider has taken their email; a failed recipient is counted and stays in the bucket, so running the send again retries exactly the failures. Everyone is re-read just before their turn, so someone moved out of `ACCEPTED`, or told individually, after the run started is skipped.
 - Only one run at a time: a second `POST` while one is going is refused with 409, and the one-person action cannot mail someone the run is mailing at that moment.
 - Progress (`send`) is `{ state, queued, sent, failed, skipped, startedAt, finishedAt, startedBy }` with `state` `SENDING` or `IDLE`; while idle it describes the last run. It is kept in memory, so it is empty after a restart. Who was told is in the database: a run cut short by a restart loses only its counters, and the people it had not reached are still waiting.
-- The acceptance email goes out even to someone who unsubscribed from bulk email, as it always has.
+- The acceptance email goes out even to someone who unsubscribed: unsubscribing only stops announcements (see [Email](#email)).
 - Rows that were already `ACCEPTED` when migration V6 ran had been emailed under the old behaviour, so the migration marks them told (with the migration time; their `acceptedAt` is unknown and stays null).
 
 `GET /admin/acceptances/summary`:
@@ -208,6 +209,7 @@ Accepting someone sends nothing. A registration that becomes `ACCEPTED` gets `ac
     "checkedIn": { "...": "over everyone with a general check-in, whatever their status" }
   },
   "acceptedBySchool": [ { "school": "Georgia State University", "count": 30, "host": true } ],
+  "ageReview": { "minimumAge": 18, "total": 3, "accepted": 1 },
   "send": { "state": "IDLE", "queued": 30, "sent": 30, "failed": 0, "skipped": 0, "startedAt": "...", "finishedAt": "...", "startedBy": "admin@peachhacks.com" }
 }
 ```
@@ -215,6 +217,15 @@ Accepting someone sends nothing. A registration that becomes `ACCEPTED` gets `ac
 `host` counts registrations whose school name equals or starts with `HOST_SCHOOL_NAME` (trimmed, case-insensitive). `met` is `host / total >= HOST_SCHOOL_TARGET`, decided in exact decimal arithmetic, so 7 of 10 meets 70%. When it is not met, `moreHostNeeded` is how many more host-school people the group needs with nobody removed (null when no number is enough, which only happens with a target of 1), and `fewerOthersNeeded` is how many others would have to leave instead. An empty group has `share: null` and `met: true`, with nothing needed. `acceptanceRate` is `accepted / registrations`, null with no registrations. `acceptedBySchool` is the accepted group by school, most first.
 
 The requirement is about who attends; `shares.accepted` is what organizers control before the event and `shares.checkedIn` is the real number during it.
+
+#### Age review
+
+The eligibility rule is: students of the host school may attend at any age, students of any other school must be at least `NON_HOST_MINIMUM_AGE` (18). The registration form does not enforce it, because a stated age can simply be changed; the API flags it for organizers instead. A registration has `ageReview: true` when its age is under the minimum and its school is not the host school, by the same host-school match as above (so a 17-year-old at `Georgia State University Perimeter College` is not flagged).
+
+- The flag is on the registration list items and detail and on the bucket items, `ageReview=true|false` filters the list and the CSV export, and the export's last column is `age_review`.
+- `ageReview` in the summary is `{ minimumAge, total, accepted }`: every flagged registration, and how many of them are `ACCEPTED` now. Those are the ones to look at.
+- Nothing is blocked. A flagged registration can be accepted on its own or in bulk; the bulk response counts them in `acceptedAgeReview`.
+- It is computed from the stored age and school on every call, so there is nothing to migrate. The public API never returns it, and the registrant is not told.
 
 #### Tickets
 
@@ -232,7 +243,7 @@ A hacker may attach one resume when registering. The registration body stays JSO
 - `resumeOptIn` (default `false`) is the hacker's consent to pass the resume to sponsors. It is stored with the file, so `true` without a file is stored as `false`, and removing the file removes the consent.
 - A 2 MB file is about 2.8 MB of base64. A registration whose `Content-Length` is over 3 MB is refused with the same 400 before the body is read (`RegistrationBodyLimitInterceptor`), and `server.tomcat.max-swallow-size` is raised to 16 MB so that the refused upload is drained and the client receives the error rather than a reset connection. Tomcat applies no size limit of its own to JSON bodies and Jackson's default limit on one string (20 million characters) is above the 2.8 MB needed, so nothing else has to be configured. A proxy in front of the service must allow 3 MB request bodies.
 - The stored file name is the client's with any directory, control and invisible characters and `<>:"|?*` removed, cut to 120 characters, always ending in `.pdf`.
-- Files live in Postgres, in `registration_resumes` (one row per registration, deleted with it); there is no object storage. Registration queries never read that table's `content` column: the JPA entity does not map it, and only the download and the resume book select it, one file at a time. Neither file contents nor base64 are logged; the request record's `toString()` prints only the length.
+- Files live in Postgres, in `registration_resumes` (one row per registration, removed with it by the foreign key if the row is ever deleted in the database); there is no object storage. Registration queries never read that table's `content` column: the JPA entity does not map it, and only the download and the resume book select it, one file at a time. Neither file contents nor base64 are logged; the request record's `toString()` prints only the length.
 
 Organizers (admins) can download any resume, for running the event. Sponsors only ever get the resume book, `GET /admin/resumes/export.zip`: a ZIP, streamed as it is built, with one PDF per registrant who uploaded a resume **and** opted in **and** is `ACCEPTED`, named `LastName_FirstName_<first 8 characters of the registration id>.pdf` (ASCII only, accents folded), plus `index.csv` with `first_name, last_name, email, school_email, school, level_of_study, major, linkedin_url, file_name`. `checkedIn=true` narrows it to people with a general check-in. The public form's consent text lists exactly these fields; keep the two in step. Each export and each resume removal is logged with the admin's email.
 
@@ -244,7 +255,36 @@ CSV cells that a spreadsheet would treat as a formula (starting with `=`, `+`, `
 
 Confirmation emails go out to the personal address after a new pre-registration and after a registration; while the school email is unconfirmed they include a sentence pointing to the school inbox, where the separate confirmation link is sent (see [School email confirmation](#school-email-confirmation)). A newly added admin or volunteer gets an email with the sign-in link (never the password) that says which kind of account it is.
 
-The acceptance email is a "You're in" message with a link to the hacker's ticket page and the QR code itself, embedded in the message (`cid:` image) and listed as a PNG attachment, because many mail clients block images loaded from a server. It is not sent when a registration becomes `ACCEPTED`: it goes out when an admin sends the acceptance emails, or to one person through `POST /admin/registrations/{id}/ticket-email`, which also sends it again afterwards (see [Acceptances](#acceptances)). With Google Wallet configured it also carries an "Add to Google Wallet" link. Campaign audiences are `PRE_REGISTRANTS`, `PRE_REGISTRANTS_NOT_REGISTERED` and `REGISTRANTS`, optionally narrowed to one school; unsubscribed addresses are skipped. The body is plain text: blank lines separate paragraphs, `{{firstName}}` and `{{lastName}}` are filled in per recipient, and an unsubscribe link (`$WEB_BASE_URL/unsubscribe.html?token=...`) is appended.
+The acceptance email is a "You're in" message with a link to the hacker's ticket page and the QR code itself, embedded in the message (`cid:` image) and listed as a PNG attachment, because many mail clients block images loaded from a server. It is not sent when a registration becomes `ACCEPTED`: it goes out when an admin sends the acceptance emails, or to one person through `POST /admin/registrations/{id}/ticket-email`, which also sends it again afterwards (see [Acceptances](#acceptances)). With Google Wallet configured it also carries an "Add to Google Wallet" link.
+
+#### Essential emails and announcements
+
+Unsubscribing means "no announcements". It never stops the emails a person needs.
+
+- **Essential emails** are always sent and carry no unsubscribe link and no `List-Unsubscribe` header: the pre-registration confirmation, the registration confirmation, the school email confirmation link, the acceptance and ticket email (the send-all run, the one-person send and the resend) and the welcome to a new admin or volunteer. Each ends with one line saying why the person is receiving it.
+- **Campaigns** written by organizers have a `kind`, required on `POST /admin/emails` and `POST /admin/emails/recipient-count`:
+
+| `kind` | For | Audiences | Unsubscribed people | Footer |
+| --- | --- | --- | --- | --- |
+| `EVENT_UPDATE` | Logistics for people who are coming: venue, times, what to bring | `REGISTRANTS`, `ACCEPTED` | Included | "You are receiving this because you registered for PeachHacks." No unsubscribe link or header |
+| `ANNOUNCEMENT` | Everything else, including "registration is open" | `PRE_REGISTRANTS`, `PRE_REGISTRANTS_NOT_REGISTERED`, `REGISTRANTS`, `ACCEPTED` | Skipped | The reason line, an unsubscribe link (`$WEB_BASE_URL/unsubscribe.html?token=...`) and the `List-Unsubscribe` header |
+
+- `ACCEPTED` is registrations whose status is `ACCEPTED` and whose acceptance email has been sent (`acceptanceNotifiedAt` is set), so nobody learns they are accepted from a logistics email.
+- An `EVENT_UPDATE` to a pre-registrant audience is refused with 400 `VALIDATION_ERROR` and `fieldErrors.audience`: people who only pre-registered can always opt out.
+- Any audience can be narrowed to one `school`. Because of the unsubscribed flag, the same audience can count differently for the two kinds.
+- The `unsubscribed` flag, `POST /public/unsubscribe` and the admin's unsubscribed indicators are unchanged. Unsubscribing covers both the pre-registration and the registration with that email.
+- Campaigns sent before `kind` existed are `ANNOUNCEMENT` (migration V7), which is how they behaved.
+
+The body is plain text: blank lines separate paragraphs, `{{firstName}}` and `{{lastName}}` are filled in per recipient, and bare `http://` and `https://` URLs become links. Everything is escaped; nothing else is markup.
+
+#### Design
+
+Every email is rendered by `EmailComposer` in one layout: a navy header with the logo, the message on a white card, and a navy footer with "PeachHacks · ColorStack at Georgia State University", the reason line, the unsubscribe link where it belongs and a link to the site. It is a table layout with inline styles, 600px wide, with a hidden preview line, a dark-mode variant for clients that honour `prefers-color-scheme`, and Open Sans loaded by a font link with Arial as the fallback. There are no tracking pixels and links are never rewritten.
+
+- The logo is `$WEB_BASE_URL/assets/email-logo.png` (served by `web/`). When `WEB_BASE_URL` is a local address the live site's copy is used instead, so the image loads in a real inbox during development. With images blocked the alt text "PeachHacks" shows on the navy band.
+- System emails are built from structured content (`EmailComposer.Content`): a heading, paragraphs, an optional primary and secondary action and, for the ticket, the inline QR image. An action is a button drawn for Outlook on Windows (VML) as well as for other clients, with the plain URL under it. The actions are "Confirm your school email", "View your ticket", "Add to Google Wallet" (secondary) and the sign-in link in the two welcome emails.
+- Every message has a complete plain-text alternative carrying the same links.
+- The school email confirmation goes to an inbox that has never heard from PeachHacks, so it opens by saying who is writing and which sign-up it belongs to ("You, or someone using this address, signed up for PeachHacks, a student hackathon run by ColorStack at Georgia State University, with the personal email j***@gmail.com"), uses the person's first name, keeps the link on the site's own domain, shows the URL in full, avoids urgent wording and says it can be ignored. The personal address is always masked.
 
 Campaigns are sent one recipient at a time, about 600 ms apart (`app.email.campaign-delay`), one campaign at a time. A failed recipient is counted in `failedCount` and does not stop the campaign. Sending happens in memory, so a campaign interrupted by a restart or redeploy is marked `FAILED` at the next startup with the counts it had reached; it is not resumed.
 
@@ -266,7 +306,7 @@ One-time setup in Google's consoles:
 
 1. Create a service from this repo and set **Root Directory** to `/backend`.
 2. Set the config-as-code path to `/backend/railway.toml` (Railway resolves it from the repo root). It builds with the `Dockerfile` and health-checks `/actuator/health`.
-3. Set the datasource variables (below), `ADMIN_BOOTSTRAP_EMAIL` / `ADMIN_BOOTSTRAP_PASSWORD` / `ADMIN_BOOTSTRAP_NAME` for the first admin, `RESEND_API_KEY`, and optionally `EMAIL_FROM`, `WEB_BASE_URL`, `CORS_ALLOWED_ORIGINS`, `HOST_SCHOOL_NAME`, `HOST_SCHOOL_TARGET` and the `GOOGLE_WALLET_*` variables. `PORT` is injected by Railway.
+3. Set the datasource variables (below), `ADMIN_BOOTSTRAP_EMAIL` / `ADMIN_BOOTSTRAP_PASSWORD` / `ADMIN_BOOTSTRAP_NAME` for the first admin, `RESEND_API_KEY`, and optionally `EMAIL_FROM`, `WEB_BASE_URL`, `CORS_ALLOWED_ORIGINS`, `HOST_SCHOOL_NAME`, `HOST_SCHOOL_TARGET`, `NON_HOST_MINIMUM_AGE` and the `GOOGLE_WALLET_*` variables. `PORT` is injected by Railway.
 4. Point `api.peachhacks.com` at the service under Settings > Networking > Custom Domain.
 
 Run a single instance: rate limiting, campaign sending and the acceptance send (its progress and the guard against two runs at once) are kept in memory.

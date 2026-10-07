@@ -9,7 +9,6 @@ import com.peachhacks.backend.common.PageResponse;
 
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -52,12 +51,6 @@ public class AdminPreRegistrationController {
 	@PostMapping("/{id}/school-email/resend")
 	ResponseEntity<Void> resendSchoolEmailConfirmation(@PathVariable UUID id) {
 		service.resendSchoolEmailConfirmation(id);
-		return ResponseEntity.noContent().build();
-	}
-
-	@DeleteMapping("/{id}")
-	ResponseEntity<Void> delete(@PathVariable UUID id) {
-		service.delete(id);
 		return ResponseEntity.noContent().build();
 	}
 

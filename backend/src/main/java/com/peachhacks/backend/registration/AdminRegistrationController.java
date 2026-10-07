@@ -4,9 +4,11 @@ import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import com.peachhacks.backend.acceptance.AcceptanceMailer;
+import com.peachhacks.backend.acceptance.AgeReview;
 import com.peachhacks.backend.checkin.CheckIn;
 import com.peachhacks.backend.checkin.CheckInService;
 import com.peachhacks.backend.common.Csv;
@@ -21,7 +23,6 @@ import jakarta.validation.constraints.Size;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -52,7 +53,7 @@ public class AdminRegistrationController {
 			"sexualOrientation", "sexualOrientationOther", "highestEducation", "highestEducationOther", "tshirtSize",
 			"shippingLine1", "shippingLine2", "shippingCity", "shippingState", "shippingCountry",
 			"shippingPostalCode", "majorFieldOfStudy", "majorOther", "linkedinUrl", "checked_in_at",
-			"has_resume", "resume_opt_in", "school_email", "school_email_confirmed");
+			"has_resume", "resume_opt_in", "school_email", "school_email_confirmed", "age_review");
 
 	private final RegistrationService service;
 
@@ -66,8 +67,12 @@ public class AdminRegistrationController {
 
 	private final AcceptanceMailer acceptanceMailer;
 
+	private final AgeReview ageReview;
+
 	public AdminRegistrationController(RegistrationService service, CheckInService checkIns, Tickets tickets,
-			GoogleWallet googleWallet, ResumeService resumes, AcceptanceMailer acceptanceMailer) {
+			GoogleWallet googleWallet, ResumeService resumes, AcceptanceMailer acceptanceMailer,
+			AgeReview ageReview) {
+		this.ageReview = ageReview;
 		this.service = service;
 		this.checkIns = checkIns;
 		this.tickets = tickets;
@@ -81,27 +86,31 @@ public class AdminRegistrationController {
 			@RequestParam(defaultValue = "25") int size, @RequestParam(required = false) String q,
 			@RequestParam(required = false) String school, @RequestParam(required = false) String status,
 			@RequestParam(required = false) Boolean checkedIn, @RequestParam(required = false) String resume,
-			@RequestParam(required = false) Boolean schoolEmailConfirmed) {
+			@RequestParam(required = false) Boolean schoolEmailConfirmed,
+			@RequestParam(name = "ageReview", required = false) Boolean ageReviewFilter) {
 		Pageable pageable = PageResponse.pageable(page, size);
 		Page<Registration> result = service.search(q, school, status, checkedIn, resume, schoolEmailConfirmed,
-				pageable);
+				ageReviewFilter, pageable);
 		List<UUID> ids = result.getContent().stream().map(Registration::getId).toList();
 		Map<UUID, CheckIn> general = checkIns.general(ids);
 		Map<UUID, RegistrationResume> uploaded = resumes.byRegistration(ids);
-		return PageResponse.of(result, pageable,
-				r -> RegistrationSummary.from(r, checkedInAt(general, r), uploaded.get(r.getId())));
+		Set<UUID> flagged = ageReview.among(ids);
+		return PageResponse.of(result, pageable, r -> RegistrationSummary.from(r, checkedInAt(general, r),
+				uploaded.get(r.getId()), flagged.contains(r.getId())));
 	}
 
 	@GetMapping("/export.csv")
 	ResponseEntity<byte[]> export(@RequestParam(required = false) String q,
 			@RequestParam(required = false) String school, @RequestParam(required = false) String status,
 			@RequestParam(required = false) Boolean checkedIn, @RequestParam(required = false) String resume,
-			@RequestParam(required = false) Boolean schoolEmailConfirmed) {
+			@RequestParam(required = false) Boolean schoolEmailConfirmed,
+			@RequestParam(name = "ageReview", required = false) Boolean ageReviewFilter) {
 		Map<UUID, CheckIn> general = checkIns.general();
 		Map<UUID, RegistrationResume> uploaded = resumes.byRegistration();
+		Set<UUID> flagged = ageReview.all();
 		Csv csv = new Csv(CSV_HEADER);
 		for (Registration r : service.search(q, school, status, checkedIn, resume, schoolEmailConfirmed,
-				Pageable.unpaged())) {
+				ageReviewFilter, Pageable.unpaged())) {
 			RegistrationResume file = uploaded.get(r.getId());
 			ShippingAddress address = (r.getShippingAddress() != null) ? r.getShippingAddress()
 					: new ShippingAddress(null, null, null, null, null, null);
@@ -115,7 +124,8 @@ public class AdminRegistrationController {
 					r.getHighestEducationOther(), r.getTshirtSize(), address.line1(), address.line2(), address.city(),
 					address.state(), address.country(), address.postalCode(), r.getMajorFieldOfStudy(),
 					r.getMajorOther(), r.getLinkedinUrl(), checkedInAt(general, r), file != null,
-					file != null && file.isSponsorOptIn(), r.getSchoolEmail(), r.isSchoolEmailConfirmed()));
+					file != null && file.isSponsorOptIn(), r.getSchoolEmail(), r.isSchoolEmailConfirmed(),
+					flagged.contains(r.getId())));
 		}
 		return csv.toResponse("peachhacks-registrations");
 	}
@@ -147,12 +157,6 @@ public class AdminRegistrationController {
 		return ResponseEntity.noContent().build();
 	}
 
-	@DeleteMapping("/{id}")
-	ResponseEntity<Void> delete(@PathVariable UUID id) {
-		service.delete(id);
-		return ResponseEntity.noContent().build();
-	}
-
 	private RegistrationDetail detail(Registration r) {
 		List<CheckInService.EventCheckIn> all = checkIns.forRegistration(r.getId());
 		CheckInService.EventCheckIn general = all.stream()
@@ -165,7 +169,8 @@ public class AdminRegistrationController {
 		return new RegistrationDetail(r, (general != null) ? general.checkedInAt() : null,
 				(general != null) ? general.checkedInBy() : null, all, hasTicket ? r.getTicketToken() : null,
 				ticketUrl, hasTicket ? googleWallet.saveUrl(r, ticketUrl).orElse(null) : null,
-				(resume != null) ? ResumeInfo.from(resume) : null, resume != null && resume.isSponsorOptIn());
+				(resume != null) ? ResumeInfo.from(resume) : null, resume != null && resume.isSponsorOptIn(),
+				ageReview.needed(r.getId()));
 	}
 
 	private static Instant checkedInAt(Map<UUID, CheckIn> general, Registration r) {

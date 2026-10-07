@@ -1,6 +1,5 @@
 import { useCallback, useId, useMemo, useState } from "react";
 import { api } from "../api/client.js";
-import { ConfirmDialog } from "../components/Modal.jsx";
 import { EmptyBlock, ErrorBlock, LoadingBlock, PageHeader, Pagination, Tag, useToast } from "../components/ui.jsx";
 import { errorText, formatDateTime, fullName } from "../lib/format.js";
 import { schoolOptions, useAsync, useDebounced, useStats } from "../lib/hooks.js";
@@ -15,9 +14,6 @@ export default function PreRegistrations() {
   const [schoolEmailConfirmed, setSchoolEmailConfirmed] = useState("");
   const [page, setPage] = useState(0);
   const [exporting, setExporting] = useState(false);
-  const [pendingDelete, setPendingDelete] = useState(null);
-  const [deleting, setDeleting] = useState(false);
-  const [deleteError, setDeleteError] = useState(null);
   const [resending, setResending] = useState(null);
 
   const q = useDebounced(search.trim(), 300);
@@ -51,23 +47,6 @@ export default function PreRegistrations() {
       notify(`Could not send the link: ${errorText(error)}`, "error");
     } finally {
       setResending(null);
-    }
-  };
-
-  const confirmDelete = async () => {
-    setDeleting(true);
-    setDeleteError(null);
-    try {
-      await api.deletePreRegistration(pendingDelete.id);
-      notify(`Deleted the pre-registration for ${fullName(pendingDelete)}.`);
-      setPendingDelete(null);
-      if (items.length === 1 && page > 0) setPage(page - 1);
-      else list.reload();
-      stats.reload();
-    } catch (error) {
-      setDeleteError(error);
-    } finally {
-      setDeleting(false);
     }
   };
 
@@ -207,18 +186,7 @@ export default function PreRegistrations() {
                       >
                         {resending === item.id ? "Sending…" : "Resend link"}
                       </button>
-                    )}{" "}
-                    <button
-                      type="button"
-                      className="btn btn-small btn-danger-quiet"
-                      aria-label={`Delete pre-registration for ${fullName(item)}`}
-                      onClick={() => {
-                        setDeleteError(null);
-                        setPendingDelete(item);
-                      }}
-                    >
-                      Delete
-                    </button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -231,23 +199,6 @@ export default function PreRegistrations() {
         <Pagination page={page} size={list.data.size || PAGE_SIZE} total={total} onPage={setPage} disabled={list.loading} />
       )}
 
-      {pendingDelete && (
-        <ConfirmDialog
-          title="Delete this pre-registration?"
-          confirmLabel="Delete"
-          danger
-          busy={deleting}
-          error={deleteError}
-          onConfirm={confirmDelete}
-          onCancel={() => setPendingDelete(null)}
-        >
-          <p>
-            <strong>{fullName(pendingDelete)}</strong> ({pendingDelete.email}) will be removed from the pre-registration
-            list and will no longer receive emails sent to pre-registrants. This cannot be undone.
-          </p>
-          {pendingDelete.registered && <p className="muted">Their full registration is separate and will not be deleted.</p>}
-        </ConfirmDialog>
-      )}
     </>
   );
 }

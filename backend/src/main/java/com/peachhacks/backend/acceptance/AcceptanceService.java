@@ -36,18 +36,25 @@ public class AcceptanceService {
 	public record SchoolCount(String school, long count, boolean host) {
 	}
 
+	/**
+	 * total is every registration that needs an age review; accepted is how many of those
+	 * are ACCEPTED now, which are the ones for organizers to look at.
+	 */
+	public record AgeReviewCounts(int minimumAge, long total, long accepted) {
+	}
+
 	public record Summary(Totals totals, HostSchool hostSchool, Shares shares, List<SchoolCount> acceptedBySchool,
-			AcceptanceMailer.SendStatus send) {
+			AgeReviewCounts ageReview, AcceptanceMailer.SendStatus send) {
 	}
 
 	/** acceptedAt is null for rows accepted before it was recorded. */
 	public record Waiting(UUID id, String firstName, String lastName, String email, String school, boolean host,
-			Instant acceptedAt) {
+			boolean ageReview, Instant acceptedAt) {
 	}
 
 	// Compared against the start of the trimmed, lower-cased school name, so the host's
 	// other campuses ("... Perimeter College") count without a LIKE pattern to escape.
-	private static final String IS_HOST = "left(lower(btrim(r.school)), :hostLength) = :host";
+	static final String IS_HOST = "left(lower(trim(r.school)), :hostLength) = :host";
 
 	private final JdbcClient jdbc;
 
@@ -78,15 +85,22 @@ public class AcceptanceService {
 					count(*) filter (where host and status = 'ACCEPTED'),
 					count(*) filter (where host and status = 'PENDING'),
 					count(*) filter (where checked_in),
-					count(*) filter (where host and checked_in)
+					count(*) filter (where host and checked_in),
+					count(*) filter (where age_review),
+					count(*) filter (where age_review and status = 'ACCEPTED')
 				from (
 					select r.status, r.acceptance_notified_at is not null as notified, %s as host,
+						%s as age_review,
 						exists (select 1 from check_ins c join events e on e.id = c.event_id
 							where e.general and c.registration_id = r.id) as checked_in
 					from registrations r
 				) x
-				""".formatted(IS_HOST)).param("host", host).param("hostLength", host.length()).query((rs, rowNum) -> {
-			long[] counts = new long[11];
+				""".formatted(IS_HOST, AgeReview.NEEDED))
+			.param("host", host)
+			.param("hostLength", host.length())
+			.param("minimumAge", properties.nonHostMinimumAge())
+			.query((rs, rowNum) -> {
+			long[] counts = new long[13];
 			for (int i = 0; i < counts.length; i++) {
 				counts[i] = rs.getLong(i + 1);
 			}
@@ -110,24 +124,27 @@ public class AcceptanceService {
 			.query((rs, rowNum) -> new SchoolCount(rs.getString("school"), rs.getLong("total"), rs.getBoolean("host")))
 			.list();
 		return new Summary(totals, new HostSchool(properties.hostSchoolName(), target), shares, bySchool,
-				mailer.status());
+				new AgeReviewCounts(properties.nonHostMinimumAge(), n[11], n[12]), mailer.status());
 	}
 
 	/** Everyone accepted and not yet told, longest-waiting first. */
 	public List<Waiting> waiting() {
 		return jdbc.sql("""
-				select r.id, r.first_name, r.last_name, r.email, r.school, %s as host, r.accepted_at
+				select r.id, r.first_name, r.last_name, r.email, r.school, %s as host, %s as age_review,
+					r.accepted_at
 				from registrations r
 				where r.status = 'ACCEPTED' and r.acceptance_notified_at is null
 				order by r.accepted_at asc nulls first, lower(r.last_name), lower(r.first_name), r.id
-				""".formatted(IS_HOST))
+				""".formatted(IS_HOST, AgeReview.NEEDED))
 			.param("host", host)
 			.param("hostLength", host.length())
+			.param("minimumAge", properties.nonHostMinimumAge())
 			.query((rs, rowNum) -> {
 				OffsetDateTime acceptedAt = rs.getObject("accepted_at", OffsetDateTime.class);
 				return new Waiting(rs.getObject("id", UUID.class), rs.getString("first_name"),
 						rs.getString("last_name"), rs.getString("email"), rs.getString("school"),
-						rs.getBoolean("host"), (acceptedAt != null) ? acceptedAt.toInstant() : null);
+						rs.getBoolean("host"), rs.getBoolean("age_review"),
+						(acceptedAt != null) ? acceptedAt.toInstant() : null);
 			})
 			.list();
 	}

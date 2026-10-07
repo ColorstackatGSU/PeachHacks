@@ -52,6 +52,7 @@ app:
   acceptance:
     host-school-name: ${HOST_SCHOOL_NAME:Georgia State University}
     host-school-target: ${HOST_SCHOOL_TARGET:0.70}
+    non-host-minimum-age: ${NON_HOST_MINIMUM_AGE:18}
   admin:
     bootstrap-email: ${ADMIN_BOOTSTRAP_EMAIL:}
     bootstrap-password: ${ADMIN_BOOTSTRAP_PASSWORD:}

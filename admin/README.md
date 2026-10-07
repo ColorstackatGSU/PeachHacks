@@ -9,7 +9,8 @@ pre-registrations, registrations (with a detail drawer, status changes for one
 person or a selection, the ticket and the resume), acceptances (the host-school
 share, the bucket of accepted people not yet told, and the button that emails
 them all), check-in (scan a ticket QR code or
-search by name, per event), email (composer, test send, campaign history) and
+search by name, per event), email (event updates and announcements: composer,
+test send, campaign history) and
 settings (the registration gate, check-in events and accounts).
 
 Accounts are admins (everything) or volunteers (the Check-in screen only). A
@@ -120,7 +121,7 @@ Mock mode cannot be turned on in production: it is gated on Vite's
   in `backend/`). The Overview has a compact tile and the Registrations screen a
   one-line strip. All three read `GET /admin/acceptances/summary` through
   `useAcceptanceSummary` (`src/lib/hooks.js`), which refetches after every
-  status change, delete, check-in or send made from this browser (those calls
+  status change, check-in or send made from this browser (those calls
   report through `changing` in `src/api/client.js`), every 2 seconds while a
   send is running and every 15 seconds otherwise, so another organizer's work
   shows up without a reload.
@@ -153,6 +154,49 @@ Mock mode cannot be turned on in production: it is gated on Vite's
   tiles for pre-registrations and registrations say how many have a confirmed
   school email. Registrations made before school emails were collected have none
   and count as unconfirmed.
+- **Age eligibility**: host-school students are eligible at any age; students of
+  other schools must be at least the minimum age (`NON_HOST_MINIMUM_AGE` in
+  `backend/`, 18). The form does not enforce it, so the API flags a registration
+  under that age from another school with `ageReview`, and the admin site shows it
+  as "Under 18, not Georgia State University" (both values come from
+  `GET /admin/acceptances/summary`): under the school in the Registrations table,
+  on the status control in the drawer, and beside the school in the bucket table.
+  The Registrations screen has an Age eligibility filter, which also applies to
+  the CSV export, and the export ends with an `age_review` column. Nothing is
+  blocked: the accept confirmation says the person is flagged and lets the
+  organizer proceed; a bulk accept states how many of the selection are flagged
+  before confirming and, afterwards, the count the API returned
+  (`acceptedAgeReview`). When anyone accepted is flagged, the Acceptances screen
+  shows a notice with the count and a link to
+  `/#/registrations?status=ACCEPTED&ageReview=true`, which opens the list with
+  those two filters set.
+- **Deleting**: there is no way to delete a pre-registration or a registration
+  from the admin site, and the API has no endpoint for it. A workshop event can
+  be deleted in Settings only while it has no check-ins: with any, its Delete
+  button is disabled and the row says why, and if someone is checked in between
+  loading the list and confirming, the API refuses (409 `EVENT_HAS_CHECK_INS`)
+  and the dialog shows its message. The general check-in event has no Delete
+  button. Removing a resume, undoing a check-in and removing an account are
+  unchanged.
+- **Email preview**: once a draft has a subject and a message, the composer shows
+  the email exactly as the API renders it (`POST /admin/emails/preview`, which
+  sends nothing), in an `<iframe sandbox="">` so the rendered HTML can run no
+  script. Until then, or if that call fails, it shows the wording only. In mock
+  mode the frame holds a simplified stand-in.
+- **Email kinds**: the composer's first choice is the kind of email. An **event
+  update** is logistics for people who are coming: it is always delivered, has no
+  unsubscribe link, and can only go to Registrants or Accepted hackers (accepted
+  and already sent their acceptance email). An **announcement** is news and
+  promotion: people who unsubscribed are skipped and it carries the unsubscribe
+  link. The audience list shows only the audiences the kind allows, the live
+  recipient count is asked for that kind (so the same audience can count
+  differently), the preview shows that kind's footer, the confirmation names the
+  kind and the count, "Send test to me" sends the kind so the test has the right
+  footer, and the history tags each campaign with its kind. The "Registration is
+  open" template selects Announcement. Confirmations, the school email link, the
+  acceptance and ticket email and account welcomes are not campaigns: the API
+  always sends them, without an unsubscribe link. "Unsubscribed" in the
+  pre-registrations table therefore means "no announcements".
 - **Scanning** uses the camera through `getUserMedia`, which browsers only allow
   on https (or localhost). QR codes are read with the browser's own
   `BarcodeDetector` where it supports them (Android, macOS); elsewhere (iOS

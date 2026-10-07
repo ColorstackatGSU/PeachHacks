@@ -1,12 +1,14 @@
 package com.peachhacks.backend.registration;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 
+import com.peachhacks.backend.acceptance.AgeReview;
 import com.peachhacks.backend.common.ApiException;
 import com.peachhacks.backend.common.RequestValidator;
 import com.peachhacks.backend.common.Texts;
@@ -42,11 +44,14 @@ public class RegistrationService {
 
 	private final SchoolEmailService schoolEmails;
 
+	private final AgeReview ageReview;
+
 	private final TransactionTemplate transaction;
 
 	public RegistrationService(RegistrationRepository repository, SettingsService settings,
 			RequestValidator validator, MailService mailService, ResumeService resumes,
-			SchoolEmailService schoolEmails, PlatformTransactionManager transactionManager) {
+			SchoolEmailService schoolEmails, AgeReview ageReview, PlatformTransactionManager transactionManager) {
+		this.ageReview = ageReview;
 		this.repository = repository;
 		this.settings = settings;
 		this.validator = validator;
@@ -90,24 +95,30 @@ public class RegistrationService {
 		boolean unconfirmed = schoolEmails.requestConfirmation(registration.getEmail(), registration.getSchoolEmail(),
 				registration.getFirstName());
 		mailService.sendRegistrationConfirmation(registration.getEmail(), registration.getFirstName(),
-				registration.getUnsubscribeToken(), unconfirmed ? registration.getSchoolEmail() : null);
+				unconfirmed ? registration.getSchoolEmail() : null);
 		return registration.getId();
 	}
 
 	public Page<Registration> search(String q, String school, String status, Boolean checkedIn, String resume,
-			Boolean schoolEmailConfirmed, Pageable pageable) {
+			Boolean schoolEmailConfirmed, Boolean needsAgeReview, Pageable pageable) {
 		RegistrationStatus parsed = parseStatus(status);
 		return repository.search(Texts.containsPattern(q), Texts.orEmpty(school), parsed == null,
 				(parsed != null) ? parsed : RegistrationStatus.PENDING, checkedIn == null,
 				Boolean.TRUE.equals(checkedIn), parseResumeFilter(resume), schoolEmailConfirmed == null,
-				Boolean.TRUE.equals(schoolEmailConfirmed), pageable);
+				Boolean.TRUE.equals(schoolEmailConfirmed), needsAgeReview == null,
+				Boolean.TRUE.equals(needsAgeReview), ageReview.minimumAge(), ageReview.host(),
+				ageReview.hostLength(), pageable);
 	}
 
 	public Registration get(UUID id) {
 		return repository.findById(id).orElseThrow(() -> ApiException.notFound("Registration not found."));
 	}
 
-	public record BulkStatusResult(int changed, int unchanged, int notFound) {
+	/**
+	 * acceptedAgeReview is how many of the registrations this request moved to ACCEPTED need
+	 * an age review; it is 0 for any other status.
+	 */
+	public record BulkStatusResult(int changed, int unchanged, int notFound, int acceptedAgeReview) {
 	}
 
 	/** Nothing is emailed here: an accepted registration waits until the acceptance emails are sent. */
@@ -125,25 +136,21 @@ public class RegistrationService {
 		return transaction.execute(tx -> {
 			Instant now = Instant.now();
 			List<Registration> found = repository.findAllById(distinct);
-			int changed = 0;
+			List<UUID> changed = new ArrayList<>();
 			for (Registration registration : found) {
 				if (registration.changeStatus(status, now)) {
-					changed++;
+					changed.add(registration.getId());
 				}
 			}
-			return new BulkStatusResult(changed, found.size() - changed, distinct.size() - found.size());
+			int acceptedAgeReview = (status == RegistrationStatus.ACCEPTED) ? ageReview.among(changed).size() : 0;
+			return new BulkStatusResult(changed.size(), found.size() - changed.size(),
+					distinct.size() - found.size(), acceptedAgeReview);
 		});
 	}
 
 	public void resendSchoolEmailConfirmation(UUID id) {
 		Registration registration = get(id);
 		schoolEmails.sendNow(registration.getEmail(), registration.getSchoolEmail(), registration.getFirstName());
-	}
-
-	public void delete(UUID id) {
-		Registration registration = get(id);
-		repository.deleteById(id);
-		schoolEmails.forget(registration.getEmail());
 	}
 
 	private static RegistrationStatus parseStatus(String status) {
