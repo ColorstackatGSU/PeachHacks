@@ -7,7 +7,7 @@ import SiteFooter from './home/SiteFooter.jsx';
 import RegisterLayer, { preloadRegisterPanel } from './home/RegisterLayer.jsx';
 import { closeRegisterPanel, openRegisterPanel, openedOnLoad, useRegisterPanelShown } from './home/registerPanel.js';
 import { useRegistrationCta } from './home/registration.js';
-import { PARTNER_PLACEHOLDERS, getFaqColumns, scheduleGroups, scheduleNote, tracksBackdropRows, tracksData } from './home/content.jsx';
+import { PARTNER_PLACEHOLDERS, getFaqColumns, scheduleNote, tracksBackdropRows, tracksData } from './home/content.jsx';
 import { EVENT_DATES, SPONSOR_EMAIL, SPONSOR_FORM_PATH, prefersReducedMotion } from './home/site.js';
 import { introStars, partnerStars, renderStarField } from './home/stars.jsx';
 import './styles.css';
@@ -477,20 +477,7 @@ function SchedulePanel() {
             <h2 id="schedule-title">Schedule</h2>
           </div>
           <div className="schedule-body">
-            {scheduleGroups.map((group) => (
-              <div className="schedule-day-group" key={group.day}>
-                <h3 className="schedule-day-label scroll-fx" style={{ '--i': group.firstRow }}>{group.day}</h3>
-                <ul className="schedule-day-events">
-                  {group.events.map((event, eventIndex) => (
-                    <li className="schedule-event-row scroll-fx" key={`${group.day}-${event.title}`} style={{ '--i': group.firstRow + eventIndex }}>
-                      <span className="schedule-event-time">{event.time}</span>
-                      <span className="schedule-event-dash" aria-hidden="true">-</span>
-                      <span className="schedule-event-title">{event.title}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
+            <p className="schedule-tba scroll-fx">To be announced</p>
             <p className="schedule-note scroll-fx">{scheduleNote}</p>
           </div>
         </div>
@@ -567,7 +554,10 @@ function App() {
             <div className="hero-stack">
               <div className="hero-logo-shell hero-fx">
                 <div className="hero-logo-circle" aria-hidden="true" />
-                <img className="hero-logo" src="/assets/logo.svg" alt="PeachHacks" width="210" height="79" />
+                <picture className="hero-logo-picture">
+                  <source media="(max-width: 620px)" srcSet="/assets/logo-stacked.svg" width="78" height="46" />
+                  <img className="hero-logo" src="/assets/logo.svg" alt="PeachHacks" width="210" height="79" />
+                </picture>
               </div>
               <div className="hero-card-shell hero-fx" ref={cardShellRef}>
                 <HeroTag registerButtonRef={registerButtonRef} tagCloseRef={tagCloseRef} />

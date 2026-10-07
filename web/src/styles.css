@@ -80,6 +80,7 @@ main:focus { outline: none; }
 .hero-stack { --hero-top: clamp(48px, 7.8vh, 64px); --hero-bottom: clamp(28px, 4.5vh, 48px); position: relative; z-index: 3; display: grid; grid-template-rows: auto minmax(8px, clamp(0px, 20vw, 200px)) auto; align-content: start; justify-items: center; height: var(--screen-h); padding: var(--hero-top) 24px var(--hero-bottom); }
 .hero-logo-shell { grid-row: 1; display: grid; transform-origin: 50% 20%; }
 .hero-logo-circle { grid-row: 1; grid-column: 1; align-self: center; justify-self: center; z-index: 1; width: calc(var(--hero-logo-w) * .32); aspect-ratio: 1; border-radius: 50%; background: #fff; box-shadow: 0 0 24px rgba(255, 255, 255, .35); pointer-events: none; }
+.hero-logo-picture { grid-row: 1; grid-column: 1; display: grid; }
 .hero-logo { grid-row: 1; grid-column: 1; position: relative; z-index: 1; display: block; width: var(--hero-logo-w); height: auto; margin: 0; object-fit: contain; clip-path: inset(15% 0); filter: drop-shadow(0 8px 0 rgba(0,31,58,.18)); }
 .hero-card-shell { grid-row: 3; position: relative; z-index: 5; display: grid; justify-items: center; width: 100%; }
 .hero-tag { position: relative; transform-origin: -40px 47%; }
@@ -181,6 +182,7 @@ html.assets-pending .tracks-content, html.assets-pending .tracks-backdrop { opac
 .schedule-day-events { display: flex; flex-direction: column; align-items: flex-start; gap: .3cqw; margin: 0; padding: 0; list-style: none; }
 .schedule-event-row { display: flex; align-items: baseline; justify-content: flex-start; gap: .7cqw; color: #EEF3F6; font-family: 'Open Sans', sans-serif; font-size: clamp(11px, 2cqw, 38px); font-weight: 600; line-height: 1.35; white-space: nowrap; text-shadow: 0 2px 3px rgba(0, 20, 36, .35); --fx-from: calc(.22 + var(--i, 0) * .028); --fx-to: calc(.29 + var(--i, 0) * .028); animation-name: row-in; }
 .schedule-event-dash { margin: 0 1px; }
+.schedule-tba { margin: 0; color: #EEF3F6; font-family: "Agbalumo", system-ui; font-size: clamp(24px, 4.4cqw, 68px); line-height: 1.1; text-align: center; text-shadow: 0 2px 3px rgba(0, 20, 36, .35); --fx-from: .22; --fx-to: .32; animation-name: row-in; }
 .schedule-note { margin: .4cqw 0 0; color: var(--mist); font-size: clamp(11px, 1.25cqw, 22px); font-style: italic; line-height: 1.4; text-align: center; --fx-from: .44; --fx-to: .5; animation-name: fade-in; }
 
 .faq-panel { position: relative; z-index: 2; contain: layout paint; background: #F4F6EC; }
@@ -269,11 +271,14 @@ html.assets-pending .tracks-content, html.assets-pending .tracks-backdrop { opac
   .schedule-event-row { display: grid; grid-template-columns: 5.4em minmax(0, 1fr); gap: 12px; width: 100%; font-size: clamp(16px, 2.5vw, 20px); white-space: normal; --fx-from: calc(.04 + var(--i, 0) * .012); --fx-to: calc(.16 + var(--i, 0) * .012); }
   .schedule-event-time { color: var(--mist); font-variant-numeric: tabular-nums; }
   .schedule-event-dash { display: none; }
+  .schedule-tba { font-size: clamp(30px, 7vw, 44px); --fx-from: .04; --fx-to: .16; }
   .schedule-note { margin: 0; font-size: 14px; --fx-from: .12; --fx-to: .24; }
 }
 
 @media (max-width: 620px) {
-  .intro { --hero-logo-w: min(76vw, 300px); }
+  .intro { --hero-logo-w: min(76vw, 320px); }
+  .hero-logo { clip-path: none; }
+  .hero-logo-circle { width: calc(var(--hero-logo-w) * .4); }
   .hero-scene { left: -18%; width: 136%; }
   .hero-stack { padding-right: 16px; padding-left: 16px; }
   .hero-card { width: min(77vw, 410px); min-height: 0; margin-left: 24px; aspect-ratio: auto; border-radius: 3px; }

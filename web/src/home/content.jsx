@@ -1,36 +1,7 @@
 import React from 'react';
-import { CONTACT_EMAIL } from './site.js';
+import { CONTACT_EMAIL, SPONSOR_FORM_PATH, socialLinks } from './site.js';
 
-// Tentative until the organizers publish the final run of show.
-export const scheduleData = [
-  {
-    day: 'Fri, Feb 5',
-    events: [
-      { time: '9:00 AM', title: 'Check-in' },
-      { time: '10:00 AM', title: 'Opening Ceremony' },
-      { time: '11:00 AM', title: 'Hacking begins' },
-    ],
-  },
-  {
-    day: 'Sat, Feb 6',
-    events: [
-      { time: '9:00 AM', title: 'Mentorship sessions' },
-      { time: '11:00 AM', title: 'Workshops' },
-      { time: '2:00 PM', title: 'Hacking continues' },
-    ],
-  },
-  {
-    day: 'Sun, Feb 7',
-    events: [
-      { time: 'TBA', title: 'Judging & Closing Ceremony' },
-    ],
-  },
-];
-export const scheduleNote = 'Tentative schedule. Final times will be announced closer to the event.';
-export const scheduleGroups = scheduleData.map((group, groupIndex) => ({
-  ...group,
-  firstRow: scheduleData.slice(0, groupIndex).reduce((count, previous) => count + previous.events.length, 0),
-}));
+export const scheduleNote = 'The full schedule will be posted here closer to the event.';
 
 export const tracksData = [];
 
@@ -42,6 +13,7 @@ export const tracksBackdropRows = [
 
 export const PARTNER_PLACEHOLDERS = 5;
 
+const DISCORD_URL = socialLinks.find((link) => link.label === 'Discord').href;
 const contactLink = <a className="faq-link" href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>;
 
 export function getFaqColumns(cta) {
@@ -50,22 +22,25 @@ export function getFaqColumns(cta) {
     : <>Registration isn’t open yet. <a className="faq-link" href={cta.href}>Pre-register</a> and we’ll email you the moment it opens.</>;
 
   const faq = [
+    { q: 'What is a hackathon?', a: 'A weekend where students team up to build an app, website, game, or other project from scratch. At PeachHacks you get a full weekend to build, with workshops, mentors, and food along the way. No malicious hacking involved.' },
+    { q: 'Who can attend? What if I have no experience?', a: 'PeachHacks is open to current university students from any school and any major. If you don’t attend Georgia State, you need to be at least 18. You don’t need experience: it’s beginner friendly, with workshops and mentors throughout the weekend.' },
+    { q: 'Is PeachHacks free?', a: 'Yes. Admission, meals, and snacks are free for every accepted hacker. We’ll also have swag and prizes.' },
+    { q: 'When and where is it?', a: 'PeachHacks is planned for February 5–7, 2027, in person at Georgia State University in Atlanta. The building, exact times, and parking details will be posted here once they are confirmed.' },
     { q: 'How do I sign up?', a: signUp },
-    { q: 'Is PeachHacks free to attend?', a: 'Yes! Food will be provided for the duration of the event. We’ll also have swag and prizes.' },
-    { q: 'Where is the event? Is it in person or virtual?', a: 'PeachHacks is planned as an in-person event at Georgia State University in Atlanta. The building, address, and parking details will be posted here once they are confirmed.' },
-    { q: 'Who can attend? What if I have no experience?', a: 'PeachHacks is open to students and is beginner friendly, with workshops and mentors available throughout the event. Attendees must be at least 13 years old. If you’re under 18, you’ll need a signed university liability form, which we’ll share before the event.' },
-    { q: 'What is the team size limit?', a: 'Teams should be between 1 and 4 people. We’ll have a team-building activity right after opening ceremony if you’d like to find teammates.' },
-    { q: 'Are there travel reimbursements?', a: 'We are not able to provide travel reimbursements at this time.' },
-    { q: 'What should I bring?', a: 'Your laptop, charger, headphones, deodorant, and a pillow or blanket.' },
-    { q: 'When can we start working? Can I use a previous project?', a: 'You cannot start until after opening ceremony. You may brainstorm beforehand, but you cannot work on a previous project. Frameworks are okay if you credit them in your README and clearly distinguish what you made.' },
-    { q: 'How many challenges can I apply for?', a: 'As many as you want!' },
-    { q: 'Do I have to stay overnight?', a: 'No. You can leave and come back if you prefer.' },
-    { q: 'What kind of activities will there be?', a: 'There will be workshops and activities to take a break, meet other hackers, and connect with our wonderful sponsors. The full schedule will be posted closer to the event.' },
-    { q: 'What is a hackathon?', a: 'A hackathon is an event where students “hack” together to create an app, website, game, or other project in 24–48 hours. There will be no malicious hacking.' },
-    { q: 'Will hardware be available?', a: 'We do not have hardware available, but you’re welcome to bring your own. Due to building fire codes, soldering kits are not allowed in the venue.' },
-    { q: 'Are you sending acceptances? Is there a deadline or waitlist?', a: 'Yes, we’ll confirm spots by email before the event; the exact date will be announced when registration opens. Registration closes once we reach the maximum number of hackers we can support, and a local waitlist will open on event day for unfilled spots.' },
-    { q: 'How do I sign up to be a mentor, judge, or volunteer?', a: <>Those sign-up forms aren’t open yet. Email {contactLink} and we’ll reach out as soon as they are.</> },
-    { q: 'I have a different question!', a: <>Email us at {contactLink} and our team will get back to you.</> },
+    { q: 'How do acceptances work?', a: 'After you register we review applications and send acceptance emails together, so you may not hear back right away. Space is limited; if we fill up, we’ll open a waitlist. If you’re accepted, your email includes a ticket with a QR code: bring it on your phone to check in.' },
+    { q: 'Why do you need my school email?', a: 'PeachHacks is for current students, so we ask for the email address your school gave you and send a link there to confirm it. We’ll use your personal email for everything else.' },
+    { q: 'What is the team size limit?', a: 'Teams are 1 to 4 people. If you don’t have a team, come anyway: there’s a team-building activity right after the opening ceremony.' },
+    { q: 'What should I bring?', a: 'Your laptop, charger, headphones, and your ticket (the QR code from your acceptance email). If you’re staying overnight, bring a pillow or blanket, and deodorant.' },
+    { q: 'Do I have to stay overnight?', a: 'No, but decide before 11:00 PM. The building locks at 11:00 PM, and after that nobody can come in or leave until it reopens in the morning. You’re welcome to stay inside overnight.' },
+    { q: 'Will there be food? What about dietary restrictions?', a: 'Meals and snacks are provided all weekend. Tell us about any dietary restrictions when you register so we can order for you.' },
+    { q: 'When can we start working? Can I use a previous project or AI tools?', a: 'Building starts after the opening ceremony. You can brainstorm beforehand, but you can’t bring a previous project. Frameworks and AI tools are fine: credit them in your README and make clear what you built yourself.' },
+    { q: 'How many challenges can I enter?', a: 'As many as you want.' },
+    { q: 'What else happens besides hacking?', a: 'Workshops, activities to take a break and meet other hackers, and time with our sponsors. The full schedule will be posted closer to the event.' },
+    { q: 'Will hardware be available?', a: 'We’re still working out whether hardware will be available to borrow, and we’ll update this answer when we know. You’re welcome to bring your own.' },
+    { q: 'Are there travel reimbursements?', a: 'No, we aren’t able to offer travel reimbursements.' },
+    { q: 'Is there a code of conduct?', a: <>Yes. Everyone at PeachHacks agrees to the <a className="faq-link" href="https://github.com/MLH/mlh-policies/blob/main/code-of-conduct.md" target="_blank" rel="noopener noreferrer">MLH Code of Conduct</a> when they register.</> },
+    { q: 'How do I become a mentor, judge, volunteer, or sponsor?', a: <>Sponsors can reach us through the <a className="faq-link" href={SPONSOR_FORM_PATH}>sponsor form</a>. Sign-ups for mentors, judges, and volunteers aren’t open yet; email {contactLink} and we’ll reach out when they are.</> },
+    { q: 'I have a different question!', a: <>Ask in our <a className="faq-link" href={DISCORD_URL} target="_blank" rel="noopener noreferrer">Discord</a> or email {contactLink}.</> },
   ];
 
   const half = Math.ceil(faq.length / 2);
