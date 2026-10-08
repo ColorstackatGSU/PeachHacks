@@ -11,6 +11,11 @@ export const AGES = Array.from({ length: AGE_MAX - AGE_MIN + 1 }, (_, index) => 
 // student could plausibly still be enrolled.
 export const GRADUATION_YEARS = Array.from({ length: 8 }, (_, index) => String(2026 + index));
 
+export const GRADUATION_MONTHS = [
+  'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November',
+  'December',
+].map((label, index) => ({ value: String(index + 1), label }));
+
 export const LEVELS_OF_STUDY = [
   'Less than Secondary / High School',
   'Secondary / High School',

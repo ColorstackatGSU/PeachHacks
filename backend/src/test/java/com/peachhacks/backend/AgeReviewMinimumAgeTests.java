@@ -75,7 +75,7 @@ class AgeReviewMinimumAgeTests {
 		String created = mockMvc
 			.perform(post("/public/registrations").contentType(MediaType.APPLICATION_JSON).content("""
 					{"firstName":"Ada","lastName":"Example","age":%d,"phone":"404 555 0100","email":"%s",
-					 "schoolEmail":"%s","school":"%s","levelOfStudy":"Undergraduate University (3+ year)","graduationYear":2028,
+					 "schoolEmail":"%s","school":"%s","levelOfStudy":"Undergraduate University (3+ year)","graduationYear":2028,"graduationMonth":5,
 					 "countryOfResidence":"US","mlhCodeOfConduct":true,"mlhDataSharing":true,"mlhEmailOptIn":false}
 					""".formatted(age, email, email, school)))
 			.andExpect(status().isCreated())

@@ -51,6 +51,11 @@ const list = (value) => (Array.isArray(value) && value.length > 0 ? value.join("
 // Choice fields can carry a free-text companion ("Prefer to self-describe" + text).
 const withOther = (value, other) => [value, other].filter(present).join(": ") || null;
 
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+// "May 2028"; the month is missing for people who registered before it was asked.
+const graduation = (reg) => [MONTHS[reg.graduationMonth - 1], reg.graduationYear].filter(Boolean).join(" ");
+
 function safeUrl(value) {
   if (!present(value)) return null;
   try {
@@ -107,7 +112,7 @@ function RegistrationDetail({ reg }) {
       <Group title="Education">
         <Row label="School">{reg.school}</Row>
         <Row label="Level of study">{reg.levelOfStudy}</Row>
-        <Row label="Expected graduation">{reg.graduationYear || "Not asked when they registered"}</Row>
+        <Row label="Expected graduation">{graduation(reg) || "Not asked when they registered"}</Row>
         <Row label="Major / field of study">{withOther(reg.majorFieldOfStudy, reg.majorOther)}</Row>
         <Row label="Highest education completed">{withOther(reg.highestEducation, reg.highestEducationOther)}</Row>
       </Group>

@@ -43,6 +43,9 @@ public record RegistrationRequest(
 		@NotNull(message = "Graduation year is required") @Min(value = RegistrationRequest.GRADUATION_YEAR_MIN,
 				message = "Choose a graduation year from the list") @Max(value = RegistrationRequest.GRADUATION_YEAR_MAX,
 						message = "Choose a graduation year from the list") Integer graduationYear,
+		@NotNull(message = "Graduation month is required") @Min(value = 1,
+				message = "Choose a graduation month from the list") @Max(value = 12,
+						message = "Choose a graduation month from the list") Integer graduationMonth,
 		@NotBlank(message = "Country of residence is required") @Pattern(regexp = "[A-Z]{2}",
 				message = "Must be a two-letter country code") String countryOfResidence,
 		@NotNull(message = "You must agree to the MLH Code of Conduct") @AssertTrue(

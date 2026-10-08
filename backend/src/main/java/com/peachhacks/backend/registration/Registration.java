@@ -54,6 +54,8 @@ public class Registration {
 
 	private Integer graduationYear;
 
+	private Integer graduationMonth;
+
 	private String countryOfResidence;
 
 	private boolean mlhCodeOfConduct;
@@ -131,6 +133,7 @@ public class Registration {
 		r.school = request.school().strip();
 		r.levelOfStudy = request.levelOfStudy().strip();
 		r.graduationYear = request.graduationYear();
+		r.graduationMonth = request.graduationMonth();
 		r.countryOfResidence = request.countryOfResidence();
 		r.mlhCodeOfConduct = request.mlhCodeOfConduct();
 		r.mlhDataSharing = request.mlhDataSharing();
@@ -216,6 +219,11 @@ public class Registration {
 	/** Null for registrations made before the form asked for it. */
 	public Integer getGraduationYear() {
 		return graduationYear;
+	}
+
+	/** 1 to 12. Null for registrations made before the form asked for it. */
+	public Integer getGraduationMonth() {
+		return graduationMonth;
 	}
 
 	public String getCountryOfResidence() {

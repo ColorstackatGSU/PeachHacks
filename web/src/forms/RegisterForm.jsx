@@ -7,7 +7,7 @@ import {
 import { useFormFields } from './hooks.js';
 import {
   AGES, DIETARY_RESTRICTIONS, GENDERS, GENDER_SELF_DESCRIBE, HIGHEST_EDUCATION, HIGHEST_EDUCATION_OTHER,
-  GRADUATION_YEARS, LEVELS_OF_STUDY, MAJORS, MAJOR_OTHER, MLH_DISCLAIMER, MLH_LINKS, PRONOUNS, PRONOUNS_OTHER, RACE_ETHNICITY,
+  GRADUATION_MONTHS, GRADUATION_YEARS, LEVELS_OF_STUDY, MAJORS, MAJOR_OTHER, MLH_DISCLAIMER, MLH_LINKS, PRONOUNS, PRONOUNS_OTHER, RACE_ETHNICITY,
   RACE_ETHNICITY_OTHER, SEXUAL_ORIENTATION, SEXUAL_ORIENTATION_OTHER, TSHIRT_SIZES, UNDERREPRESENTED_GROUP,
 } from './options.js';
 import { FormAlert } from './PageShell.jsx';
@@ -28,6 +28,7 @@ const INITIAL_VALUES = {
   countryOfResidence: '',
   school: '',
   levelOfStudy: '',
+  graduationMonth: '',
   graduationYear: '',
   mlhCodeOfConduct: false,
   mlhDataSharing: false,
@@ -76,6 +77,7 @@ function validate(values) {
   if (!AGES.includes(values.age)) errors.age = 'Select your age.';
   if (!values.countryOfResidence) errors.countryOfResidence = 'Select your country of residence.';
   if (!values.levelOfStudy) errors.levelOfStudy = 'Select your level of study.';
+  if (!values.graduationMonth) errors.graduationMonth = 'Select the month you expect to graduate.';
   if (!values.graduationYear) errors.graduationYear = 'Select the year you expect to graduate.';
   if (!values.mlhCodeOfConduct) errors.mlhCodeOfConduct = 'You need to agree to the MLH Code of Conduct to register.';
   if (!values.mlhDataSharing) errors.mlhDataSharing = 'You need to agree to this to register.';
@@ -95,6 +97,7 @@ function buildPayload(values, resume) {
     schoolEmail: values.schoolEmail.trim(),
     school: values.school.trim(),
     levelOfStudy: values.levelOfStudy,
+    graduationMonth: Number.parseInt(values.graduationMonth, 10),
     graduationYear: Number.parseInt(values.graduationYear, 10),
     countryOfResidence: values.countryOfResidence,
     mlhCodeOfConduct: values.mlhCodeOfConduct,
@@ -283,8 +286,12 @@ export default function RegisterForm({ titleId, onSuccess, onClosed }) {
             options={LEVELS_OF_STUDY} placeholder="Select your level of study"
           />
           <SelectField
-            {...field('graduationYear')} label="Expected Graduation Year" wide
-            options={GRADUATION_YEARS} placeholder="Select the year you expect to graduate"
+            {...field('graduationMonth')} label="Expected Graduation Month"
+            options={GRADUATION_MONTHS} placeholder="Month"
+          />
+          <SelectField
+            {...field('graduationYear')} label="Expected Graduation Year"
+            options={GRADUATION_YEARS} placeholder="Year"
           />
         </div>
       </fieldset>
@@ -363,7 +370,7 @@ export default function RegisterForm({ titleId, onSuccess, onClosed }) {
           />
           <ResumeField
             name="resume" file={values.resume} onChoose={chooseResume} onRemove={removeResume} error={errors.resume}
-            hint="Optional. PDF only, up to 2 MB. Sponsors receive it for recruiting, with your name, emails, school, level of study, graduation year, major and LinkedIn."
+            hint="Optional. PDF only, up to 2 MB. Sponsors receive it for recruiting, with your name, emails, school, level of study, graduation date, major and LinkedIn."
           />
         </div>
       </Section>
