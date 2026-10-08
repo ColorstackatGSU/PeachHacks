@@ -15,6 +15,7 @@ import com.jayway.jsonpath.JsonPath;
 import com.peachhacks.backend.admin.AdminRole;
 import com.peachhacks.backend.common.Csv;
 import com.peachhacks.backend.config.EmailProperties;
+import com.peachhacks.backend.config.PlatformProperties;
 import com.peachhacks.backend.email.EmailComposer.Content;
 import com.peachhacks.backend.email.EmailComposer.Footer;
 import com.sun.net.httpserver.HttpServer;
@@ -56,7 +57,8 @@ class EmailDeliveryTests {
 
 	private final List<EmailMessage> sent = new ArrayList<>();
 
-	private final MailService mail = new MailService(sent::add, composer, Runnable::run, properties);
+	private final MailService mail = new MailService(sent::add, composer, Runnable::run, properties,
+			new PlatformProperties("https://platform.peachhacks.com/", null, null, null, null, null, null));
 
 	@BeforeEach
 	void startServer() throws Exception {
@@ -132,10 +134,15 @@ class EmailDeliveryTests {
 		assertThat(message.subject()).contains("You're in");
 		assertThat(message.text()).contains("Hi Ada,")
 			.contains("accepted")
+			.contains("Open the hacker platform: https://platform.peachhacks.com\n")
+			.contains("Connect your Discord")
 			.contains("View your ticket: " + url)
 			.doesNotContainIgnoringCase("wallet");
+		assertThat(message.text().indexOf("Open the hacker platform")).as("the platform comes before the ticket link")
+			.isLessThan(message.text().indexOf("View your ticket"));
 		assertThat(message.html()).contains("href=\"https://www.peachhacks.com/ticket?t=abc&amp;x=1\"")
 			.contains(">View your ticket</a>")
+			.contains(">Open the hacker platform</a>")
 			.contains("src=\"cid:peachhacks-ticket\"")
 			.contains(">You&#39;re in!</h1>")
 			.doesNotContainIgnoringCase("wallet");

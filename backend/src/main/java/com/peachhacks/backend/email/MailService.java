@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 
 import com.peachhacks.backend.admin.AdminRole;
 import com.peachhacks.backend.config.EmailProperties;
+import com.peachhacks.backend.config.PlatformProperties;
 import com.peachhacks.backend.email.EmailComposer.Content;
 import com.peachhacks.backend.email.EmailComposer.Footer;
 import com.peachhacks.backend.email.EmailComposer.InlineImage;
@@ -39,8 +40,11 @@ public class MailService {
 
 	private final EmailProperties properties;
 
+	private final PlatformProperties platform;
+
 	public MailService(EmailSender sender, EmailComposer composer, @Qualifier("mailExecutor") TaskExecutor mailExecutor,
-			EmailProperties properties) {
+			EmailProperties properties, PlatformProperties platform) {
+		this.platform = platform;
 		this.sender = sender;
 		this.composer = composer;
 		this.mailExecutor = mailExecutor;
@@ -134,8 +138,10 @@ public class MailService {
 	}
 
 	/**
-	 * The QR code travels inside the message (shown inline and listed as an attachment)
-	 * because many mail clients block images loaded from a server.
+	 * The acceptance email. It points to the hacker platform first, since that is where an
+	 * accepted hacker does everything else. The QR code travels inside the message (shown
+	 * inline and listed as an attachment) because many mail clients block images loaded
+	 * from a server.
 	 */
 	public void sendTicket(String email, String firstName, String ticketUrl, byte[] qrPng, String googleWalletUrl) {
 		sendInBackground(ticketMessage(email, firstName, ticketUrl, qrPng, googleWalletUrl));
@@ -154,15 +160,22 @@ public class MailService {
 	private EmailMessage ticketMessage(String email, String firstName, String ticketUrl, byte[] qrPng,
 			String googleWalletUrl) {
 		Content content = Content
-			.of("Your application was accepted. Your ticket is inside.", "You're in!",
+			.of("Your application was accepted. Your ticket is inside, and the hacker platform is open to you.",
+					"You're in!",
 					List.of(greeting(firstName),
 							"Your application to PeachHacks has been accepted, and we can't wait to see you.",
-							"Below is your ticket. Open it on your phone and show the QR code when you arrive; we"
-									+ " scan the same code at workshops."))
-			.withPrimary("View your ticket", ticketUrl)
+							"Your next stop is the hacker platform. Sign in with this email address, with Google or"
+									+ " with a password you choose there, and you can:",
+							"• Connect your Discord to join our server with the Hacker role\n"
+									+ "• Find a team, or see who is looking for one\n"
+									+ "• Pull up your ticket whenever you need it"))
+			.withPrimary("Open the hacker platform", platform.baseUrl())
 			.withImage(new InlineImage(TICKET_CONTENT_ID, "Your PeachHacks ticket QR code", 240))
+			.withSecondary("View your ticket", ticketUrl)
 			.withClosing(List.of(
-					"Keep this email. If the QR code does not show above, it is attached as an image, and the"
+					"The QR code above is your ticket. Show it on your phone when you arrive; we scan the same code"
+							+ " at workshops.",
+					"Keep this email. If the QR code does not show, it is attached as an image, and the ticket"
 							+ " link always works.",
 					SIGN_OFF));
 		if (googleWalletUrl != null) {

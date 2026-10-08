@@ -3,6 +3,7 @@ package com.peachhacks.backend.email;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -63,15 +64,16 @@ public class EmailComposer {
 	}
 
 	/**
-	 * What a system email says, in reading order: heading, opening paragraphs, the actions,
-	 * an optional image, closing paragraphs. Paragraphs are plain text. preheader is the
-	 * preview line an inbox shows beside the subject.
+	 * What a system email says, in reading order: heading, opening paragraphs, the primary
+	 * action, an optional image, the secondary actions, closing paragraphs. Paragraphs are
+	 * plain text. preheader is the preview line an inbox shows beside the subject.
 	 */
-	public record Content(String preheader, String heading, List<String> opening, Action primary, Action secondary,
-			InlineImage image, List<String> closing) {
+	public record Content(String preheader, String heading, List<String> opening, Action primary,
+			List<Action> secondary, InlineImage image, List<String> closing) {
 
 		public Content {
 			opening = List.copyOf(opening);
+			secondary = (secondary != null) ? List.copyOf(secondary) : List.of();
 			closing = (closing != null) ? List.copyOf(closing) : List.of();
 		}
 
@@ -83,8 +85,11 @@ public class EmailComposer {
 			return new Content(preheader, heading, opening, new Action(label, url), secondary, image, closing);
 		}
 
+		/** Adds one; an email can carry several, shown in the order they were added. */
 		public Content withSecondary(String label, String url) {
-			return new Content(preheader, heading, opening, primary, new Action(label, url), image, closing);
+			List<Action> actions = new ArrayList<>(secondary);
+			actions.add(new Action(label, url));
+			return new Content(preheader, heading, opening, primary, actions, image, closing);
 		}
 
 		public Content withImage(InlineImage inline) {
@@ -168,8 +173,8 @@ public class EmailComposer {
 				.append(escape(image.alt()))
 				.append("\" style=\"display:block;border:0;background:#ffffff\"></p>");
 		}
-		if (content.secondary() != null) {
-			appendAction(html, text, content.secondary(), false);
+		for (Action action : content.secondary()) {
+			appendAction(html, text, action, false);
 		}
 		for (String paragraph : content.closing()) {
 			appendParagraph(html, text, escape(paragraph), paragraph);
