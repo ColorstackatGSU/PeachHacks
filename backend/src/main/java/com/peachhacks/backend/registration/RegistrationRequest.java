@@ -40,6 +40,9 @@ public record RegistrationRequest(
 				message = "School must be at most 255 characters") String school,
 		@NotBlank(message = "Level of study is required") @Size(max = 255,
 				message = "Must be at most 255 characters") String levelOfStudy,
+		@NotNull(message = "Graduation year is required") @Min(value = RegistrationRequest.GRADUATION_YEAR_MIN,
+				message = "Choose a graduation year from the list") @Max(value = RegistrationRequest.GRADUATION_YEAR_MAX,
+						message = "Choose a graduation year from the list") Integer graduationYear,
 		@NotBlank(message = "Country of residence is required") @Pattern(regexp = "[A-Z]{2}",
 				message = "Must be a two-letter country code") String countryOfResidence,
 		@NotNull(message = "You must agree to the MLH Code of Conduct") @AssertTrue(
@@ -72,6 +75,10 @@ public record RegistrationRequest(
 		ResumeUpload resume,
 		/* Honeypot: real visitors never see or fill this field. */
 		String website) {
+
+	static final int GRADUATION_YEAR_MIN = 2026;
+
+	static final int GRADUATION_YEAR_MAX = 2035;
 
 	/** 7 to 15 digits, written with digits, spaces and + ( ) - . x # only. */
 	static final String PHONE = "^(?=(?:[^0-9]*[0-9]){7,15}[^0-9]*$)[0-9+()\\-.\\sxX#]+$";

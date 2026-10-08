@@ -50,7 +50,7 @@ public class AdminRegistrationController {
 	}
 
 	private static final List<String> CSV_HEADER = List.of("id", "status", "createdAt", "firstName", "lastName", "age",
-			"phone", "email", "school", "levelOfStudy", "countryOfResidence", "mlhCodeOfConduct", "mlhDataSharing",
+			"phone", "email", "school", "levelOfStudy", "graduationYear", "countryOfResidence", "mlhCodeOfConduct", "mlhDataSharing",
 			"mlhEmailOptIn", "dietaryRestrictions", "dietaryDetails", "underrepresentedGroup", "gender",
 			"genderSelfDescribe", "pronouns", "pronounsOther", "raceEthnicity", "raceEthnicityOther",
 			"sexualOrientation", "sexualOrientationOther", "highestEducation", "highestEducationOther", "tshirtSize",
@@ -114,7 +114,7 @@ public class AdminRegistrationController {
 				ageReviewFilter, Pageable.unpaged())) {
 			RegistrationResume file = uploaded.get(r.getId());
 			csv.row(Arrays.asList(r.getId(), r.getStatus(), r.getCreatedAt(), r.getFirstName(), r.getLastName(),
-					r.getAge(), r.getPhone(), r.getEmail(), r.getSchool(), r.getLevelOfStudy(),
+					r.getAge(), r.getPhone(), r.getEmail(), r.getSchool(), r.getLevelOfStudy(), r.getGraduationYear(),
 					r.getCountryOfResidence(), r.isMlhCodeOfConduct(), r.isMlhDataSharing(), r.isMlhEmailOptIn(),
 					String.join("; ", r.getDietaryRestrictions()), r.getDietaryDetails(),
 					r.getUnderrepresentedGroup(), r.getGender(), r.getGenderSelfDescribe(), r.getPronouns(),

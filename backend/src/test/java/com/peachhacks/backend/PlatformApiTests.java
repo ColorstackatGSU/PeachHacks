@@ -369,7 +369,7 @@ class PlatformApiTests {
 			.content("""
 					{"firstName":"%s","lastName":"Example","age":19,"phone":"404 555 0100","email":"%s",
 					 "schoolEmail":"%s","school":"Georgia State University",
-					 "levelOfStudy":"Undergraduate University (3+ year)",
+					 "levelOfStudy":"Undergraduate University (3+ year)","graduationYear":2028,
 					 "countryOfResidence":"US","mlhCodeOfConduct":true,"mlhDataSharing":true,"mlhEmailOptIn":false}
 					""".formatted(firstName, email, email));
 		return mockMvc.perform((previewKey != null) ? request.header("X-Registration-Preview", previewKey) : request);
@@ -384,7 +384,7 @@ class PlatformApiTests {
 			.perform(post("/public/registrations").contentType(MediaType.APPLICATION_JSON).content("""
 					{"firstName":"%s","lastName":"Example","age":19,"phone":"404 555 0100","email":"%s",
 					 "schoolEmail":"%s","school":"Georgia State University",
-					 "levelOfStudy":"Undergraduate University (3+ year)",
+					 "levelOfStudy":"Undergraduate University (3+ year)","graduationYear":2028,
 					 "countryOfResidence":"US","mlhCodeOfConduct":true,"mlhDataSharing":true,"mlhEmailOptIn":false}
 					""".formatted(firstName, email, email)))
 			.andExpect(status().isCreated())

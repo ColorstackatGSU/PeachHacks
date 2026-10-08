@@ -112,6 +112,7 @@ function makeRegistration(base, createdAt) {
     ...confirmation(base, createdAt),
     school: base.school,
     levelOfStudy: pickSkewed(LEVELS),
+    graduationYear: 2027 + Math.floor(rand() * 4),
     countryOfResidence: rand() > 0.08 ? "US" : pick(["CA", "NG", "IN", "MX"]),
     mlhCodeOfConduct: true,
     mlhDataSharing: true,

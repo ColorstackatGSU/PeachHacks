@@ -1638,9 +1638,9 @@ class RegistrationApiTests {
 		assertThat(book.get(attendedName)).isEqualTo(attendedPdf);
 		String index = new String(book.get("index.csv"), StandardCharsets.UTF_8);
 		assertThat(index.split("\r\n")).hasSize(3);
-		assertThat(index).startsWith("first_name,last_name,email,school_email,school,level_of_study,major,linkedin_url,file_name\r\n")
+		assertThat(index).startsWith("first_name,last_name,email,school_email,school,level_of_study,graduation_year,major,linkedin_url,file_name\r\n")
 			.contains("Zoë,O'Brien Smith," + sharedEmail + ",ada.lovelace@school.edu," + school
-					+ ",Undergraduate University (3+ year),\"Computer science, computer engineering, or software engineering\","
+					+ ",Undergraduate University (3+ year),2028,\"Computer science, computer engineering, or software engineering\","
 					+ "https://www.linkedin.com/in/zoe," + sharedName + "\r\n")
 			.contains("," + attendedName + "\r\n");
 
@@ -2631,7 +2631,7 @@ class RegistrationApiTests {
 				{
 				  "firstName": "Ada", "lastName": "Lovelace", "age": 19, "phone": "+1 404 555 0100",
 				  "email": "%s", "schoolEmail": "Ada.Lovelace@School.EDU", "school": "%s",
-				  "levelOfStudy": "Undergraduate University (3+ year)", "countryOfResidence": "US",
+				  "levelOfStudy": "Undergraduate University (3+ year)", "graduationYear": 2028, "countryOfResidence": "US",
 				  "mlhCodeOfConduct": %s, "mlhDataSharing": %s, "mlhEmailOptIn": false,
 				  "dietaryRestrictions": ["Vegetarian", "Halal"], "dietaryDetails": "",
 				  "gender": "", "raceEthnicity": [], "tshirtSize": "M",

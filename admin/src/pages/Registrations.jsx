@@ -107,6 +107,7 @@ function RegistrationDetail({ reg }) {
       <Group title="Education">
         <Row label="School">{reg.school}</Row>
         <Row label="Level of study">{reg.levelOfStudy}</Row>
+        <Row label="Expected graduation">{reg.graduationYear || "Not asked when they registered"}</Row>
         <Row label="Major / field of study">{withOther(reg.majorFieldOfStudy, reg.majorOther)}</Row>
         <Row label="Highest education completed">{withOther(reg.highestEducation, reg.highestEducationOther)}</Row>
       </Group>
