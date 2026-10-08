@@ -728,7 +728,7 @@ class RegistrationApiTests {
 		mockMvc
 			.perform(get("/admin/registrations/export.csv").param("school", school).header("Authorization", admin))
 			.andExpect(content()
-				.string(containsString(",linkedinUrl,checked_in_at,has_resume,school_email,school_email_confirmed,age_review\r\n")))
+				.string(containsString(",linkedinUrl,githubUrl,checked_in_at,has_resume,school_email,school_email_confirmed,age_review\r\n")))
 			.andExpect(content().string(containsString(prefix + "a@example.com")))
 			.andExpect(content().string(containsString(prefix + "b@example.com")))
 			.andExpect(content()
@@ -1601,7 +1601,7 @@ class RegistrationApiTests {
 		setRegistrationOpen(admin, true);
 		String shared = registerWithResume(named(registrationJson(sharedEmail, school, true, true), "Zoë", "O'Brien Smith")
 			.replace("\"linkedinUrl\": \"\"",
-					"\"linkedinUrl\": \"https://www.linkedin.com/in/zoe\", \"majorFieldOfStudy\": \"Computer science, computer engineering, or software engineering\""),
+					"\"linkedinUrl\": \"https://www.linkedin.com/in/zoe\", \"githubUrl\": \"https://github.com/zoe\", \"majorFieldOfStudy\": \"Computer science, computer engineering, or software engineering\""),
 				sharedPdf);
 		String attended = registerWithResume(
 				named(registrationJson(unique() + "@example.com", school, true, true), "Grace", "Hopper"), attendedPdf);
@@ -1638,10 +1638,10 @@ class RegistrationApiTests {
 		assertThat(book.get(attendedName)).isEqualTo(attendedPdf);
 		String index = new String(book.get("index.csv"), StandardCharsets.UTF_8);
 		assertThat(index.split("\r\n")).hasSize(3);
-		assertThat(index).startsWith("first_name,last_name,email,school_email,school,level_of_study,graduation_year,graduation_month,major,linkedin_url,file_name\r\n")
+		assertThat(index).startsWith("first_name,last_name,email,school_email,school,level_of_study,graduation_year,graduation_month,major,linkedin_url,github_url,file_name\r\n")
 			.contains("Zoë,O'Brien Smith," + sharedEmail + ",ada.lovelace@school.edu," + school
 					+ ",Undergraduate University (3+ year),2028,5,\"Computer science, computer engineering, or software engineering\","
-					+ "https://www.linkedin.com/in/zoe," + sharedName + "\r\n")
+					+ "https://www.linkedin.com/in/zoe,https://github.com/zoe," + sharedName + "\r\n")
 			.contains("," + attendedName + "\r\n");
 
 		Map<String, byte[]> attendedOnly = unzip(mockMvc
@@ -2259,6 +2259,9 @@ class RegistrationApiTests {
 		for (String url : List.of("https://evil.example/in/ada", "https://linkedin.com.evil.example/in/ada",
 				"https://evil.example/linkedin.com", "https://linkedin.com@evil.example/", "javascript:alert(1)",
 				"ftp://linkedin.com/in/ada", "linkedin.com/in/ada")) {
+			register(json.replace("\"linkedinUrl\": \"\"", "\"linkedinUrl\": \"\", \"githubUrl\": \"" + url + "\""))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.fieldErrors.githubUrl").value(containsString("GitHub")));
 			register(json.replace("\"linkedinUrl\": \"\"", "\"linkedinUrl\": \"" + url + "\""))
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.fieldErrors.linkedinUrl").value(containsString("LinkedIn")));

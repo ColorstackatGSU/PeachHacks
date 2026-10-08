@@ -87,6 +87,7 @@ function Group({ title, children }) {
 
 function RegistrationDetail({ reg }) {
   const linkedin = safeUrl(reg.linkedinUrl);
+  const github = safeUrl(reg.githubUrl);
   return (
     <>
       <Group title="Contact">
@@ -106,6 +107,15 @@ function RegistrationDetail({ reg }) {
             </a>
           ) : (
             reg.linkedinUrl
+          )}
+        </Row>
+        <Row label="GitHub">
+          {github ? (
+            <a href={github} target="_blank" rel="noreferrer noopener">
+              {reg.githubUrl}
+            </a>
+          ) : (
+            reg.githubUrl
           )}
         </Row>
       </Group>
@@ -448,7 +458,7 @@ function ResumeBookDialog({ onClose }) {
         {known && count.data > 0 && (
           <>
             The ZIP will contain <strong>{plural(count.data, "resume")}</strong> and an index.csv listing each person’s
-            name, personal and school email, school, level of study, major and LinkedIn.
+            name, personal and school email, school, level of study, graduation date, major, LinkedIn and GitHub.
           </>
         )}
       </p>

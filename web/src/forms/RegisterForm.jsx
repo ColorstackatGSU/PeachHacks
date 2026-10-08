@@ -14,7 +14,8 @@ import { FormAlert } from './PageShell.jsx';
 import SchoolPicker from './SchoolPicker.jsx';
 import { isHostSchool } from './schools.js';
 import {
-  anotherLookMessage, apiFailure, blankToNull, checkFields, checkResume, normalizeLinkedinUrl, readFileAsBase64,
+  anotherLookMessage, apiFailure, blankToNull, checkFields, checkResume, normalizeGithubUrl, normalizeLinkedinUrl,
+  readFileAsBase64,
   schoolEmailHint, validateIdentity,
 } from './validation.js';
 
@@ -41,6 +42,7 @@ const INITIAL_VALUES = {
   majorFieldOfStudy: '',
   majorOther: '',
   linkedinUrl: '',
+  githubUrl: '',
   resume: null,
   underrepresentedGroup: '',
   gender: '',
@@ -59,7 +61,7 @@ const FIELD_NAMES = Object.keys(INITIAL_VALUES);
 // opened when the API reports an error inside it.
 const SECTION_FIELDS = {
   logistics: ['dietaryRestrictions', 'dietaryDetails', 'tshirtSize'],
-  studies: ['highestEducation', 'highestEducationOther', 'majorFieldOfStudy', 'majorOther', 'linkedinUrl', 'resume'],
+  studies: ['highestEducation', 'highestEducationOther', 'majorFieldOfStudy', 'majorOther', 'linkedinUrl', 'githubUrl', 'resume'],
   demographics: [
     'underrepresentedGroup', 'gender', 'genderSelfDescribe', 'pronouns', 'pronounsOther', 'raceEthnicity',
     'raceEthnicityOther', 'sexualOrientation', 'sexualOrientationOther',
@@ -73,7 +75,7 @@ const OTHER_COUNTRY_OPTIONS = COUNTRY_OPTIONS.filter((option) => option.value !=
 const ADULT_AGE = 18;
 
 function validate(values) {
-  const errors = { ...validateIdentity(values), ...checkFields(values, ['phone', 'linkedinUrl']) };
+  const errors = { ...validateIdentity(values), ...checkFields(values, ['phone', 'linkedinUrl', 'githubUrl']) };
   if (!AGES.includes(values.age)) errors.age = 'Select your age.';
   if (!values.countryOfResidence) errors.countryOfResidence = 'Select your country of residence.';
   if (!values.levelOfStudy) errors.levelOfStudy = 'Select your level of study.';
@@ -121,6 +123,7 @@ function buildPayload(values, resume) {
     majorFieldOfStudy: blankToNull(values.majorFieldOfStudy),
     majorOther: otherText(values.majorFieldOfStudy === MAJOR_OTHER, values.majorOther),
     linkedinUrl: blankToNull(normalizeLinkedinUrl(values.linkedinUrl) ?? ''),
+    githubUrl: blankToNull(normalizeGithubUrl(values.githubUrl) ?? ''),
     resume,
     website: values.website,
   };
@@ -348,7 +351,7 @@ export default function RegisterForm({ titleId, onSuccess, onClosed }) {
       </Section>
 
       <Section
-        id="studies" title="Studies and career" summary="Education, major, LinkedIn and resume."
+        id="studies" title="Studies and career" summary="Education, major, LinkedIn, GitHub and resume."
         open={openSections.studies} onToggle={toggleSection}
       >
         <div className="pf-grid">
@@ -368,9 +371,14 @@ export default function RegisterForm({ titleId, onSuccess, onClosed }) {
             type="url" inputMode="url" autoComplete="url" autoCapitalize="none" spellCheck={false} maxLength={255}
             onBlur={checkOnBlur('linkedinUrl')}
           />
+          <TextField
+            {...field('githubUrl')} label="GitHub URL" optional wide placeholder="github.com/yourname"
+            type="url" inputMode="url" autoComplete="url" autoCapitalize="none" spellCheck={false} maxLength={255}
+            onBlur={checkOnBlur('githubUrl')}
+          />
           <ResumeField
             name="resume" file={values.resume} onChoose={chooseResume} onRemove={removeResume} error={errors.resume}
-            hint="Optional. PDF only, up to 2 MB. Sponsors receive it for recruiting, with your name, emails, school, level of study, graduation date, major and LinkedIn."
+            hint="Optional. PDF only, up to 2 MB. Sponsors receive it for recruiting, with your name, emails, school, level of study, graduation date, major, LinkedIn and GitHub."
           />
         </div>
       </Section>

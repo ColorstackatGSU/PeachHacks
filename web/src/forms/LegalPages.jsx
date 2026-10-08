@@ -37,7 +37,7 @@ export function PrivacyPage() {
       <ul>
         <li>Your name, age, phone number, email address, school email address, school, level of study, expected graduation month and year, and country of residence.</li>
         <li>
-          If you choose to give them: dietary restrictions, T-shirt size, major, a LinkedIn link, your resume, and
+          If you choose to give them: dietary restrictions, T-shirt size, major, LinkedIn and GitHub links, your resume, and
           answers to demographic questions (gender, pronouns, race or ethnicity, sexual orientation, whether you
           identify with an underrepresented group, and the highest level of education you have completed). The
           demographic questions are optional and do not affect whether you are accepted.
@@ -100,7 +100,7 @@ export function PrivacyPage() {
       <p>
         Uploading a resume is optional. If you upload one and are accepted, PeachHacks sponsors receive it for
         recruiting, together with your name, personal and school email, school, level of study, graduation
-        month and year, major and LinkedIn link. If you do not upload a resume, sponsors receive nothing about you individually. To take
+        month and year, major, and LinkedIn and GitHub links. If you do not upload a resume, sponsors receive nothing about you individually. To take
         your resume back, email {contact} and we will remove it; a sponsor who already received it has to be
         asked separately. We may also give sponsors and Georgia State University totals, such as how many
         people attended, that do not identify anyone.

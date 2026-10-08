@@ -102,6 +102,8 @@ public class Registration {
 
 	private String linkedinUrl;
 
+	private String githubUrl;
+
 	@Enumerated(EnumType.STRING)
 	private RegistrationStatus status;
 
@@ -155,6 +157,7 @@ public class Registration {
 		r.majorFieldOfStudy = Texts.clean(request.majorFieldOfStudy());
 		r.majorOther = Texts.clean(request.majorOther());
 		r.linkedinUrl = Texts.clean(request.linkedinUrl());
+		r.githubUrl = Texts.clean(request.githubUrl());
 		r.status = RegistrationStatus.PENDING;
 		r.unsubscribed = false;
 		r.unsubscribeToken = Tokens.random();
@@ -308,6 +311,10 @@ public class Registration {
 
 	public String getLinkedinUrl() {
 		return linkedinUrl;
+	}
+
+	public String getGithubUrl() {
+		return githubUrl;
 	}
 
 	public RegistrationStatus getStatus() {

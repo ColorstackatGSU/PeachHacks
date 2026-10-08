@@ -134,6 +134,7 @@ function makeRegistration(base, createdAt) {
     tshirtSize: pick(["S", "M", "L", "XL", null]),
     majorFieldOfStudy: pickSkewed(MAJORS),
     majorOther: null,
+    githubUrl: rand() > 0.6 ? `https://github.com/${base.email.split("@")[0].replace(/\./g, "-")}` : null,
     linkedinUrl: rand() > 0.5 ? `https://www.linkedin.com/in/${base.email.split("@")[0].replace(/\./g, "-")}` : null,
     status,
     ...acceptance(status, createdAt),

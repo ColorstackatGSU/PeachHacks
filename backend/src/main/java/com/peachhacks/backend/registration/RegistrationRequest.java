@@ -74,6 +74,8 @@ public record RegistrationRequest(
 		@Size(max = 255, message = "Must be at most 255 characters") String majorOther,
 		@Size(max = 255, message = "Must be at most 255 characters") @Pattern(regexp = RegistrationRequest.LINKEDIN_URL,
 				message = "Enter a LinkedIn link, like https://www.linkedin.com/in/yourname, or leave this blank") String linkedinUrl,
+		@Size(max = 255, message = "Must be at most 255 characters") @Pattern(regexp = RegistrationRequest.GITHUB_URL,
+				message = "Enter a GitHub link, like https://github.com/yourname, or leave this blank") String githubUrl,
 		/* Checked by ResumeUpload.toFile, not by bean validation. */
 		ResumeUpload resume,
 		/* Honeypot: real visitors never see or fill this field. */
@@ -85,6 +87,9 @@ public record RegistrationRequest(
 
 	/** 7 to 15 digits, written with digits, spaces and + ( ) - . x # only. */
 	static final String PHONE = "^(?=(?:[^0-9]*[0-9]){7,15}[^0-9]*$)[0-9+()\\-.\\sxX#]+$";
+
+	/** Blank, or an http(s) URL whose host is github.com or www.github.com. */
+	static final String GITHUB_URL = "^\\s*(?:(?i)https?://(?:www\\.)?github\\.com(?::[0-9]+)?(?:[/?#]\\S*)?)?\\s*$";
 
 	/** Blank, or an http(s) URL whose host is linkedin.com or one of its subdomains. */
 	static final String LINKEDIN_URL = "^\\s*(?:(?i)https?://(?:[a-z0-9-]+\\.)*linkedin\\.com(?::[0-9]+)?(?:[/?#]\\S*)?)?\\s*$";

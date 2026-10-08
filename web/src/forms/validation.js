@@ -20,18 +20,27 @@ export function isPhone(value) {
   return PHONE_CHARS_PATTERN.test(value.trim()) && digits.length >= 7 && digits.length <= 15;
 }
 
-export function normalizeLinkedinUrl(value) {
+// '' for a blank value, null for anything that is not a link on an accepted host, and
+// otherwise the link as https.
+function normalizeProfileUrl(value, acceptsHost) {
   const trimmed = value.trim();
   if (!trimmed) return '';
   try {
     const url = new URL(/^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`);
-    const host = url.hostname.toLowerCase();
-    if (host !== 'linkedin.com' && !host.endsWith('.linkedin.com')) return null;
+    if (!acceptsHost(url.hostname.toLowerCase())) return null;
     url.protocol = 'https:';
     return url.toString();
   } catch {
     return null;
   }
+}
+
+export function normalizeLinkedinUrl(value) {
+  return normalizeProfileUrl(value, (host) => host === 'linkedin.com' || host.endsWith('.linkedin.com'));
+}
+
+export function normalizeGithubUrl(value) {
+  return normalizeProfileUrl(value, (host) => host === 'github.com' || host === 'www.github.com');
 }
 
 export function sameEmail(first, second) {
@@ -145,6 +154,11 @@ export const FIELD_RULES = {
     const url = normalizeLinkedinUrl(value);
     if (url === null) return 'Enter a LinkedIn link, like linkedin.com/in/yourname, or leave this blank.';
     return url.length > LINKEDIN_MAX_LENGTH ? 'That link is too long. Use your profile link, like linkedin.com/in/yourname.' : null;
+  },
+  githubUrl: (value) => {
+    const url = normalizeGithubUrl(value);
+    if (url === null) return 'Enter a GitHub link, like github.com/yourname, or leave this blank.';
+    return url.length > LINKEDIN_MAX_LENGTH ? 'That link is too long. Use your profile link, like github.com/yourname.' : null;
   },
 };
 

@@ -33,7 +33,8 @@ public class ResumeService {
 	/** One person in the sponsor resume book. */
 	public record BookEntry(UUID registrationId, String firstName, String lastName, String email,
 			String schoolEmail, String school,
-			String levelOfStudy, Integer graduationYear, Integer graduationMonth, String major, String linkedinUrl) {
+			String levelOfStudy, Integer graduationYear, Integer graduationMonth, String major, String linkedinUrl,
+			String githubUrl) {
 	}
 
 	/** A stored resume ready to send: its file name and bytes. */
@@ -42,7 +43,8 @@ public class ResumeService {
 
 	private static final List<String> INDEX_HEADER = List.of("first_name", "last_name", "email",
 			"school_email", "school",
-			"level_of_study", "graduation_year", "graduation_month", "major", "linkedin_url", "file_name");
+			"level_of_study", "graduation_year", "graduation_month", "major", "linkedin_url", "github_url",
+			"file_name");
 
 	private static final int MAX_NAME_PART = 40;
 
@@ -109,7 +111,7 @@ public class ResumeService {
 	public List<BookEntry> book(boolean attendedOnly) {
 		return jdbc.sql("""
 				select r.id, r.first_name, r.last_name, r.email, r.school_email, r.school, r.level_of_study, r.graduation_year, r.graduation_month,
-					coalesce(r.major_other, r.major_field_of_study) as major, r.linkedin_url
+					coalesce(r.major_other, r.major_field_of_study) as major, r.linkedin_url, r.github_url
 				from registrations r
 				join registration_resumes x on x.registration_id = r.id
 				where r.status = 'ACCEPTED'
@@ -123,7 +125,7 @@ public class ResumeService {
 					rs.getString("school"),
 					rs.getString("level_of_study"), rs.getObject("graduation_year", Integer.class),
 					rs.getObject("graduation_month", Integer.class),
-					rs.getString("major"), rs.getString("linkedin_url")))
+					rs.getString("major"), rs.getString("linkedin_url"), rs.getString("github_url")))
 			.list();
 	}
 
@@ -151,7 +153,8 @@ public class ResumeService {
 				zip.closeEntry();
 				index.row(Arrays.asList(entry.firstName(), entry.lastName(), entry.email(), entry.schoolEmail(),
 						entry.school(),
-						entry.levelOfStudy(), entry.graduationYear(), entry.graduationMonth(), entry.major(), entry.linkedinUrl(), fileName));
+						entry.levelOfStudy(), entry.graduationYear(), entry.graduationMonth(), entry.major(), entry.linkedinUrl(),
+						entry.githubUrl(), fileName));
 			}
 			zip.putNextEntry(new ZipEntry("index.csv"));
 			zip.write(index.toString().getBytes(StandardCharsets.UTF_8));

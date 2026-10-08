@@ -55,7 +55,7 @@ public class AdminRegistrationController {
 			"mlhEmailOptIn", "dietaryRestrictions", "dietaryDetails", "underrepresentedGroup", "gender",
 			"genderSelfDescribe", "pronouns", "pronounsOther", "raceEthnicity", "raceEthnicityOther",
 			"sexualOrientation", "sexualOrientationOther", "highestEducation", "highestEducationOther", "tshirtSize",
-			"majorFieldOfStudy", "majorOther", "linkedinUrl", "checked_in_at",
+			"majorFieldOfStudy", "majorOther", "linkedinUrl", "githubUrl", "checked_in_at",
 			"has_resume", "school_email", "school_email_confirmed", "age_review");
 
 	private static final Logger log = LoggerFactory.getLogger(AdminRegistrationController.class);
@@ -122,7 +122,7 @@ public class AdminRegistrationController {
 					r.getPronounsOther(), String.join("; ", r.getRaceEthnicity()), r.getRaceEthnicityOther(),
 					r.getSexualOrientation(), r.getSexualOrientationOther(), r.getHighestEducation(),
 					r.getHighestEducationOther(), r.getTshirtSize(), r.getMajorFieldOfStudy(), r.getMajorOther(),
-					r.getLinkedinUrl(), checkedInAt(general, r), file != null,
+					r.getLinkedinUrl(), r.getGithubUrl(), checkedInAt(general, r), file != null,
 					r.getSchoolEmail(), r.isSchoolEmailConfirmed(), flagged.contains(r.getId())));
 		}
 		log.info("Registrations CSV of {} rows ({}) exported by {}", csv.rows(),
