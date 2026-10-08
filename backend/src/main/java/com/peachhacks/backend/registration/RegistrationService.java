@@ -14,6 +14,7 @@ import com.peachhacks.backend.common.ApiException;
 import com.peachhacks.backend.common.RateLimiter;
 import com.peachhacks.backend.common.RequestValidator;
 import com.peachhacks.backend.common.Texts;
+import com.peachhacks.backend.discord.DiscordApplications;
 import com.peachhacks.backend.discord.DiscordVerification;
 import com.peachhacks.backend.email.MailService;
 import com.peachhacks.backend.registration.ResumeUpload.ResumeFile;
@@ -59,13 +60,17 @@ public class RegistrationService {
 
 	private final DiscordVerification discord;
 
+	private final DiscordApplications applications;
+
 	private final TransactionTemplate transaction;
 
 	public RegistrationService(RegistrationRepository repository, SettingsService settings,
 			RequestValidator validator, MailService mailService, ResumeService resumes,
 			SchoolEmailService schoolEmails, AgeReview ageReview, RateLimiter rateLimiter,
-			DiscordVerification discord, PlatformTransactionManager transactionManager) {
+			DiscordVerification discord, DiscordApplications applications,
+			PlatformTransactionManager transactionManager) {
 		this.discord = discord;
+		this.applications = applications;
 		this.ageReview = ageReview;
 		this.rateLimiter = rateLimiter;
 		this.repository = repository;
@@ -116,6 +121,7 @@ public class RegistrationService {
 			// Two submissions for one email at the same moment: the unique index decides.
 			return alreadyRegistered(registration.getEmail());
 		}
+		applications.announce(registration);
 		try {
 			// A pair confirmed at pre-registration stays confirmed, and then nothing is mailed.
 			boolean unconfirmed = schoolEmails.requestConfirmation(registration.getEmail(),

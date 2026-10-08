@@ -2,9 +2,11 @@ package com.peachhacks.backend.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 @Configuration(proxyBeanMethods = false)
+@EnableScheduling
 public class ExecutorConfig {
 
 	private static final int SHUTDOWN_WAIT_SECONDS = 20;

@@ -245,6 +245,20 @@ function DiscordVerification() {
   const tooLong = text.length > MAX_DISCORD_MESSAGE;
   const changed = draft !== null && draft !== status?.message;
 
+  const [recapping, setRecapping] = useState(false);
+
+  const recap = async () => {
+    setRecapping(true);
+    try {
+      await api.postDiscordRecap();
+      notify("The recap is in the applications channel.");
+    } catch (error) {
+      notify(errorText(error), "error");
+    } finally {
+      setRecapping(false);
+    }
+  };
+
   const publish = async () => {
     setPublishing(true);
     setPublishError(null);
@@ -328,6 +342,25 @@ function DiscordVerification() {
               </button>
             )}
           </p>
+
+          <dl className="explain">
+            <div>
+              <dt>Welcomes</dt>
+              <dd>{status.welcomes ? "On. Everyone who joins the server gets a welcome card, once." : "Off. Set DISCORD_WELCOME_CHANNEL_ID on the backend to turn them on."}</dd>
+            </div>
+            <div>
+              <dt>Applications channel</dt>
+              <dd>{status.applications ? "On. Each new application is posted, with a recap every evening at 9 PM Atlanta time." : "Off. Set DISCORD_APPLICATIONS_CHANNEL_ID on the backend to turn it on."}</dd>
+            </div>
+            <div>
+              <dt>Recap now</dt>
+              <dd>
+                <button type="button" className="btn btn-small" disabled={!status.applications || recapping} onClick={recap}>
+                  {recapping ? "Posting…" : "Post the recap now"}
+                </button>
+              </dd>
+            </div>
+          </dl>
         </>
       )}
 

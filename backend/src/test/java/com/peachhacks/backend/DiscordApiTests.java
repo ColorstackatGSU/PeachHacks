@@ -53,7 +53,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 		"app.rate-limit.sign-up-per-window=100000", "app.rate-limit.sign-up-global-per-hour=100000",
 		"app.discord.bot-token=test-bot-token", "app.discord.application-id=4242", "app.discord.guild-id=1000",
 		"app.discord.hacker-role-id=2000", "app.discord.verification-channel-id=3000",
-		"app.discord.welcome-channel-id=5000", "app.discord.gateway-url=ws://127.0.0.1:1" })
+		"app.discord.welcome-channel-id=5000", "app.discord.applications-channel-id=6000", "app.discord.gateway-url=ws://127.0.0.1:1" })
 @AutoConfigureMockMvc
 @Testcontainers(disabledWithoutDocker = true)
 class DiscordApiTests {
@@ -207,7 +207,7 @@ class DiscordApiTests {
 			.andExpect(jsonPath("$.data.content").value(containsString("Connect Discord")))
 			.andExpect(jsonPath("$.data.components[0].components[0].style").value(5))
 			.andExpect(jsonPath("$.data.components[0].components[0].url").value("http://localhost:5176/#/discord"));
-		assertThat(discordCalls).isEmpty();
+		assertThat(discordCalls).noneMatch(call -> call.contains("/roles/"));
 		assertThat(linkedUser(accepted)).isNull();
 	}
 
@@ -231,6 +231,34 @@ class DiscordApiTests {
 		awaitCall("POST /channels/5000/messages");
 		Thread.sleep(300);
 		assertThat(discordCalls).as("the first person is not welcomed again").containsOnlyOnce("POST /channels/5000/messages");
+	}
+
+	@Test
+	void organizersHearAboutEachApplicationAndGetARecapWithAChart() throws Exception {
+		Hacker ada = register("Ada");
+		awaitCall("POST /channels/6000/messages");
+		String posted = discordBodies.get(discordCalls.indexOf("POST /channels/6000/messages"));
+		assertThat(posted).contains("New application")
+			.contains("Ada Example")
+			.contains("Georgia State University")
+			.contains("May 2028")
+			.contains("Application #")
+			.doesNotContain(ada.email());
+
+		discordCalls.clear();
+		discordBodies.clear();
+		mockMvc.perform(post("/admin/discord/recap")).andExpect(status().isUnauthorized());
+		mockMvc.perform(post("/admin/discord/recap").header("Authorization", admin)).andExpect(status().isNoContent());
+		assertThat(discordCalls).containsExactly("POST /channels/6000/messages");
+		assertThat(discordBodies.get(0)).contains("Daily recap")
+			.contains("applications so far")
+			.contains("Top schools")
+			.contains("Georgia State University vs other schools")
+			.contains("attachment://recap.png")
+			.contains("filename=\"recap.png\"");
+		mockMvc.perform(get("/admin/discord").header("Authorization", admin))
+			.andExpect(jsonPath("$.welcomes").value(true))
+			.andExpect(jsonPath("$.applications").value(true));
 	}
 
 	@Test

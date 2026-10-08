@@ -173,6 +173,8 @@ const discord = {
   configured: true,
   verified: 12,
   messagePostedAt: null,
+  welcomes: true,
+  applications: true,
   message: "**Verify to get into PeachHacks**\nPress Verify to open the hacker channels.",
 };
 // One token per role so a reload keeps whichever account was signed in.
@@ -806,6 +808,7 @@ function handle(method, path, params, body, token) {
   }
 
   if (path === "/admin/discord") return respond(200, discord);
+  if (path === "/admin/discord/recap" && method === "POST") return respond(204);
   if (path === "/admin/discord/verification-message" && method === "POST") {
     discord.messagePostedAt = new Date().toISOString();
     if (body.message) discord.message = body.message;

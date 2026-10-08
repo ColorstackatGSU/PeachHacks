@@ -6,6 +6,9 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 
 import javax.imageio.ImageIO;
 
@@ -35,6 +38,25 @@ class WelcomeCardTests {
 		assertThat(withAvatar.length).isLessThan(1_000_000);
 		Files.write(Path.of("target", "welcome-card.png"), withAvatar);
 		Files.write(Path.of("target", "welcome-card-initial.png"), withoutAvatar);
+	}
+
+	@Test
+	void drawsTheRecapChartForQuietAndBusyDays() throws Exception {
+		long[] counts = { 24, 43, 32, 22, 36, 87, 57, 64, 19, 21, 0, 34, 32, 39 };
+		List<RecapChart.Day> days = new ArrayList<>();
+		for (int i = 0; i < counts.length; i++) {
+			days.add(new RecapChart.Day(LocalDate.of(2026, 9, 24).plusDays(i), counts[i]));
+		}
+
+		byte[] chart = RecapChart.render(days, 1378, 39);
+		byte[] empty = RecapChart.render(days.stream().map(day -> new RecapChart.Day(day.date(), 0)).toList(), 0, 0);
+
+		for (byte[] picture : new byte[][] { chart, empty }) {
+			BufferedImage image = ImageIO.read(new ByteArrayInputStream(picture));
+			assertThat(image.getWidth()).isEqualTo(RecapChart.WIDTH);
+			assertThat(image.getHeight()).isEqualTo(RecapChart.HEIGHT);
+		}
+		Files.write(Path.of("target", "recap-chart.png"), chart);
 	}
 
 }

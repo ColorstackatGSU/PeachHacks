@@ -58,6 +58,9 @@ app:
     hacker-role-id: ${DISCORD_HACKER_ROLE_ID:}
     verification-channel-id: ${DISCORD_VERIFICATION_CHANNEL_ID:}
     welcome-channel-id: ${DISCORD_WELCOME_CHANNEL_ID:}
+    applications-channel-id: ${DISCORD_APPLICATIONS_CHANNEL_ID:}
+    # When the daily recap goes to the applications channel, Atlanta time.
+    recap-cron: ${DISCORD_RECAP_CRON:0 0 21 * * *}
   platform:
     base-url: ${PLATFORM_BASE_URL:http://localhost:5176}
     api-base-url: ${API_BASE_URL:http://localhost:8080}

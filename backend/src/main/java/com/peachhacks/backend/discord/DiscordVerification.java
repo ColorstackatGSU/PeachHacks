@@ -42,8 +42,12 @@ public class DiscordVerification {
 
 	}
 
-	/** message is the text of the Verify message as it will be (or was) posted. */
-	public record Status(boolean configured, long verified, Instant messagePostedAt, String message) {
+	/**
+	 * message is the text of the Verify message as it will be (or was) posted. welcomes and
+	 * applications say whether those channels are set up.
+	 */
+	public record Status(boolean configured, long verified, Instant messagePostedAt, String message,
+			boolean welcomes, boolean applications) {
 	}
 
 	static final String VERIFY_BUTTON = "peachbot:verify";
@@ -101,7 +105,8 @@ public class DiscordVerification {
 			.optional()
 			.map(OffsetDateTime::toInstant)
 			.orElse(null);
-		return new Status(properties.configured(), verified, postedAt, setting(TEXT_SETTING).orElse(DEFAULT_MESSAGE));
+		return new Status(properties.configured(), verified, postedAt, setting(TEXT_SETTING).orElse(DEFAULT_MESSAGE),
+				properties.welcomeConfigured(), properties.applicationsConfigured());
 	}
 
 	/** Where the Verify button sends someone whose Discord account is not connected yet. */

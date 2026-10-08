@@ -255,6 +255,7 @@ export const api = {
 
   discord: (signal) => json("GET", "/admin/discord", { signal }),
   // Saves the text and posts it, or edits the message that is already up.
+  postDiscordRecap: () => json("POST", "/admin/discord/recap"),
   publishDiscordVerification: (message) => json("POST", "/admin/discord/verification-message", { body: { message } }),
 
   recipientCount: (kind, audience, school, signal) =>

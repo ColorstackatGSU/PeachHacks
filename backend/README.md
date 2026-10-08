@@ -91,6 +91,8 @@ Standard Spring Boot environment variables; see `.env.example`.
 | `DISCORD_HACKER_ROLE_ID` | ID of the role accepted hackers get |
 | `DISCORD_VERIFICATION_CHANNEL_ID` | ID of the channel the Verify message is posted in |
 | `DISCORD_WELCOME_CHANNEL_ID` | ID of the channel where PeachBot welcomes everyone who joins. Optional: without it there are no welcomes and no gateway connection |
+| `DISCORD_APPLICATIONS_CHANNEL_ID` | ID of an organizers-only channel that gets a post for each new application and a daily recap. Optional |
+| `DISCORD_RECAP_CRON` | When the recap is posted, as a Spring cron expression in Atlanta time (default `0 0 21 * * *`, 9 PM) |
 | `PLATFORM_BASE_URL` | Hacker platform URL, used for the links in its emails and as the Discord redirect (default `http://localhost:5176`, `https://platform.peachhacks.com` in `prod`) |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | The Google OAuth client for "Continue with Google" on the hacker platform. Optional: without both there is email and password only |
 | `API_BASE_URL` | This backend's public address (default `http://localhost:8080`, `https://api.peachhacks.com` in `prod`). Google sends the browser back to `<API_BASE_URL>/platform/auth/google/callback` |
@@ -391,6 +393,15 @@ Rules:
 With `DISCORD_WELCOME_CHANNEL_ID` set, PeachBot posts a welcome in that channel for everyone who joins the server, accepted or not: a mention, a pointer to the verification channel, and a picture drawn for them (`WelcomeCard`: the night sky and skyline, their Discord avatar and name). Each person is welcomed once (`discord_welcomes`); leaving and rejoining does not repeat it. If the picture cannot be drawn the welcome goes out as text.
 
 Discord only reports joins over its Gateway websocket, so this is the one part of PeachBot that holds a standing connection (`DiscordGateway`). It asks for the Server Members intent and nothing else, heartbeats, and reconnects with a growing wait when the connection drops; a join during a gap is missed. **Server Members Intent** must be switched on under Bot > Privileged Gateway Intents in the Developer Portal, otherwise Discord closes the connection with code 4014 and the log says so. The bot needs to see the welcome channel, send messages and attach files there. If more than one instance runs, each holds its own connection, and the table still keeps anyone from being welcomed twice.
+
+### Applications channel
+
+With `DISCORD_APPLICATIONS_CHANNEL_ID` set, PeachBot posts to that channel:
+
+- **Each new application**, right after it is saved: the applicant's name, school, graduation date and level of study, and its number among all applications. Nothing else from the form is posted. A failure here never affects the registration.
+- **A recap every evening** (`DISCORD_RECAP_CRON`): the total, today's count, the last seven days against the seven before, when the last application came in, accepted and pending counts, the host school against other schools, the top three schools, and a bar chart of the last 14 days (`RecapChart`). `POST /admin/discord/recap` posts it on demand.
+
+The channel shows applicants' names, so it must be visible to organizers only. `GET /admin/discord` reports `welcomes` and `applications` (whether each channel is set up).
 
 One-time setup:
 
