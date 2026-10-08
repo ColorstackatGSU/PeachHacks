@@ -188,7 +188,7 @@ public class DiscordApplications {
 		try {
 			chart = RecapChart.render(days, total, todayCount);
 		}
-		catch (Exception | LinkageError ex) {
+		catch (Throwable ex) {
 			log.warn("Could not draw the recap chart: {}", ex.toString());
 		}
 		Map<String, Object> embed = new LinkedHashMap<>();

@@ -174,6 +174,9 @@ const discord = {
   verified: 12,
   messagePostedAt: null,
   welcomes: true,
+  gateway: "Connected. PeachBot hears when someone joins.",
+  lastJoinSeen: null,
+  lastWelcome: null,
   applications: true,
   message: "**Verify to get into PeachHacks**\nPress Verify to open the hacker channels.",
 };

@@ -1,5 +1,8 @@
 package com.peachhacks.backend.discord;
 
+import java.time.Instant;
+
+import com.fasterxml.jackson.annotation.JsonUnwrapped;
 import com.peachhacks.backend.admin.AdminPrincipal;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,14 +29,26 @@ public class AdminDiscordController {
 
 	private final DiscordApplications applications;
 
-	public AdminDiscordController(DiscordVerification verification, DiscordApplications applications) {
+	private final DiscordGateway gateway;
+
+	private final DiscordWelcome welcome;
+
+	public AdminDiscordController(DiscordVerification verification, DiscordApplications applications,
+			DiscordGateway gateway, DiscordWelcome welcome) {
+		this.gateway = gateway;
+		this.welcome = welcome;
 		this.verification = verification;
 		this.applications = applications;
 	}
 
+	/** gateway, lastJoinSeen and lastWelcome say why a welcome did or did not go out. */
+	public record Diagnostics(@JsonUnwrapped DiscordVerification.Status status, String gateway, Instant lastJoinSeen,
+			String lastWelcome) {
+	}
+
 	@GetMapping
-	DiscordVerification.Status status() {
-		return verification.status();
+	Diagnostics status() {
+		return new Diagnostics(verification.status(), gateway.state(), gateway.lastJoinSeen(), welcome.lastResult());
 	}
 
 	/** Without a body (or with a null message) the text stays as it is and is posted or refreshed. */

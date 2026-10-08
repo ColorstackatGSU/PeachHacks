@@ -4,6 +4,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.WebSocket;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Set;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Executors;
@@ -88,6 +89,11 @@ public class DiscordGateway implements SmartLifecycle, WebSocket.Listener {
 
 	private int failures;
 
+	/** What an organizer is told about the connection, in the admin site. */
+	private volatile String state = "Off: no welcome channel is set (DISCORD_WELCOME_CHANNEL_ID).";
+
+	private volatile Instant lastJoinSeen;
+
 	public DiscordGateway(DiscordProperties properties, DiscordWelcome welcome) {
 		this.properties = properties;
 		this.welcome = welcome;
@@ -99,6 +105,7 @@ public class DiscordGateway implements SmartLifecycle, WebSocket.Listener {
 			return;
 		}
 		running = true;
+		state = "Connecting to Discord.";
 		scheduler = Executors.newSingleThreadScheduledExecutor(task -> {
 			Thread thread = new Thread(task, "discord-gateway");
 			thread.setDaemon(true);
@@ -117,6 +124,15 @@ public class DiscordGateway implements SmartLifecycle, WebSocket.Listener {
 		if (scheduler != null) {
 			scheduler.shutdownNow();
 		}
+	}
+
+	public String state() {
+		return state;
+	}
+
+	/** When Discord last told us someone joined; null if it has not since the backend started. */
+	public Instant lastJoinSeen() {
+		return lastJoinSeen;
 	}
 
 	@Override
@@ -142,6 +158,7 @@ public class DiscordGateway implements SmartLifecycle, WebSocket.Listener {
 		}
 		catch (Exception ex) {
 			log.warn("PeachBot could not reach Discord's gateway: {}", ex.toString());
+			state = "Not connected: Discord could not be reached (" + ex.getClass().getSimpleName() + "). Trying again.";
 			reconnect();
 		}
 	}
@@ -168,6 +185,10 @@ public class DiscordGateway implements SmartLifecycle, WebSocket.Listener {
 	public CompletionStage<?> onClose(WebSocket webSocket, int statusCode, String reason) {
 		if (FATAL.contains(statusCode)) {
 			running = false;
+			state = (statusCode == DISALLOWED_INTENTS)
+					? "Refused by Discord: Server Members Intent is off. Switch it on under Bot > Privileged Gateway"
+							+ " Intents in the Developer Portal, then redeploy the backend."
+					: "Refused by Discord (code " + statusCode + "). Check DISCORD_BOT_TOKEN, then redeploy the backend.";
 			log.error("PeachBot's gateway connection was refused for good (close code {} {}). {}", statusCode, reason,
 					(statusCode == DISALLOWED_INTENTS)
 							? "Switch on Server Members Intent for the bot in the Discord Developer Portal, then"
@@ -176,6 +197,7 @@ public class DiscordGateway implements SmartLifecycle, WebSocket.Listener {
 			return null;
 		}
 		log.info("PeachBot's gateway connection closed ({} {}); reconnecting", statusCode, reason);
+		state = "Reconnecting: Discord closed the connection (code " + statusCode + ").";
 		submit(() -> dropped(webSocket));
 		return null;
 	}
@@ -183,6 +205,7 @@ public class DiscordGateway implements SmartLifecycle, WebSocket.Listener {
 	@Override
 	public void onError(WebSocket webSocket, Throwable error) {
 		log.info("PeachBot's gateway connection failed ({}); reconnecting", error.toString());
+		state = "Reconnecting: the connection to Discord dropped.";
 		submit(() -> dropped(webSocket));
 	}
 
@@ -219,10 +242,12 @@ public class DiscordGateway implements SmartLifecycle, WebSocket.Listener {
 	private void dispatch(String event, JsonNode data) {
 		if (event.equals("READY")) {
 			failures = 0;
+			state = "Connected. PeachBot hears when someone joins.";
 			log.info("PeachBot is connected to Discord's gateway and will welcome new members");
 		}
 		else if (event.equals("GUILD_MEMBER_ADD") && properties.guildId().equals(data.path("guild_id").asString(""))) {
 			JsonNode user = data.path("user");
+			lastJoinSeen = Instant.now();
 			if (!user.path("bot").asBoolean(false)) {
 				welcome.memberJoined(user.path("id").asString(""), user.path("username").asString(""),
 						user.path("global_name").asString(""), user.path("avatar").asString(""));

@@ -13,6 +13,7 @@ import org.springframework.core.task.TaskExecutor;
 import org.springframework.core.task.TaskRejectedException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestClientResponseException;
 
 /**
  * Posts a welcome, with a picture made for the person, when someone joins the server.
@@ -36,6 +37,8 @@ public class DiscordWelcome {
 
 	private final TaskExecutor executor;
 
+	private volatile String lastResult;
+
 	public DiscordWelcome(JdbcClient jdbc, DiscordClient client, DiscordProperties properties,
 			@Qualifier("discordExecutor") TaskExecutor executor) {
 		this.jdbc = jdbc;
@@ -57,12 +60,18 @@ public class DiscordWelcome {
 		}
 	}
 
+	/** What happened to the most recent welcome, for the admin site; null before the first one. */
+	public String lastResult() {
+		return lastResult;
+	}
+
 	private void welcome(String userId, String name, String avatarHash) {
 		int first = jdbc
 			.sql("insert into discord_welcomes (discord_user_id) values (:userId) on conflict (discord_user_id) do nothing")
 			.param("userId", userId)
 			.update();
 		if (first == 0) {
+			lastResult = "Skipped the last join: that person was already welcomed once.";
 			return;
 		}
 		Map<String, Object> message = Map.of("content",
@@ -71,8 +80,10 @@ public class DiscordWelcome {
 				"allowed_mentions", Map.of("users", List.of(userId)));
 		try {
 			client.postMessage(properties.welcomeChannelId(), message, "welcome.png", card(userId, name, avatarHash));
+			lastResult = "The last welcome was posted.";
 		}
 		catch (RuntimeException ex) {
+			lastResult = "The last welcome could not be posted: " + describe(ex);
 			log.warn("Could not welcome Discord user {}: {}", userId, ex.toString());
 			jdbc.sql("delete from discord_welcomes where discord_user_id = :userId").param("userId", userId).update();
 		}
@@ -84,10 +95,21 @@ public class DiscordWelcome {
 			byte[] avatar = AVATAR_HASH.matcher(avatarHash).matches() ? client.avatar(userId, avatarHash) : null;
 			return WelcomeCard.render(name, userId, avatar);
 		}
-		catch (Exception | LinkageError ex) {
+		// Java2D fails with Errors, not only exceptions, on a machine without fonts or
+		// graphics libraries; none of them may cost the person their welcome.
+		catch (Throwable ex) {
 			log.warn("Could not draw the welcome card for Discord user {}: {}", userId, ex.toString());
 			return null;
 		}
+	}
+
+	private static String describe(RuntimeException ex) {
+		if (ex instanceof RestClientResponseException response) {
+			String body = response.getResponseBodyAsString().strip();
+			return "Discord answered " + response.getStatusCode().value() + " "
+					+ ((body.length() > 200) ? body.substring(0, 200) : body);
+		}
+		return ex.getClass().getSimpleName();
 	}
 
 }

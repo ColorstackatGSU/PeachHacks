@@ -13,7 +13,7 @@ import {
   errorProps,
   useToast,
 } from "../components/ui.jsx";
-import { ROLES, errorText, formatDate, roleLabel } from "../lib/format.js";
+import { ROLES, errorText, formatDate, formatDateTime, roleLabel } from "../lib/format.js";
 import { useAsync } from "../lib/hooks.js";
 import { href } from "../lib/router.js";
 import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from "./SetPassword.jsx";
@@ -346,7 +346,27 @@ function DiscordVerification() {
           <dl className="explain">
             <div>
               <dt>Welcomes</dt>
-              <dd>{status.welcomes ? "On. Everyone who joins the server gets a welcome card, once." : "Off. Set DISCORD_WELCOME_CHANNEL_ID on the backend to turn them on."}</dd>
+              <dd>
+                {status.welcomes ? "On. Everyone who joins the server gets a welcome card, once." : "Off. Set DISCORD_WELCOME_CHANNEL_ID on the backend to turn them on."}
+                {discord.data?.gateway && (
+                  <>
+                    <br />
+                    <strong>Connection:</strong> {discord.data.gateway}
+                  </>
+                )}
+                {discord.data?.lastJoinSeen && (
+                  <>
+                    <br />
+                    Last join seen {formatDateTime(discord.data.lastJoinSeen)}.
+                  </>
+                )}
+                {discord.data?.lastWelcome && (
+                  <>
+                    <br />
+                    {discord.data.lastWelcome}
+                  </>
+                )}
+              </dd>
             </div>
             <div>
               <dt>Applications channel</dt>
