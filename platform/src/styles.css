@@ -139,7 +139,7 @@ img { max-width: 100%; }
 .auth-card h1 { color: var(--peach); font-family: 'Agbalumo', system-ui, sans-serif; font-size: clamp(36px, 10vw, 44px); font-weight: 400; line-height: 1.05; text-shadow: 3px 3px 0 rgb(0, 12, 24); }
 .auth-intro { margin-top: 6px; color: var(--mist); font-size: 15px; }
 
-.auth-legal { color: var(--mist); font-size: 13px; }
+.auth-legal { grid-column: 1 / -1; color: var(--mist); font-size: 13px; }
 .auth-legal a { color: var(--mist); font-weight: 600; }
 .auth-legal a:hover { color: var(--cream); }
 
@@ -249,13 +249,48 @@ img { max-width: 100%; }
 
 .filters { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1.4fr) minmax(0, 1fr); gap: 12px; }
 
-.hacker { grid-template-rows: auto auto 1fr auto; }
-.hacker-head { display: flex; align-items: center; gap: 12px; }
-.hacker-head h2 { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.hacker-head .muted { font-size: 13.5px; }
-.hacker-bio { color: var(--cream); font-size: 14px; overflow-wrap: anywhere; }
-.hacker-foot { display: grid; gap: 10px; align-self: end; padding-top: 12px; border-top: 1px solid var(--line); }
-.hacker-links { display: flex; gap: 16px; font-size: 12px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+/* Hacker badge. --tone is the person's own colour (see toneOf). */
+.hacker { --tone: var(--peach); position: relative; display: flex; flex-direction: column; min-width: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 16px; background: linear-gradient(180deg, #0a3558 0, var(--panel) 46%); box-shadow: 0 6px 0 rgba(0, 12, 24, .35); }
+.hacker-tone-sky { --tone: var(--sky); }
+.hacker-tone-mist { --tone: var(--mist); }
+.hacker-tone-cream { --tone: var(--cream); }
+.hacker-me { border-color: var(--tone); }
+.hacker-band { position: relative; height: 84px; background:
+    radial-gradient(circle at 12% 30%, rgba(244, 246, 237, .9) 0 1.2px, transparent 1.8px),
+    radial-gradient(circle at 31% 62%, rgba(244, 246, 237, .6) 0 1px, transparent 1.6px),
+    radial-gradient(circle at 47% 22%, rgba(244, 246, 237, .8) 0 1.4px, transparent 2px),
+    radial-gradient(circle at 63% 54%, rgba(252, 163, 36, .85) 0 1.2px, transparent 1.8px),
+    radial-gradient(circle at 71% 18%, rgba(244, 246, 237, .55) 0 1px, transparent 1.6px),
+    url("/assets/Hero.svg") center 30px / 100% auto no-repeat,
+    linear-gradient(180deg, #00162a 0, #003f64 100%); }
+.hacker-slot { position: absolute; top: 12px; left: 50%; width: 46px; height: 10px; border-radius: 999px; background: var(--bg-deep); box-shadow: inset 0 2px 0 rgba(0, 0, 0, .45), 0 1px 0 rgba(244, 246, 237, .14); transform: translateX(-50%); }
+.hacker-moon { position: absolute; top: 16px; right: 22px; width: 30px; height: 30px; border-radius: 50%; background: var(--tone); box-shadow: 0 0 18px color-mix(in srgb, var(--tone) 70%, transparent); opacity: .95; }
+.hacker-body { display: flex; flex: 1; flex-direction: column; gap: 8px; padding: 0 20px 16px; }
+.hacker-top { display: flex; align-items: flex-end; justify-content: space-between; margin-top: -34px; }
+.hacker-avatar { position: relative; display: grid; place-items: center; width: 68px; height: 68px; border: 4px solid var(--panel); border-radius: 50%; background: var(--tone); box-shadow: 0 0 0 2px color-mix(in srgb, var(--tone) 55%, transparent); color: var(--navy); font-size: 23px; font-weight: 800; letter-spacing: -.02em; }
+.hacker-you { margin-bottom: 4px; padding: 2px 12px; border-radius: 999px; background: var(--tone); color: var(--navy); font-size: 11px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+.hacker h2 { margin-top: 4px; font-size: 21px; font-weight: 800; letter-spacing: -.02em; line-height: 1.2; overflow-wrap: anywhere; }
+.hacker-school { color: var(--text-2); font-size: 14px; }
+.hacker .pill-row { margin-top: 2px; }
+.pill-dot { width: 7px; height: 7px; margin-right: 7px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 3px rgba(127, 220, 160, .22); }
+.hacker-bio { margin-top: 4px; color: var(--cream); font-size: 14.5px; line-height: 1.5; overflow-wrap: anywhere; }
+.hacker-foot { display: grid; gap: 12px; padding: 14px 20px 18px; border-top: 1px dashed rgba(244, 246, 237, .2); background: rgba(0, 22, 42, .35); }
+.hacker-discord { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 6px 8px 6px 12px; border: 1px solid rgba(244, 246, 237, .2); border-radius: 12px; background: rgba(0, 22, 42, .55); color: var(--cream); text-align: left; cursor: pointer; }
+.hacker-discord:hover { border-color: var(--tone); background: rgba(0, 22, 42, .8); }
+.hacker-discord img { flex: none; border-radius: 6px; }
+.hacker-discord-name { flex: 1; min-width: 0; overflow: hidden; font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
+.hacker-discord-copy { flex: none; padding: 4px 12px; border-radius: 8px; background: rgba(244, 246, 237, .1); font-size: 12px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.hacker-discord:hover .hacker-discord-copy { background: var(--tone); color: var(--navy); }
+.hacker-discord-none { cursor: default; border-style: dashed; color: var(--text-2); font-size: 13.5px; }
+.hacker-discord-none:hover { border-color: rgba(244, 246, 237, .2); background: rgba(0, 22, 42, .55); }
+.hacker-links { display: flex; flex-wrap: wrap; gap: 8px; }
+.hacker-link { display: inline-flex; align-items: center; gap: 7px; min-height: 34px; padding: 4px 12px; border: 1px solid rgba(244, 246, 237, .2); border-radius: 999px; color: var(--cream); font-size: 13px; font-weight: 700; text-decoration: none; }
+.hacker-link:hover { border-color: var(--tone); color: var(--tone); }
+
+@media (prefers-reduced-motion: no-preference) {
+  .hacker { transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease; }
+  .hacker:hover { border-color: color-mix(in srgb, var(--tone) 60%, transparent); box-shadow: 0 10px 0 rgba(0, 12, 24, .35), 0 0 0 1px color-mix(in srgb, var(--tone) 35%, transparent); transform: translateY(-4px); }
+}
 
 .avatar { display: inline-grid; flex: none; place-items: center; width: 46px; height: 46px; border-radius: 50%; color: var(--navy); font-size: 16px; font-weight: 800; }
 .avatar-peach { background: var(--peach); }

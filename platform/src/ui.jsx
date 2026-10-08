@@ -55,15 +55,18 @@ export function FieldError({ id, message }) {
   );
 }
 
-const AVATAR_TONES = ["peach", "sky", "mist", "cream"];
+const TONES = ["peach", "sky", "mist", "cream"];
+
+// The same person always gets the same colour, on every card they appear on.
+export function toneOf(key) {
+  let sum = 0;
+  for (const char of String(key)) sum += char.charCodeAt(0);
+  return TONES[sum % TONES.length];
+}
 
 export function Avatar({ firstName, lastName, id }) {
   const initials = `${firstName?.[0] || ""}${lastName?.[0] || ""}`.toUpperCase() || "?";
-  const tone = useMemo(() => {
-    let sum = 0;
-    for (const char of String(id || initials)) sum += char.charCodeAt(0);
-    return AVATAR_TONES[sum % AVATAR_TONES.length];
-  }, [id, initials]);
+  const tone = useMemo(() => toneOf(id || initials), [id, initials]);
   return (
     <span className={`avatar avatar-${tone}`} aria-hidden="true">
       {initials}
