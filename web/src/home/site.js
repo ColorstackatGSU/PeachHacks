@@ -11,6 +11,7 @@ export const EVENT_DATES = `February 5–7, ${EVENT_YEAR}`;
 export const EVENT_DATES_SHORT = 'Feb 5–7';
 export const EVENT_PLACE = 'Georgia State University, Atlanta';
 export const EVENT_THEME = 'Midnight in the City';
+export const PLATFORM_URL = 'https://platform.peachhacks.com';
 export const CODE_OF_CONDUCT_URL = 'https://github.com/MLH/mlh-policies/blob/main/code-of-conduct.md';
 
 export const sectionLinks = [

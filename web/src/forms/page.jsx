@@ -1,9 +1,13 @@
-import { createRoot } from 'react-dom/client';
+import { createRoot, hydrateRoot } from 'react-dom/client';
 import './forms.css';
 import './page.css';
 
+// The legal pages are pre-rendered into #root by `npm run build`; the others, and the
+// dev server, start empty.
 export function mountPage(Page) {
-  createRoot(document.getElementById('root')).render(<Page />);
+  const root = document.getElementById('root');
+  if (root.hasChildNodes()) hydrateRoot(root, <Page />);
+  else createRoot(root).render(<Page />);
 }
 
 export function readQueryParam(name) {

@@ -48,7 +48,7 @@ export function PrivacyPage() {
       <h3>When you use the hacker platform</h3>
       <ul>
         <li>A password, which we store only in scrambled (hashed) form and cannot read.</li>
-        <li>If you sign in with Google: your Google account&rsquo;s identifier and email address. We do not get access to your Google data.</li>
+        <li>If you sign in with Google: your Google account&rsquo;s identifier and email address, as described under &ldquo;Information from your Google account&rdquo; below.</li>
         <li>What you add to your card: a short bio, a GitHub link and a LinkedIn link.</li>
         <li>Your team, and requests you send to join one.</li>
         <li>If you connect Discord: your Discord account&rsquo;s ID and username. We use them to give you the Hacker role in our server.</li>
@@ -63,6 +63,20 @@ export function PrivacyPage() {
         keeps a sign-in token in your browser so you stay signed in. We do not use advertising or analytics
         trackers.
       </p>
+
+      <h2>Information from your Google account</h2>
+      <p>
+        &ldquo;Continue with Google&rdquo; on the hacker platform is optional. If you use it, Google tells us two
+        things about the account you choose: its email address and Google&rsquo;s identifier for it. We ask for
+        nothing else, so we cannot see your contacts, files, calendar, mail or anything else in your Google
+        account.
+      </p>
+      <ul>
+        <li>We use the email address to find your accepted PeachHacks application, and the identifier to recognise you the next time you sign in. That is all we use them for.</li>
+        <li>We store the identifier with your hacker platform account. The email address is one we already have from your application.</li>
+        <li>We do not share what we receive from Google with anyone, and we do not use it for advertising.</li>
+        <li>To stop, remove PeachHacks Hacker Platform under &ldquo;Third-party apps and services&rdquo; in your Google account, and email {contact} if you want the stored identifier deleted. You can still sign in with your email and a password.</li>
+      </ul>
 
       <h2>How we use it</h2>
       <ul>

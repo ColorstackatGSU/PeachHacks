@@ -1,4 +1,4 @@
-import { CODE_OF_CONDUCT_URL, CONTACT_EMAIL, EVENT_DATES, EVENT_DATES_SHORT, EVENT_THEME, SPONSOR_FORM_PATH, socialLinks } from './site.js';
+import { CODE_OF_CONDUCT_URL, CONTACT_EMAIL, EVENT_DATES, EVENT_DATES_SHORT, EVENT_THEME, PLATFORM_URL, SPONSOR_FORM_PATH, socialLinks } from './site.js';
 
 export const aboutItems = [
   { title: 'What it is', body: 'A weekend where students team up and build an app, site, game or other project from scratch.' },
@@ -31,6 +31,7 @@ export function getFaqColumns(cta) {
     { q: 'How do I get there and where do I park?', a: 'Transit and parking details are to be announced with the building.' },
     { q: 'How do I sign up?', a: signUp },
     { q: 'How do acceptances work?', a: 'After you register we review applications and send acceptance emails together, so you may not hear back right away. Space is limited; if we fill up, we’ll open a waitlist. If you’re accepted, your email includes a ticket with a QR code: bring it on your phone to check in.' },
+    { q: 'What is the hacker platform?', a: <>Once you’re accepted, you can sign in at <a className="faq-link" href={PLATFORM_URL}>platform.peachhacks.com</a> with the email you applied with, using a password or your Google account. It has your ticket, the other accepted hackers and who’s looking for a team, team sign-up, and a one-click way into our Discord with the Hacker role.</> },
     { q: 'Why do you need my school email?', a: 'PeachHacks is for current students, so we ask for the email address your school gave you and send a link there to confirm it. We’ll use your personal email for everything else.' },
     { q: 'What is the team size limit?', a: 'Teams are 1 to 4 people. If you don’t have a team, come anyway: there’s a team-building activity right after the opening ceremony.' },
     { q: 'What should I bring?', a: 'Your laptop, charger, headphones, and your ticket (the QR code from your acceptance email). If you’re staying overnight, bring a pillow or blanket, and deodorant.' },
