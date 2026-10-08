@@ -57,6 +57,7 @@ app:
     guild-id: ${DISCORD_GUILD_ID:}
     hacker-role-id: ${DISCORD_HACKER_ROLE_ID:}
     verification-channel-id: ${DISCORD_VERIFICATION_CHANNEL_ID:}
+    welcome-channel-id: ${DISCORD_WELCOME_CHANNEL_ID:}
   platform:
     base-url: ${PLATFORM_BASE_URL:http://localhost:5176}
     api-base-url: ${API_BASE_URL:http://localhost:8080}

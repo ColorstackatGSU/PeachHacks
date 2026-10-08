@@ -7,7 +7,10 @@ import java.util.Map;
 import java.util.function.Supplier;
 
 import com.peachhacks.backend.config.DiscordProperties;
+import tools.jackson.databind.json.JsonMapper;
 
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -27,6 +30,8 @@ public class DiscordClient {
 	private static final Duration LONGEST_WAIT = Duration.ofSeconds(10);
 
 	private static final String AUDIT_REASON = "PeachBot verification";
+
+	private final JsonMapper json = JsonMapper.builder().build();
 
 	private final RestClient restClient;
 
@@ -57,6 +62,44 @@ public class DiscordClient {
 			.retrieve()
 			.body(Map.class));
 		return (created != null) ? String.valueOf(created.get("id")) : null;
+	}
+
+	/**
+	 * Posts a message with a picture attached, as multipart: the message itself travels as
+	 * the payload_json part. With a null image it is an ordinary message.
+	 */
+	public void postMessage(String channelId, Map<String, Object> message, String fileName, byte[] image) {
+		if (image == null) {
+			postMessage(channelId, message);
+			return;
+		}
+		HttpHeaders jsonPart = new HttpHeaders();
+		jsonPart.setContentType(MediaType.APPLICATION_JSON);
+		HttpHeaders imagePart = new HttpHeaders();
+		imagePart.setContentType(MediaType.IMAGE_PNG);
+		MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+		body.add("payload_json", new HttpEntity<>(json.writeValueAsString(message), jsonPart));
+		body.add("files[0]", new HttpEntity<>(new ByteArrayResource(image) {
+			@Override
+			public String getFilename() {
+				return fileName;
+			}
+		}, imagePart));
+		withRateLimit(() -> restClient.post()
+			.uri("/channels/{channel}/messages", channelId)
+			.header(HttpHeaders.AUTHORIZATION, authorization())
+			.contentType(MediaType.MULTIPART_FORM_DATA)
+			.body(body)
+			.retrieve()
+			.toBodilessEntity());
+	}
+
+	/** A member's profile picture from Discord's image server, which needs no credentials. */
+	public byte[] avatar(String userId, String avatarHash) {
+		return restClient.get()
+			.uri(properties.cdnBaseUrl() + "/avatars/{user}/{hash}.png?size=256", userId, avatarHash)
+			.retrieve()
+			.body(byte[].class);
 	}
 
 	public void deleteMessage(String channelId, String messageId) {

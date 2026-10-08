@@ -14,6 +14,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 
 import com.jayway.jsonpath.JsonPath;
+import com.peachhacks.backend.discord.DiscordWelcome;
 import com.peachhacks.backend.email.EmailMessage;
 import com.peachhacks.backend.email.EmailSender;
 import com.sun.net.httpserver.HttpServer;
@@ -51,7 +52,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 		"app.rate-limit.public-per-minute=100000", "app.rate-limit.login-per-minute=100000",
 		"app.rate-limit.sign-up-per-window=100000", "app.rate-limit.sign-up-global-per-hour=100000",
 		"app.discord.bot-token=test-bot-token", "app.discord.application-id=4242", "app.discord.guild-id=1000",
-		"app.discord.hacker-role-id=2000", "app.discord.verification-channel-id=3000" })
+		"app.discord.hacker-role-id=2000", "app.discord.verification-channel-id=3000",
+		"app.discord.welcome-channel-id=5000", "app.discord.gateway-url=ws://127.0.0.1:1" })
 @AutoConfigureMockMvc
 @Testcontainers(disabledWithoutDocker = true)
 class DiscordApiTests {
@@ -108,6 +110,7 @@ class DiscordApiTests {
 		registry.add("app.discord.public-key",
 				() -> HexFormat.of().formatHex(Arrays.copyOfRange(encoded, encoded.length - 32, encoded.length)));
 		registry.add("app.discord.api-base-url", () -> "http://127.0.0.1:" + discord.getAddress().getPort());
+		registry.add("app.discord.cdn-base-url", () -> "http://127.0.0.1:" + discord.getAddress().getPort());
 	}
 
 	@TestConfiguration(proxyBeanMethods = false)
@@ -126,6 +129,9 @@ class DiscordApiTests {
 
 	@Autowired
 	private JdbcClient jdbc;
+
+	@Autowired
+	private DiscordWelcome welcome;
 
 	private String admin;
 
@@ -203,6 +209,28 @@ class DiscordApiTests {
 			.andExpect(jsonPath("$.data.components[0].components[0].url").value("http://localhost:5176/#/discord"));
 		assertThat(discordCalls).isEmpty();
 		assertThat(linkedUser(accepted)).isNull();
+	}
+
+	@Test
+	void someoneWhoJoinsIsWelcomedOnceWithACard() throws Exception {
+		String user = newUser();
+
+		welcome.memberJoined(user, "ada_l", "Ada Lovelace", "a1b2c3");
+		awaitCall("POST /channels/5000/messages");
+		assertThat(discordCalls).contains("GET /avatars/" + user + "/a1b2c3.png");
+		String posted = discordBodies.get(discordCalls.indexOf("POST /channels/5000/messages"));
+		assertThat(posted).contains("payload_json")
+			.contains("Welcome to PeachHacks, <@" + user + ">")
+			.contains("<#3000>")
+			.contains("filename=\"welcome.png\"")
+			.contains("PNG");
+
+		discordCalls.clear();
+		welcome.memberJoined(user, "ada_l", "Ada Lovelace", "a1b2c3");
+		welcome.memberJoined(newUser(), "second", "", "");
+		awaitCall("POST /channels/5000/messages");
+		Thread.sleep(300);
+		assertThat(discordCalls).as("the first person is not welcomed again").containsOnlyOnce("POST /channels/5000/messages");
 	}
 
 	@Test

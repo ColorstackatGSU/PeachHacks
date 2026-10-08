@@ -3,13 +3,15 @@ package com.peachhacks.backend.config;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
- * PeachBot is off unless every value except clientSecret and apiBaseUrl is present.
- * publicKey is the application's hex public key, which Discord signs every interaction
- * with. clientSecret is only needed for "Connect Discord" on the hacker platform.
+ * PeachBot is off unless botToken, publicKey, applicationId, guildId, hackerRoleId and
+ * verificationChannelId are all present. publicKey is the application's hex public key,
+ * which Discord signs every interaction with. clientSecret is only needed for "Connect
+ * Discord" on the hacker platform, and welcomeChannelId only for welcoming new members.
  */
 @ConfigurationProperties(prefix = "app.discord")
 public record DiscordProperties(String botToken, String publicKey, String applicationId, String clientSecret,
-		String guildId, String hackerRoleId, String verificationChannelId, String apiBaseUrl) {
+		String guildId, String hackerRoleId, String verificationChannelId, String welcomeChannelId, String apiBaseUrl,
+		String gatewayUrl, String cdnBaseUrl) {
 
 	public DiscordProperties {
 		botToken = trim(botToken);
@@ -19,7 +21,10 @@ public record DiscordProperties(String botToken, String publicKey, String applic
 		guildId = trim(guildId);
 		hackerRoleId = trim(hackerRoleId);
 		verificationChannelId = trim(verificationChannelId);
-		apiBaseUrl = trim(apiBaseUrl).isEmpty() ? "https://discord.com/api/v10" : trim(apiBaseUrl).replaceAll("/+$", "");
+		welcomeChannelId = trim(welcomeChannelId);
+		apiBaseUrl = orDefault(apiBaseUrl, "https://discord.com/api/v10");
+		gatewayUrl = orDefault(gatewayUrl, "wss://gateway.discord.gg");
+		cdnBaseUrl = orDefault(cdnBaseUrl, "https://cdn.discordapp.com");
 	}
 
 	public boolean configured() {
@@ -31,8 +36,16 @@ public record DiscordProperties(String botToken, String publicKey, String applic
 		return configured() && !clientSecret.isEmpty();
 	}
 
+	public boolean welcomeConfigured() {
+		return configured() && !welcomeChannelId.isEmpty();
+	}
+
 	private static String trim(String value) {
 		return (value != null) ? value.trim() : "";
+	}
+
+	private static String orDefault(String value, String fallback) {
+		return trim(value).isEmpty() ? fallback : trim(value).replaceAll("/+$", "");
 	}
 
 	@Override

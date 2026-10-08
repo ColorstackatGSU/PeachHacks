@@ -90,6 +90,7 @@ Standard Spring Boot environment variables; see `.env.example`.
 | `DISCORD_GUILD_ID` | ID of the PeachHacks Discord server |
 | `DISCORD_HACKER_ROLE_ID` | ID of the role accepted hackers get |
 | `DISCORD_VERIFICATION_CHANNEL_ID` | ID of the channel the Verify message is posted in |
+| `DISCORD_WELCOME_CHANNEL_ID` | ID of the channel where PeachBot welcomes everyone who joins. Optional: without it there are no welcomes and no gateway connection |
 | `PLATFORM_BASE_URL` | Hacker platform URL, used for the links in its emails and as the Discord redirect (default `http://localhost:5176`, `https://platform.peachhacks.com` in `prod`) |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | The Google OAuth client for "Continue with Google" on the hacker platform. Optional: without both there is email and password only |
 | `API_BASE_URL` | This backend's public address (default `http://localhost:8080`, `https://api.peachhacks.com` in `prod`). Google sends the browser back to `<API_BASE_URL>/platform/auth/google/callback` |
@@ -384,6 +385,12 @@ Rules:
 - Only `ACCEPTED` registrations. When an admin moves a registration out of `ACCEPTED` (one at a time or in bulk) the role is removed right away; accepting it again gives the role back.
 - Connecting a second Discord account to the same registration moves the link: the first account loses the role.
 - Interactions are checked against the application's Ed25519 public key; anything unsigned is answered 401, which is also what Discord tests when the endpoint URL is saved.
+
+### Welcomes
+
+With `DISCORD_WELCOME_CHANNEL_ID` set, PeachBot posts a welcome in that channel for everyone who joins the server, accepted or not: a mention, a pointer to the verification channel, and a picture drawn for them (`WelcomeCard`: the night sky and skyline, their Discord avatar and name). Each person is welcomed once (`discord_welcomes`); leaving and rejoining does not repeat it. If the picture cannot be drawn the welcome goes out as text.
+
+Discord only reports joins over its Gateway websocket, so this is the one part of PeachBot that holds a standing connection (`DiscordGateway`). It asks for the Server Members intent and nothing else, heartbeats, and reconnects with a growing wait when the connection drops; a join during a gap is missed. **Server Members Intent** must be switched on under Bot > Privileged Gateway Intents in the Developer Portal, otherwise Discord closes the connection with code 4014 and the log says so. The bot needs to see the welcome channel, send messages and attach files there. If more than one instance runs, each holds its own connection, and the table still keeps anyone from being welcomed twice.
 
 One-time setup:
 
