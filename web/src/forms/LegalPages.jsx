@@ -98,11 +98,12 @@ export function PrivacyPage() {
 
       <h3>Sponsors</h3>
       <p>
-        Only if you tick &ldquo;Share my resume with PeachHacks sponsors for recruiting&rdquo; when you upload a
-        resume. Sponsors then receive your resume together with your name, personal and school email, school,
-        level of study, major and LinkedIn link. If you leave it unticked, your resume stays with the PeachHacks
-        organizers. We may also give sponsors and Georgia State University totals, such as how many people
-        attended, that do not identify anyone.
+        Uploading a resume is optional. If you upload one and are accepted, PeachHacks sponsors receive it for
+        recruiting, together with your name, personal and school email, school, level of study, major and
+        LinkedIn link. If you do not upload a resume, sponsors receive nothing about you individually. To take
+        your resume back, email {contact} and we will remove it; a sponsor who already received it has to be
+        asked separately. We may also give sponsors and Georgia State University totals, such as how many
+        people attended, that do not identify anyone.
       </p>
 
       <h3>Other accepted hackers</h3>

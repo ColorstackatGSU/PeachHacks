@@ -55,7 +55,7 @@ public class AdminRegistrationController {
 			"genderSelfDescribe", "pronouns", "pronounsOther", "raceEthnicity", "raceEthnicityOther",
 			"sexualOrientation", "sexualOrientationOther", "highestEducation", "highestEducationOther", "tshirtSize",
 			"majorFieldOfStudy", "majorOther", "linkedinUrl", "checked_in_at",
-			"has_resume", "resume_opt_in", "school_email", "school_email_confirmed", "age_review");
+			"has_resume", "school_email", "school_email_confirmed", "age_review");
 
 	private static final Logger log = LoggerFactory.getLogger(AdminRegistrationController.class);
 
@@ -121,7 +121,7 @@ public class AdminRegistrationController {
 					r.getPronounsOther(), String.join("; ", r.getRaceEthnicity()), r.getRaceEthnicityOther(),
 					r.getSexualOrientation(), r.getSexualOrientationOther(), r.getHighestEducation(),
 					r.getHighestEducationOther(), r.getTshirtSize(), r.getMajorFieldOfStudy(), r.getMajorOther(),
-					r.getLinkedinUrl(), checkedInAt(general, r), file != null, file != null && file.isSponsorOptIn(),
+					r.getLinkedinUrl(), checkedInAt(general, r), file != null,
 					r.getSchoolEmail(), r.isSchoolEmailConfirmed(), flagged.contains(r.getId())));
 		}
 		log.info("Registrations CSV of {} rows ({}) exported by {}", csv.rows(),
@@ -170,7 +170,7 @@ public class AdminRegistrationController {
 		return new RegistrationDetail(r, (general != null) ? general.checkedInAt() : null,
 				(general != null) ? general.checkedInBy() : null, all, hasTicket ? r.getTicketToken() : null,
 				links.url(), links.googleWalletUrl(),
-				(resume != null) ? ResumeInfo.from(resume) : null, resume != null && resume.isSponsorOptIn(),
+				(resume != null) ? ResumeInfo.from(resume) : null,
 				ageReview.needed(r.getId()));
 	}
 

@@ -35,7 +35,7 @@ public class RegistrationService {
 
 	private static final Set<String> ISO_COUNTRIES = Set.of(Locale.getISOCountries());
 
-	private static final Set<String> RESUME_FILTERS = Set.of("opted-in", "any", "none");
+	private static final Set<String> RESUME_FILTERS = Set.of("any", "none");
 
 	private static final Duration ALREADY_REGISTERED_EMAIL_INTERVAL = Duration.ofHours(1);
 
@@ -100,7 +100,6 @@ public class RegistrationService {
 			throw ApiException.invalidField("countryOfResidence", "Choose a country from the list");
 		}
 		ResumeFile resume = (request.resume() != null) ? request.resume().toFile() : null;
-		boolean resumeOptIn = resume != null && Boolean.TRUE.equals(request.resumeOptIn());
 		Registration registration = Registration.from(request);
 		if (repository.existsByEmail(registration.getEmail())) {
 			return alreadyRegistered(registration.getEmail());
@@ -109,7 +108,7 @@ public class RegistrationService {
 			transaction.executeWithoutResult(status -> {
 				repository.saveAndFlush(registration);
 				if (resume != null) {
-					resumes.store(registration.getId(), resume, resumeOptIn);
+					resumes.store(registration.getId(), resume);
 				}
 			});
 		}
@@ -220,7 +219,7 @@ public class RegistrationService {
 		}
 		String filter = cleaned.toLowerCase(Locale.ROOT);
 		if (!RESUME_FILTERS.contains(filter)) {
-			throw ApiException.invalidField("resume", "Resume filter must be opted-in, any or none");
+			throw ApiException.invalidField("resume", "Resume filter must be any or none");
 		}
 		return filter;
 	}

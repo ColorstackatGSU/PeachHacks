@@ -139,7 +139,6 @@ function makeRegistration(base, createdAt) {
     resume: resumeRoll > 0.45
       ? { fileName: `${base.firstName}_${base.lastName}_Resume.pdf`, size: 60000 + Math.floor(rand() * 900000), uploadedAt: createdAt }
       : null,
-    resumeOptIn: resumeRoll > 0.65,
     createdAt,
   };
 }
@@ -340,7 +339,6 @@ function filterPeople(list, params) {
       if (checkedIn && String(Boolean(findCheckIn(item.id, generalEvent.id))) !== checkedIn) return false;
       if (resume === "any" && !item.resume) return false;
       if (resume === "none" && item.resume) return false;
-      if (resume === "opted-in" && !(item.resume && item.resumeOptIn)) return false;
       if (schoolEmailConfirmed && String(Boolean(item.schoolEmailConfirmed)) !== schoolEmailConfirmed) return false;
       if (ageReviewFilter && String(ageReview(item)) !== ageReviewFilter) return false;
       if (!q) return true;
@@ -366,7 +364,6 @@ function summary(r) {
   return {
     id, firstName, lastName, email, schoolEmail, schoolEmailConfirmed, schoolEmailConfirmedAt, school, levelOfStudy, countryOfResidence, age, status, acceptedAt, acceptanceNotifiedAt, createdAt, checkedInAt,
     hasResume: Boolean(r.resume),
-    resumeOptIn: Boolean(r.resume && r.resumeOptIn),
     ageReview: ageReview(r),
   };
 }
@@ -654,7 +651,6 @@ function handle(method, path, params, body, token) {
         total: registrations.length,
         checkedIn: eventCount(generalEvent.id),
         withResume: registrations.filter((r) => r.resume).length,
-        resumeOptIn: registrations.filter((r) => r.resume && r.resumeOptIn).length,
         schoolEmailConfirmed: registrations.filter((r) => r.schoolEmailConfirmed).length,
         bySchool: bySchool(registrations),
         byDay: byDay(registrations),
@@ -689,12 +685,11 @@ function handle(method, path, params, body, token) {
           ...r,
           checked_in_at: findCheckIn(r.id, generalEvent.id)?.checkedInAt || null,
           has_resume: Boolean(r.resume),
-          resume_opt_in: Boolean(r.resume && r.resumeOptIn),
           school_email: r.schoolEmail,
           school_email_confirmed: r.schoolEmailConfirmed,
           age_review: ageReview(r),
         };
-        ["ticketToken", "resume", "resumeOptIn", "schoolEmail", "schoolEmailConfirmed", "schoolEmailConfirmedAt"].forEach((key) => delete row[key]);
+        ["ticketToken", "resume", "schoolEmail", "schoolEmailConfirmed", "schoolEmailConfirmedAt"].forEach((key) => delete row[key]);
         return row;
       }),
       "registrations.csv",
@@ -769,7 +764,6 @@ function handle(method, path, params, body, token) {
     if (!r.resume) return fail(404, "NOT_FOUND", "This registration has no resume.");
     if (method === "DELETE") {
       r.resume = null;
-      r.resumeOptIn = false;
       return respond(204);
     }
     return new Response(MOCK_PDF, {

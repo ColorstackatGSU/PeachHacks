@@ -40,7 +40,6 @@ const INITIAL_VALUES = {
   majorOther: '',
   linkedinUrl: '',
   resume: null,
-  resumeOptIn: false,
   underrepresentedGroup: '',
   gender: '',
   genderSelfDescribe: '',
@@ -58,7 +57,7 @@ const FIELD_NAMES = Object.keys(INITIAL_VALUES);
 // opened when the API reports an error inside it.
 const SECTION_FIELDS = {
   logistics: ['dietaryRestrictions', 'dietaryDetails', 'tshirtSize'],
-  studies: ['highestEducation', 'highestEducationOther', 'majorFieldOfStudy', 'majorOther', 'linkedinUrl', 'resume', 'resumeOptIn'],
+  studies: ['highestEducation', 'highestEducationOther', 'majorFieldOfStudy', 'majorOther', 'linkedinUrl', 'resume'],
   demographics: [
     'underrepresentedGroup', 'gender', 'genderSelfDescribe', 'pronouns', 'pronounsOther', 'raceEthnicity',
     'raceEthnicityOther', 'sexualOrientation', 'sexualOrientationOther',
@@ -117,7 +116,6 @@ function buildPayload(values, resume) {
     majorOther: otherText(values.majorFieldOfStudy === MAJOR_OTHER, values.majorOther),
     linkedinUrl: blankToNull(normalizeLinkedinUrl(values.linkedinUrl) ?? ''),
     resume,
-    resumeOptIn: resume !== null && values.resumeOptIn,
     website: values.website,
   };
 }
@@ -155,11 +153,10 @@ export default function RegisterForm({ titleId, onSuccess, onClosed }) {
   const [openSections, setOpenSections] = useState({ logistics: true, studies: false, demographics: false });
 
   const removeResume = () => {
-    setValues((current) => ({ ...current, resume: null, resumeOptIn: false }));
+    setValues((current) => ({ ...current, resume: null }));
     setErrors((current) => {
       const next = { ...current };
       delete next.resume;
-      delete next.resumeOptIn;
       return next;
     });
   };
@@ -167,7 +164,7 @@ export default function RegisterForm({ titleId, onSuccess, onClosed }) {
   const chooseResume = async (file) => {
     const problem = await checkResume(file);
     if (problem) {
-      setValues((current) => ({ ...current, resume: null, resumeOptIn: false }));
+      setValues((current) => ({ ...current, resume: null }));
       setErrors((current) => ({ ...current, resume: problem }));
       return;
     }
@@ -359,17 +356,8 @@ export default function RegisterForm({ titleId, onSuccess, onClosed }) {
           />
           <ResumeField
             name="resume" file={values.resume} onChoose={chooseResume} onRemove={removeResume} error={errors.resume}
-            hint="Highly recommended. PDF only, up to 2 MB."
+            hint="Optional. PDF only, up to 2 MB. Sponsors receive it for recruiting, with your name, emails, school, level of study, major and LinkedIn."
           />
-          {values.resume && (
-            <ConsentCheckbox
-              name="resumeOptIn" checked={values.resumeOptIn} onChange={setValue} error={errors.resumeOptIn}
-            >
-              Share my resume with PeachHacks sponsors for recruiting. If you tick this, sponsors receive your resume
-              together with your name, personal and school email, school, level of study, major and LinkedIn link.
-              Leave it unticked and your resume stays with the PeachHacks organizers, who can always see it.
-            </ConsentCheckbox>
-          )}
         </div>
       </Section>
 

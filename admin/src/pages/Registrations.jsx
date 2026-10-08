@@ -356,7 +356,6 @@ function ResumePanel({ reg, onRemoved }) {
     <section className="ticket-panel" aria-label="Resume">
       <div className="status-panel-head">
         <span className="tile-label">Resume</span>
-        {reg.resumeOptIn ? <Tag tone="accepted">Sponsors: opted in</Tag> : <Tag tone="neutral">Sponsors: not opted in</Tag>}
       </div>
       <p className="resume-file">
         <strong className="cell-break">{reg.resume.fileName}</strong>
@@ -365,9 +364,7 @@ function ResumePanel({ reg, onRemoved }) {
         </span>
       </p>
       <p className="muted small">
-        {reg.resumeOptIn
-          ? "They agreed to share this resume with sponsors. It goes into the resume book once they are accepted."
-          : "They did not agree to share this resume with sponsors. It is for organizers only and is left out of the resume book."}
+        The form told them sponsors receive it. It goes into the resume book once they are accepted.
       </p>
       <div className="resume-actions">
         <button type="button" className="btn btn-small" disabled={downloading} onClick={download}>
@@ -450,8 +447,8 @@ function ResumeBookDialog({ onClose }) {
         )}
       </p>
       <p>
-        It only includes registrants who are <strong>accepted</strong> and who <strong>opted in</strong> to sharing
-        their resume with sponsors. Everyone else’s resume is left out.
+        It includes every <strong>accepted</strong> registrant who uploaded a resume; the form told them sponsors
+        receive it. Resumes of people who are not accepted are left out.
       </p>
       <p className="check-line">
         <input
@@ -570,7 +567,7 @@ function RegistrationDrawer({ id, fallbackName, acceptance, onClose, onChanged }
           <ResumePanel
             reg={reg}
             onRemoved={() => {
-              setUpdated({ ...reg, resume: null, resumeOptIn: false });
+              setUpdated({ ...reg, resume: null });
               onChanged();
             }}
           />
@@ -778,7 +775,6 @@ export default function Registrations({ query }) {
           <label htmlFor={`${ids}-resume`}>Resume</label>
           <select id={`${ids}-resume`} value={resume} onChange={resetTo(setResume)}>
             <option value="">Everyone</option>
-            <option value="opted-in">Opted in to sponsors</option>
             <option value="any">Has a resume</option>
             <option value="none">No resume</option>
           </select>
@@ -923,8 +919,7 @@ export default function Registrations({ query }) {
                   </td>
                   <td data-label="Resume">
                     {!item.hasResume && <span className="muted">None</span>}
-                    {item.hasResume && item.resumeOptIn && <Tag tone="accepted">Opted in</Tag>}
-                    {item.hasResume && !item.resumeOptIn && <Tag tone="neutral">Organizers only</Tag>}
+                    {item.hasResume && <Tag tone="accepted">Uploaded</Tag>}
                   </td>
                   <td data-label="Checked in" className="cell-nowrap">
                     {item.checkedInAt ? (

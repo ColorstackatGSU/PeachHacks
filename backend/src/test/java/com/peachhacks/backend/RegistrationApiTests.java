@@ -728,11 +728,11 @@ class RegistrationApiTests {
 		mockMvc
 			.perform(get("/admin/registrations/export.csv").param("school", school).header("Authorization", admin))
 			.andExpect(content()
-				.string(containsString(",linkedinUrl,checked_in_at,has_resume,resume_opt_in,school_email,school_email_confirmed,age_review\r\n")))
+				.string(containsString(",linkedinUrl,checked_in_at,has_resume,school_email,school_email_confirmed,age_review\r\n")))
 			.andExpect(content().string(containsString(prefix + "a@example.com")))
 			.andExpect(content().string(containsString(prefix + "b@example.com")))
 			.andExpect(content()
-				.string(containsString("," + checkedInAt + ",false,false,ada.lovelace@school.edu,false,false\r\n")));
+				.string(containsString("," + checkedInAt + ",false,ada.lovelace@school.edu,false,false\r\n")));
 		mockMvc
 			.perform(get("/admin/registrations/export.csv").param("school", school)
 				.param("checkedIn", "true")
@@ -1486,7 +1486,7 @@ class RegistrationApiTests {
 		byte[] pdf = pdfBytes(40_000);
 		setRegistrationOpen(admin, true);
 		String created = register(withResume(registrationJson(unique() + "@example.com", school, true, true),
-				"..\\\\..\\\\secret/My R\\u00E9\\u0000\\u202Esum\\u00E9: final?.PDF", pdf, true))
+				"..\\\\..\\\\secret/My R\\u00E9\\u0000\\u202Esum\\u00E9: final?.PDF", pdf))
 			.andExpect(status().isCreated())
 			.andReturn()
 			.getResponse()
@@ -1499,8 +1499,7 @@ class RegistrationApiTests {
 			.andExpect(jsonPath("$.resume.fileName").value("My Résumé_ final_.pdf"))
 			.andExpect(jsonPath("$.resume.size").value(pdf.length))
 			.andExpect(jsonPath("$.resume.uploadedAt").isNotEmpty())
-			.andExpect(jsonPath("$.resume.content").doesNotExist())
-			.andExpect(jsonPath("$.resumeOptIn").value(true));
+			.andExpect(jsonPath("$.resume.content").doesNotExist());
 		byte[] downloaded = mockMvc.perform(get("/admin/registrations/" + id + "/resume").header("Authorization", admin))
 			.andExpect(status().isOk())
 			.andExpect(header().string(HttpHeaders.CONTENT_TYPE, "application/pdf"))
@@ -1510,15 +1509,14 @@ class RegistrationApiTests {
 			.getContentAsByteArray();
 		assertThat(downloaded).isEqualTo(pdf);
 
-		for (String filter : List.of("opted-in", "any")) {
+		for (String filter : List.of("any")) {
 			mockMvc
 				.perform(get("/admin/registrations").param("school", school)
 					.param("resume", filter)
 					.header("Authorization", admin))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.total").value(1))
-				.andExpect(jsonPath("$.items[0].hasResume").value(true))
-				.andExpect(jsonPath("$.items[0].resumeOptIn").value(true));
+				.andExpect(jsonPath("$.items[0].hasResume").value(true));
 		}
 		mockMvc
 			.perform(get("/admin/registrations").param("school", school)
@@ -1531,12 +1529,10 @@ class RegistrationApiTests {
 		mockMvc
 			.perform(get("/admin/registrations/export.csv").param("school", school).header("Authorization", admin))
 			.andExpect(status().isOk())
-			.andExpect(content().string(containsString(",true,true,ada.lovelace@school.edu,false,false\r\n")));
+			.andExpect(content().string(containsString(",true,ada.lovelace@school.edu,false,false\r\n")));
 		mockMvc.perform(get("/admin/stats").header("Authorization", admin))
 			.andExpect(jsonPath("$.registrations.withResume")
-				.value((int) count("select count(*) from registration_resumes")))
-			.andExpect(jsonPath("$.registrations.resumeOptIn")
-				.value((int) count("select count(*) from registration_resumes where sponsor_opt_in")));
+				.value((int) count("select count(*) from registration_resumes")));
 
 		mockMvc.perform(delete("/admin/registrations/" + id + "/resume").header("Authorization", admin))
 			.andExpect(status().isNoContent());
@@ -1547,11 +1543,9 @@ class RegistrationApiTests {
 			.andExpect(status().isNotFound());
 		mockMvc.perform(get("/admin/registrations/" + id).header("Authorization", admin))
 			.andExpect(status().isOk())
-			.andExpect(jsonPath("$.resume").value(nullValue()))
-			.andExpect(jsonPath("$.resumeOptIn").value(false));
+			.andExpect(jsonPath("$.resume").value(nullValue()));
 		mockMvc.perform(get("/admin/registrations").param("school", school).header("Authorization", admin))
-			.andExpect(jsonPath("$.items[0].hasResume").value(false))
-			.andExpect(jsonPath("$.items[0].resumeOptIn").value(false));
+			.andExpect(jsonPath("$.items[0].hasResume").value(false));
 		deleteRegistrations(id);
 	}
 
@@ -1564,12 +1558,12 @@ class RegistrationApiTests {
 		byte[] largerThanTheBodyLimit = pdfBytes(2_500_000);
 		setRegistrationOpen(admin, true);
 
-		register(withResume(json, "notes.pdf", "Plain text, not a PDF".getBytes(StandardCharsets.UTF_8), true))
+		register(withResume(json, "notes.pdf", "Plain text, not a PDF".getBytes(StandardCharsets.UTF_8)))
 			.andExpect(status().isBadRequest())
 			.andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
 			.andExpect(jsonPath("$.fieldErrors.resume").value("Resume must be a PDF file"));
 		for (byte[] oversized : List.of(tooLarge, largerThanTheBodyLimit)) {
-			register(withResume(json, "resume.pdf", oversized, false)).andExpect(status().isBadRequest())
+			register(withResume(json, "resume.pdf", oversized)).andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
 				.andExpect(jsonPath("$.fieldErrors.resume").value("Resume must be 2 MB or smaller"));
 		}
@@ -1588,7 +1582,7 @@ class RegistrationApiTests {
 			.single()).isZero();
 
 		// The largest file allowed is accepted, so the limits above are not off by one.
-		String created = register(withResume(json, "resume.pdf", pdfBytes(2 * 1024 * 1024), false))
+		String created = register(withResume(json, "resume.pdf", pdfBytes(2 * 1024 * 1024)))
 			.andExpect(status().isCreated())
 			.andReturn()
 			.getResponse()
@@ -1598,42 +1592,7 @@ class RegistrationApiTests {
 	}
 
 	@Test
-	void resumeOptInWithoutAFileIsStoredAsFalse() throws Exception {
-		String admin = bearer();
-		String school = uniqueSchool();
-		setRegistrationOpen(admin, true);
-		String created = register(registrationJson(unique() + "@example.com", school, true, true)
-			.replace("\"website\": \"\"", "\"website\": \"\", \"resume\": null, \"resumeOptIn\": true"))
-			.andExpect(status().isCreated())
-			.andReturn()
-			.getResponse()
-			.getContentAsString();
-		setRegistrationOpen(admin, false);
-		String id = JsonPath.read(created, "$.id");
-
-		mockMvc.perform(get("/admin/registrations/" + id).header("Authorization", admin))
-			.andExpect(status().isOk())
-			.andExpect(jsonPath("$.resume").value(nullValue()))
-			.andExpect(jsonPath("$.resumeOptIn").value(false));
-		mockMvc
-			.perform(get("/admin/registrations").param("school", school)
-				.param("resume", "none")
-				.header("Authorization", admin))
-			.andExpect(jsonPath("$.total").value(1))
-			.andExpect(jsonPath("$.items[0].hasResume").value(false))
-			.andExpect(jsonPath("$.items[0].resumeOptIn").value(false));
-		mockMvc
-			.perform(get("/admin/registrations").param("school", school)
-				.param("resume", "opted-in")
-				.header("Authorization", admin))
-			.andExpect(jsonPath("$.total").value(0));
-		mockMvc.perform(get("/admin/registrations/" + id + "/resume").header("Authorization", admin))
-			.andExpect(status().isNotFound());
-		deleteRegistrations(id);
-	}
-
-	@Test
-	void resumeBookHoldsExactlyTheOptedInAcceptedResumes() throws Exception {
+	void resumeBookHoldsExactlyTheAcceptedResumes() throws Exception {
 		String admin = bearer();
 		String school = uniqueSchool();
 		byte[] sharedPdf = pdfBytes(3_000);
@@ -1643,25 +1602,25 @@ class RegistrationApiTests {
 		String shared = registerWithResume(named(registrationJson(sharedEmail, school, true, true), "Zoë", "O'Brien Smith")
 			.replace("\"linkedinUrl\": \"\"",
 					"\"linkedinUrl\": \"https://www.linkedin.com/in/zoe\", \"majorFieldOfStudy\": \"Computer science, computer engineering, or software engineering\""),
-				sharedPdf, true);
+				sharedPdf);
 		String attended = registerWithResume(
-				named(registrationJson(unique() + "@example.com", school, true, true), "Grace", "Hopper"), attendedPdf,
-				true);
+				named(registrationJson(unique() + "@example.com", school, true, true), "Grace", "Hopper"), attendedPdf);
 		String pending = registerWithResume(
 				named(registrationJson(unique() + "@example.com", school, true, true), "Pending", "Person"),
-				pdfBytes(1_000), true);
-		String notOptedIn = registerWithResume(
-				named(registrationJson(unique() + "@example.com", school, true, true), "Private", "Person"),
-				pdfBytes(1_000), false);
+				pdfBytes(1_000));
+		String waitlisted = registerWithResume(
+				named(registrationJson(unique() + "@example.com", school, true, true), "Waiting", "Person"),
+				pdfBytes(1_000));
 		String noResume = JsonPath.read(register(registrationJson(unique() + "@example.com", school, true, true))
 			.andExpect(status().isCreated())
 			.andReturn()
 			.getResponse()
 			.getContentAsString(), "$.id");
 		setRegistrationOpen(admin, false);
-		for (String id : List.of(shared, attended, notOptedIn, noResume)) {
+		for (String id : List.of(shared, attended, noResume)) {
 			setStatus(admin, id, "ACCEPTED");
 		}
+		setStatus(admin, waitlisted, "WAITLISTED");
 		mockMvc.perform(post("/admin/check-in/" + attended).header("Authorization", admin)).andExpect(status().isOk());
 
 		String sharedName = "OBrien-Smith_Zoe_" + shared.replace("-", "").substring(0, 8) + ".pdf";
@@ -1694,12 +1653,13 @@ class RegistrationApiTests {
 		assertThat(attendedOnly.keySet()).containsExactly(attendedName, "index.csv");
 
 		mockMvc
-			.perform(get("/admin/registrations").param("resume", "opted-in")
+			.perform(get("/admin/registrations").param("resume", "any")
+				.param("school", school)
 				.param("status", "ACCEPTED")
 				.header("Authorization", admin))
 			.andExpect(jsonPath("$.total").value(2));
 
-		deleteRegistrations(shared, attended, pending, notOptedIn, noResume);
+		deleteRegistrations(shared, attended, pending, waitlisted, noResume);
 		assertThat(count("select count(*) from registration_resumes")).isZero();
 	}
 
@@ -1848,7 +1808,7 @@ class RegistrationApiTests {
 			.perform(get("/admin/registrations/export.csv").param("school", school)
 				.param("schoolEmailConfirmed", "true")
 				.header("Authorization", admin))
-			.andExpect(content().string(containsString("resume_opt_in,school_email,school_email_confirmed,age_review\r\n")))
+			.andExpect(content().string(containsString("has_resume,school_email,school_email_confirmed,age_review\r\n")))
 			.andExpect(content().string(containsString("," + sameSchoolEmail + ",true,false\r\n")))
 			.andExpect(content().string(not(containsString(otherSchoolEmail))));
 		mockMvc.perform(get("/admin/stats").header("Authorization", admin))
@@ -2680,8 +2640,8 @@ class RegistrationApiTests {
 				""".formatted(email, school, codeOfConduct, dataSharing);
 	}
 
-	private String registerWithResume(String json, byte[] pdf, boolean optIn) throws Exception {
-		String created = register(withResume(json, "resume.pdf", pdf, optIn)).andExpect(status().isCreated())
+	private String registerWithResume(String json, byte[] pdf) throws Exception {
+		String created = register(withResume(json, "resume.pdf", pdf)).andExpect(status().isCreated())
 			.andReturn()
 			.getResponse()
 			.getContentAsString();
@@ -2689,10 +2649,10 @@ class RegistrationApiTests {
 	}
 
 	/** fileName is inserted into the JSON as written, so it may contain JSON escapes. */
-	private static String withResume(String json, String fileName, byte[] content, boolean optIn) {
+	private static String withResume(String json, String fileName, byte[] content) {
 		return json.replace("\"website\": \"\"",
-				"\"website\": \"\", \"resume\": {\"fileName\": \"%s\", \"contentBase64\": \"%s\"}, \"resumeOptIn\": %s"
-					.formatted(fileName, Base64.getEncoder().encodeToString(content), optIn));
+				"\"website\": \"\", \"resume\": {\"fileName\": \"%s\", \"contentBase64\": \"%s\"}"
+					.formatted(fileName, Base64.getEncoder().encodeToString(content)));
 	}
 
 	private static String named(String json, String firstName, String lastName) {

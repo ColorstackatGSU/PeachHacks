@@ -97,12 +97,7 @@ export default function Overview() {
           value={checkedIn}
           note={regTotal > 0 ? `${Math.round((checkedIn / regTotal) * 100)}% of registrations, general check-in` : "General check-in"}
         />
-        <Tile label="Resumes uploaded" value={reg.withResume || 0} note="Visible to organizers" />
-        <Tile
-          label="Resumes opted in"
-          value={reg.resumeOptIn || 0}
-          note="May go to sponsors once the person is accepted"
-        />
+        <Tile label="Resumes uploaded" value={reg.withResume || 0} note="Go to sponsors once the person is accepted" />
         <Tile label="Unsubscribed" value={pre.unsubscribed || 0} note="Pre-registrants skipped by bulk email" />
       </section>
 

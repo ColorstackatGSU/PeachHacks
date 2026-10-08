@@ -70,8 +70,6 @@ public record RegistrationRequest(
 				message = "Enter a LinkedIn link, like https://www.linkedin.com/in/yourname, or leave this blank") String linkedinUrl,
 		/* Checked by ResumeUpload.toFile, not by bean validation. */
 		ResumeUpload resume,
-		/* Consent to pass the resume to sponsors; ignored without a resume. */
-		Boolean resumeOptIn,
 		/* Honeypot: real visitors never see or fill this field. */
 		String website) {
 

@@ -56,17 +56,16 @@ public class ResumeService {
 	}
 
 	/** Joins the caller's transaction so the registration and its resume are stored together. */
-	void store(UUID registrationId, ResumeFile file, boolean sponsorOptIn) {
+	void store(UUID registrationId, ResumeFile file) {
 		jdbc.sql("""
 				insert into registration_resumes
-					(registration_id, file_name, size_bytes, content, sponsor_opt_in, uploaded_at)
-				values (:id, :fileName, :size, :content, :optIn, :uploadedAt)
+					(registration_id, file_name, size_bytes, content, uploaded_at)
+				values (:id, :fileName, :size, :content, :uploadedAt)
 				""")
 			.param("id", registrationId)
 			.param("fileName", file.fileName())
 			.param("size", file.content().length)
 			.param("content", file.content())
-			.param("optIn", sponsorOptIn)
 			.param("uploadedAt", Timestamp.from(Instant.now()))
 			.update();
 	}
@@ -104,8 +103,8 @@ public class ResumeService {
 	}
 
 	/**
-	 * Everyone whose resume may go to sponsors: they opted in, they uploaded one and they
-	 * were accepted. attendedOnly narrows it to people with a general check-in.
+	 * Everyone whose resume goes to sponsors: they uploaded one (the form says at the upload
+	 * that sponsors receive it) and they were accepted. attendedOnly narrows it to people with a general check-in.
 	 */
 	public List<BookEntry> book(boolean attendedOnly) {
 		return jdbc.sql("""
@@ -113,7 +112,7 @@ public class ResumeService {
 					coalesce(r.major_other, r.major_field_of_study) as major, r.linkedin_url
 				from registrations r
 				join registration_resumes x on x.registration_id = r.id
-				where x.sponsor_opt_in and r.status = 'ACCEPTED'
+				where r.status = 'ACCEPTED'
 					and (:attendedOnly = false or exists (select 1 from check_ins c
 						join events e on e.id = c.event_id where c.registration_id = r.id and e.general))
 				order by lower(r.last_name), lower(r.first_name), r.id
@@ -128,8 +127,8 @@ public class ResumeService {
 
 	/**
 	 * Writes one PDF per entry and an index.csv straight to the stream, holding a single
-	 * resume in memory at a time. The opt-in is checked again per file, so someone who
-	 * withdrew or was removed after the list was read is left out of both.
+	 * resume in memory at a time. Each file is read again as it is written, so someone whose
+	 * resume was removed after the list was read is left out of both.
 	 */
 	public void writeBook(List<BookEntry> entries, OutputStream out) throws IOException {
 		Csv index = new Csv(INDEX_HEADER);
@@ -137,7 +136,7 @@ public class ResumeService {
 		try (ZipOutputStream zip = new ZipOutputStream(out, StandardCharsets.UTF_8)) {
 			for (BookEntry entry : entries) {
 				Optional<byte[]> content = jdbc
-					.sql("select content from registration_resumes where registration_id = :id and sponsor_opt_in")
+					.sql("select content from registration_resumes where registration_id = :id")
 					.param("id", entry.registrationId())
 					.query((rs, rowNum) -> rs.getBytes("content"))
 					.optional();

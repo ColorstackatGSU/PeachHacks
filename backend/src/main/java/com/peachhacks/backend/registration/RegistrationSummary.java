@@ -6,13 +6,13 @@ import java.util.UUID;
 public record RegistrationSummary(UUID id, String firstName, String lastName, String email,
 		String schoolEmail, boolean schoolEmailConfirmed, Instant schoolEmailConfirmedAt, String school, String levelOfStudy, String countryOfResidence, Integer age,
 		RegistrationStatus status, Instant acceptedAt, Instant acceptanceNotifiedAt, Instant createdAt,
-		Instant checkedInAt, boolean hasResume, boolean resumeOptIn, boolean ageReview) {
+		Instant checkedInAt, boolean hasResume, boolean ageReview) {
 
 	static RegistrationSummary from(Registration r, Instant checkedInAt, RegistrationResume resume,
 			boolean ageReview) {
 		return new RegistrationSummary(r.getId(), r.getFirstName(), r.getLastName(), r.getEmail(),
 				r.getSchoolEmail(), r.isSchoolEmailConfirmed(), r.getSchoolEmailConfirmedAt(), r.getSchool(), r.getLevelOfStudy(), r.getCountryOfResidence(), r.getAge(),
-				r.getStatus(), r.getAcceptedAt(), r.getAcceptanceNotifiedAt(), r.getCreatedAt(), checkedInAt, resume != null, resume != null && resume.isSponsorOptIn(),
+				r.getStatus(), r.getAcceptedAt(), r.getAcceptanceNotifiedAt(), r.getCreatedAt(), checkedInAt, resume != null,
 				ageReview);
 	}
 

@@ -35,8 +35,6 @@ public interface RegistrationRepository extends JpaRepository<Registration, UUID
 				and (:resume = ''
 					or (:resume = 'any' and exists (select 1 from RegistrationResume x
 						where x.registrationId = r.id))
-					or (:resume = 'opted-in' and exists (select 1 from RegistrationResume x
-						where x.registrationId = r.id and x.sponsorOptIn = true))
 					or (:resume = 'none' and not exists (select 1 from RegistrationResume x
 						where x.registrationId = r.id)))
 				and (:anyConfirmation = true
@@ -63,7 +61,7 @@ public interface RegistrationRepository extends JpaRepository<Registration, UUID
 
 	/**
 	 * checkedIn is about the general event and only applies when anyAttendance is false.
-	 * resume is '' (no filter), 'any', 'opted-in' or 'none'. confirmed is about the school
+	 * resume is '' (no filter), 'any' or 'none'. confirmed is about the school
 	 * email and only applies when anyConfirmation is false. ageReview only applies when
 	 * anyAgeReview is false; minimumAge, host and hostLength come from AgeReview.
 	 */

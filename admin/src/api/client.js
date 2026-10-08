@@ -222,10 +222,10 @@ export const api = {
   resendSchoolEmail: (id) => json("POST", `/admin/registrations/${encodeURIComponent(id)}/school-email/resend`),
   downloadResume: (id) => download(`/admin/registrations/${encodeURIComponent(id)}/resume`, null, "resume.pdf"),
   deleteResume: (id) => json("DELETE", `/admin/registrations/${encodeURIComponent(id)}/resume`),
-  // The resume book holds accepted registrants who opted in, so the same filters on the
-  // list endpoint give the number of resumes it will contain.
+  // The resume book holds accepted registrants who uploaded a resume, so the same filters
+  // on the list endpoint give the number of resumes it will contain.
   resumeBookCount: async (attendedOnly, signal) => {
-    const query = { resume: "opted-in", status: "ACCEPTED", checkedIn: attendedOnly ? "true" : "", size: 1 };
+    const query = { resume: "any", status: "ACCEPTED", checkedIn: attendedOnly ? "true" : "", size: 1 };
     const result = await json("GET", "/admin/registrations", { query, signal });
     return result?.total ?? 0;
   },
