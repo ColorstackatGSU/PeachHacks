@@ -84,9 +84,6 @@ export function AuthFrame({ title, intro, children }) {
             <img className="auth-logo" src="/assets/logo.svg" alt="PeachHacks" />
           </div>
           <p className="auth-theme">Midnight in the City</p>
-          <p className="auth-kicker">
-            February 5–7, 2027 <span aria-hidden="true">·</span> Georgia State University, Atlanta
-          </p>
         </header>
 
         <main className="auth-card">

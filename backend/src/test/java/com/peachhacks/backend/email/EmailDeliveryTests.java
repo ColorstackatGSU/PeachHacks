@@ -158,6 +158,14 @@ class EmailDeliveryTests {
 		assertThat(sent.get(1).html())
 			.contains("href=\"https://pay.google.com/gp/v/save/a.b.c\"")
 			.contains(">Add to Google Wallet</a>");
+
+		String longLink = "https://pay.google.com/gp/v/save/" + "a".repeat(1500);
+		mail.sendTicket("ada@example.com", "Ada", url, PNG, longLink);
+		assertThat(sent.get(2).html()).as("a very long link is offered, not printed")
+			.contains("href=\"" + longLink + "\"")
+			.contains(">Open this link instead</a>")
+			.doesNotContain(">" + longLink + "</a>");
+		assertThat(sent.get(2).text()).contains("Add to Google Wallet: " + longLink);
 	}
 
 	@Test

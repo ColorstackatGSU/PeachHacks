@@ -55,6 +55,8 @@ public class EmailComposer {
 
 	private static final int PREHEADER_LENGTH = 110;
 
+	private static final int MAX_PRINTED_URL_LENGTH = 100;
+
 	/** A link shown as a button, with the plain URL underneath for clients that drop the button. */
 	public record Action(String label, String url) {
 	}
@@ -342,6 +344,9 @@ public class EmailComposer {
 		String url = escape(action.url());
 		String label = escape(action.label());
 		String fill = primary ? PEACH : CREAM;
+		// A Google Wallet link is a signed token of well over a thousand characters; printed
+		// in full it buries the rest of the email.
+		boolean shortEnough = action.url().length() <= MAX_PRINTED_URL_LENGTH;
 		int width = Math.max(200, action.label().length() * 10 + 64);
 		html.append("<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\"")
 			.append(" style=\"margin:4px 0 10px\"><tr><td>")
@@ -376,12 +381,13 @@ public class EmailComposer {
 			.append("<p class=\"ph-url\" style=\"margin:0 0 20px;font-family:")
 			.append(FONT)
 			.append(";font-size:13px;line-height:1.5;color:#5b7286;word-break:break-all\">")
-			.append("Or open this link: <a class=\"ph-link\" href=\"")
+			.append(shortEnough ? "Or open this link: " : "Button not working? ")
+			.append("<a class=\"ph-link\" href=\"")
 			.append(url)
 			.append("\" style=\"color:")
 			.append(NAVY)
 			.append(";text-decoration:underline\">")
-			.append(url)
+			.append(shortEnough ? url : "Open this link instead")
 			.append("</a></p>");
 		text.append(action.label()).append(": ").append(action.url()).append("\n\n");
 	}

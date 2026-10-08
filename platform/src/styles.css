@@ -112,7 +112,7 @@ img { max-width: 100%; }
 
 /* Sign-in pages: one centred column on the public site's night sky. The logo sits over
    the moon, as it does in the homepage hero. */
-.auth { position: relative; display: grid; min-height: 100vh; min-height: 100svh; overflow: hidden; background: linear-gradient(180deg, #00162a 0, #001f3a 30%, #003f64 100%); }
+.auth { position: relative; display: grid; height: 100vh; height: 100svh; overflow: hidden; background: linear-gradient(180deg, #00162a 0, #001f3a 30%, #003f64 100%); }
 .auth-sky { position: absolute; inset: 0; pointer-events: none; }
 .auth-star { position: absolute; opacity: .72; filter: drop-shadow(0 0 5px rgba(244, 246, 237, .8)); animation: auth-twinkle 4.8s ease-in-out infinite; }
 .auth-star:nth-child(3n) { animation-delay: -1.6s; }
@@ -125,16 +125,15 @@ img { max-width: 100%; }
 .auth-skyline { position: absolute; top: calc(100% - min(26vw, 36vh)); left: 0; width: 100%; max-width: none; height: auto; }
 .auth-sky::after { content: ""; position: absolute; inset: auto 0 0; height: 30vh; background: linear-gradient(180deg, transparent, rgba(0, 22, 42, .55)); }
 
-.auth-layout { position: relative; display: grid; justify-items: center; align-content: center; gap: 22px; width: min(440px, 100%); margin: 0 auto; padding: clamp(20px, 5vh, 56px) 16px clamp(96px, 20vh, 200px); }
+.auth-layout { position: relative; display: grid; justify-items: center; align-content: center; gap: 18px; width: min(440px, 100%); margin: 0 auto; padding: 16px 16px 24px; }
 
 .auth-brand { display: grid; justify-items: center; gap: 12px; text-align: center; }
-.auth-mark { position: relative; display: grid; place-items: center; width: 340px; max-width: 100%; padding: 30px 0 22px; }
+.auth-mark { position: relative; display: grid; place-items: center; width: 300px; max-width: 100%; padding: 26px 0 18px; }
 .auth-moon { position: absolute; width: 44%; aspect-ratio: 1; border-radius: 50%; background: #fff; box-shadow: 0 0 28px rgba(255, 255, 255, .4), 0 0 90px rgba(185, 211, 220, .28); }
 .auth-logo { position: relative; width: 100%; margin: -5% 0; clip-path: inset(15% 0); filter: drop-shadow(0 6px 0 rgba(0, 31, 58, .22)); }
 .auth-theme { padding: 4px 16px 6px; border-radius: 999px; background: var(--navy); box-shadow: 0 3px 0 rgba(0, 15, 30, .4); color: var(--peach); font-family: 'Agbalumo', system-ui, sans-serif; font-size: 20px; line-height: 1.2; }
-.auth-kicker { color: var(--mist); font-size: 12px; font-weight: 800; letter-spacing: .1em; line-height: 1.5; text-transform: uppercase; white-space: nowrap; }
 
-.auth-card { display: grid; gap: 18px; width: 100%; padding: 28px clamp(20px, 6vw, 32px) 26px; border: 1px solid rgba(244, 246, 237, .18); border-radius: 16px; background: rgba(0, 22, 42, .86); box-shadow: 0 10px 0 rgba(0, 12, 24, .35), 0 30px 60px rgba(0, 8, 16, .45); backdrop-filter: blur(6px); font-size: 16px; animation: auth-settle .4s cubic-bezier(.2, .7, .4, 1) both; }
+.auth-card { display: grid; gap: 16px; width: 100%; padding: 24px clamp(20px, 6vw, 32px) 22px; border: 1px solid rgba(244, 246, 237, .18); border-radius: 16px; background: rgba(0, 22, 42, .86); box-shadow: 0 10px 0 rgba(0, 12, 24, .35), 0 30px 60px rgba(0, 8, 16, .45); backdrop-filter: blur(6px); font-size: 16px; animation: auth-settle .4s cubic-bezier(.2, .7, .4, 1) both; }
 .auth-card-head { display: grid; gap: 4px; }
 .auth-eyebrow { color: var(--sky); font-size: 12px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
 .auth-card h1 { color: var(--peach); font-family: 'Agbalumo', system-ui, sans-serif; font-size: clamp(36px, 10vw, 44px); font-weight: 400; line-height: 1.05; text-shadow: 3px 3px 0 rgb(0, 12, 24); }
@@ -170,7 +169,7 @@ img { max-width: 100%; }
 .tag-button:focus-visible { outline: 3px solid var(--cream); outline-offset: 3px; }
 .tag-button:disabled { opacity: .65; transform: none; cursor: progress; }
 
-.tag-foot { padding-top: 16px; border-top: 1px solid rgba(244, 246, 237, .14); color: var(--mist); font-size: 14.5px; text-align: center; }
+.tag-foot { padding-top: 14px; border-top: 1px solid rgba(244, 246, 237, .14); color: var(--mist); font-size: 14.5px; text-align: center; }
 .tag-link { padding: 0; border: 0; background: none; color: var(--peach); font-size: inherit; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .tag-link:hover { color: var(--peach-hover); }
 
@@ -184,12 +183,29 @@ img { max-width: 100%; }
 @keyframes auth-drift { from { translate: 0 0; } to { translate: 7vw 0; } }
 @keyframes auth-settle { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
 
-@media (max-width: 620px) {
-  .auth-layout { align-content: start; gap: 18px; padding: 18px 14px 130px; }
-  .auth-mark { width: 250px; padding: 22px 0 16px; }
+/* The page never scrolls on a computer: when the window is too short for the logo above
+   the card, the logo moves beside it instead. */
+@media (min-width: 900px) and (max-height: 880px) {
+  .auth-layout { grid-template-columns: minmax(0, 1fr) minmax(0, 440px); align-items: center; gap: 56px; width: min(940px, 100%); }
+  .auth-mark { width: 360px; }
+  .auth-theme { font-size: 24px; }
+}
+
+@media (min-width: 900px) and (max-height: 640px) {
+  .auth-card { gap: 12px; padding-top: 18px; padding-bottom: 16px; }
+  .auth-card h1 { font-size: 34px; }
+  .tag-form { gap: 12px; }
+  .tag-field input { min-height: 44px; }
+  .tag-button, .google-button { min-height: 46px; }
+}
+
+/* On a phone the keyboard and small screens make scrolling unavoidable, so it is allowed
+   there, with nothing extra below the card. */
+@media (max-width: 899px) {
+  .auth { height: auto; min-height: 100vh; min-height: 100svh; }
+  .auth-layout { align-content: start; gap: 14px; padding: 12px 14px 28px; }
+  .auth-mark { width: 240px; padding: 20px 0 14px; }
   .auth-theme { font-size: 18px; }
-  .auth-kicker { font-size: 11px; letter-spacing: .06em; white-space: normal; }
-  .auth-kicker span { display: none; }
   .auth-cloud { display: none; }
   .auth-skyline { top: calc(100% - 42vw); left: -18%; width: 136%; }
 }
