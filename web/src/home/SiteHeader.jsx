@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useRegistrationCta } from './registration.js';
 import { isHomePage, sectionHref, sectionLinks } from './site.js';
 
-const HEADER_HEIGHT = 56;
+const HEADER_HEIGHT = 72;
 const FLOW_SCROLL_THRESHOLD = 24;
 
 // Over the pinned hero the bar stays transparent so the artwork reads as one

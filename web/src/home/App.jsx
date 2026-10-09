@@ -299,8 +299,6 @@ function App() {
               <img className="top-cloud cloud-two" src="/assets/Cloud.svg" alt="" />
               <img className="top-cloud cloud-three" src="/assets/Cloud.svg" alt="" />
             </div>
-            <img className="hero-front-cloud hero-front-cloud-left hero-fx" src="/assets/Cloud.svg" alt="" aria-hidden="true" />
-            <img className="hero-front-cloud hero-front-cloud-right hero-fx" src="/assets/Cloud.svg" alt="" aria-hidden="true" />
             <div className="hero-stack">
               <div className="hero-logo-shell hero-fx">
                 <div className="hero-logo-circle" aria-hidden="true" />

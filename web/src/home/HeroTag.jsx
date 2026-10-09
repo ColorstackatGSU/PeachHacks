@@ -111,14 +111,11 @@ export default function HeroTag({ registerButtonRef, tagCloseRef }) {
   // ignore the panel's own transform, which getBoundingClientRect would not.
   const tieRopeToPanel = useCallback(() => {
     const panel = document.querySelector('.register-panel');
-    const card = tagRef.current.firstElementChild;
-    const rope = card.querySelector('.banner-tow-line');
-    const eyelet = card.querySelector('.hero-tag-eyelet');
     if (!panel) return;
     ropeTie.current = {
       panel: panel.offsetLeft + panel.offsetWidth - ROPE_TUCK - restLeft(),
-      eyeletX: eyelet.offsetLeft + eyelet.offsetWidth / 2,
-      eyeletY: eyelet.offsetTop + eyelet.offsetHeight / 2 - (rope.offsetTop + rope.offsetHeight / 2),
+      eyeletX: 0,
+      eyeletY: 0,
     };
   }, []);
 
@@ -244,7 +241,6 @@ export default function HeroTag({ registerButtonRef, tagCloseRef }) {
     >
       <div className="hero-card">
         <motion.span className="banner-tow-line" aria-hidden="true" style={{ transform: towTransform }} />
-        <span className="hero-tag-eyelet" aria-hidden="true" />
         {parked && !sheet && (
           <button type="button" className="tag-close" ref={tagCloseRef} aria-label="Close the sign-up form" onClick={closeRegisterPanel}>
             <span className="tag-close-mark" aria-hidden="true">✕</span>

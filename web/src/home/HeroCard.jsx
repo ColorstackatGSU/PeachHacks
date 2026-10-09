@@ -61,7 +61,6 @@ export function StaticHeroTag({ registerButtonRef, standalone = false }) {
     <div className="hero-tag">
       <div className="hero-card">
         <span className="banner-tow-line" aria-hidden="true" />
-        <span className="hero-tag-eyelet" aria-hidden="true" />
         <HeroCardContent registerButtonRef={registerButtonRef} />
       </div>
     </div>
