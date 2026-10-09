@@ -3,23 +3,13 @@ import { api, onAcceptanceChange } from "../api/client.js";
 import { BarList } from "../components/Charts.jsx";
 import { ShareHeadline, ShareRow } from "../components/HostShare.jsx";
 import { ConfirmDialog } from "../components/Modal.jsx";
-import { EmptyBlock, ErrorBlock, LoadingBlock, PageHeader, Spinner, Tag, useToast } from "../components/ui.jsx";
+import { EmptyBlock, ErrorBlock, LoadingBlock, PageHeader, Spinner, Tag, Tile, useToast } from "../components/ui.jsx";
 import { ageReviewLabel, ageRuleText, formatShare, formatTarget, gapText } from "../lib/acceptance.js";
 import { errorText, formatDateTime, formatNumber, fullName, plural } from "../lib/format.js";
 import { useAcceptanceSummary, useAsync } from "../lib/hooks.js";
 import { href } from "../lib/router.js";
 
 const loadWaiting = (signal) => api.acceptancesWaiting(signal);
-
-function Tile({ label, value, note }) {
-  return (
-    <div className="tile">
-      <span className="tile-label">{label}</span>
-      <strong className="tile-value">{formatNumber(value)}</strong>
-      {note && <span className="tile-note">{note}</span>}
-    </div>
-  );
-}
 
 function SendPanel({ summary, onSent }) {
   const notify = useToast();
@@ -252,7 +242,7 @@ export default function Acceptances() {
         </p>
       )}
 
-      <section className="card share-card" aria-labelledby="share-heading">
+      <section className="card" aria-labelledby="share-heading">
         <div className="card-head">
           <h2 id="share-heading">Host-school share</h2>
           <span className="muted">

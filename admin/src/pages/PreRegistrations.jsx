@@ -1,8 +1,8 @@
 import { useCallback, useId, useMemo, useState } from "react";
 import { api } from "../api/client.js";
-import { EmptyBlock, ErrorBlock, LoadingBlock, PageHeader, Pagination, Tag, useToast } from "../components/ui.jsx";
+import { ConfirmedTag, EmptyBlock, ErrorBlock, LoadingBlock, PageHeader, Pagination, Tag, useToast } from "../components/ui.jsx";
 import { errorText, formatDateTime, fullName } from "../lib/format.js";
-import { schoolOptions, useAsync, useDebounced, useStats } from "../lib/hooks.js";
+import { schoolOptions, useAsync, useDebounced, useExport, useStats } from "../lib/hooks.js";
 
 const PAGE_SIZE = 25;
 
@@ -13,7 +13,7 @@ export default function PreRegistrations() {
   const [school, setSchool] = useState("");
   const [schoolEmailConfirmed, setSchoolEmailConfirmed] = useState("");
   const [page, setPage] = useState(0);
-  const [exporting, setExporting] = useState(false);
+  const [exporting, runExport] = useExport();
   const [resending, setResending] = useState(null);
 
   const q = useDebounced(search.trim(), 300);
@@ -27,15 +27,11 @@ export default function PreRegistrations() {
   const total = list.data?.total || 0;
   const filtered = Boolean(q || school || schoolEmailConfirmed);
 
-  const exportCsv = async () => {
-    setExporting(true);
-    try {
-      await api.exportPreRegistrations(filters);
-    } catch (error) {
-      notify(`Export failed: ${errorText(error)}`, "error");
-    } finally {
-      setExporting(false);
-    }
+  const exportCsv = () => runExport(() => api.exportPreRegistrations(filters));
+
+  const resetTo = (setter) => (event) => {
+    setter(event.target.value);
+    setPage(0);
   };
 
   const resendSchoolEmail = async (item) => {
@@ -53,7 +49,7 @@ export default function PreRegistrations() {
   return (
     <>
       <PageHeader title="Pre-registrations" description="People who asked to be told when registration opens.">
-        <button type="button" className="btn" onClick={exportCsv} disabled={exporting}>
+        <button type="button" className="btn" onClick={exportCsv} disabled={Boolean(exporting)}>
           {exporting ? "Preparing…" : filtered ? "Export filtered CSV" : "Export CSV"}
         </button>
       </PageHeader>
@@ -66,22 +62,12 @@ export default function PreRegistrations() {
             type="search"
             placeholder="Name or email"
             value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(0);
-            }}
+            onChange={resetTo(setSearch)}
           />
         </div>
         <div className="field">
           <label htmlFor={`${ids}-school`}>School</label>
-          <select
-            id={`${ids}-school`}
-            value={school}
-            onChange={(e) => {
-              setSchool(e.target.value);
-              setPage(0);
-            }}
-          >
+          <select id={`${ids}-school`} value={school} onChange={resetTo(setSchool)}>
             <option value="">All schools</option>
             {schools.map((name) => (
               <option key={name} value={name}>
@@ -92,14 +78,7 @@ export default function PreRegistrations() {
         </div>
         <div className="field">
           <label htmlFor={`${ids}-school-email`}>School email</label>
-          <select
-            id={`${ids}-school-email`}
-            value={schoolEmailConfirmed}
-            onChange={(e) => {
-              setSchoolEmailConfirmed(e.target.value);
-              setPage(0);
-            }}
-          >
+          <select id={`${ids}-school-email`} value={schoolEmailConfirmed} onChange={resetTo(setSchoolEmailConfirmed)}>
             <option value="">Everyone</option>
             <option value="true">Confirmed</option>
             <option value="false">Unconfirmed</option>
@@ -160,7 +139,7 @@ export default function PreRegistrations() {
                     {item.schoolEmail ? (
                       <span className="tag-row">
                         {item.schoolEmail}
-                        {item.schoolEmailConfirmed ? <Tag tone="accepted">Confirmed</Tag> : <Tag tone="waitlisted">Unconfirmed</Tag>}
+                        <ConfirmedTag confirmed={item.schoolEmailConfirmed} />
                       </span>
                     ) : (
                       <span className="muted">None</span>

@@ -1,7 +1,18 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { WEB_BASE, api } from "../api/client.js";
-import { ConfirmDialog } from "../components/Modal.jsx";
-import { EmptyBlock, ErrorBlock, LoadingBlock, PageHeader, Spinner, Tag, useToast } from "../components/ui.jsx";
+import { ConfirmDialog, Modal } from "../components/Modal.jsx";
+import {
+  EmptyBlock,
+  ErrorBlock,
+  FieldError,
+  LoadingBlock,
+  PageHeader,
+  Pagination,
+  Spinner,
+  Tag,
+  errorProps,
+  useToast,
+} from "../components/ui.jsx";
 import {
   AUDIENCES,
   CAMPAIGN_KINDS,
@@ -11,11 +22,12 @@ import {
   errorText,
   formatDateTime,
   formatNumber,
+  fullName,
   plural,
 } from "../lib/format.js";
 import { schoolOptions, useAsync, useDebounced, useStats } from "../lib/hooks.js";
 
-export const REGISTRATION_OPEN_TEMPLATE = {
+const REGISTRATION_OPEN_TEMPLATE = {
   kind: "ANNOUNCEMENT",
   audience: "PRE_REGISTRANTS_NOT_REGISTERED",
   subject: "PeachHacks registration is now open",
@@ -45,17 +57,16 @@ function initialDraft(query) {
   };
 }
 
+// Same rule as the API: spaces inside the braces are allowed.
 const fill = (text, sample) =>
-  text.replaceAll("{{firstName}}", sample.firstName).replaceAll("{{lastName}}", sample.lastName);
+  text
+    .replace(/\{\{\s*firstName\s*\}\}/g, () => sample.firstName)
+    .replace(/\{\{\s*lastName\s*\}\}/g, () => sample.lastName);
 
 function unknownPlaceholders(text) {
   const found = new Set();
   for (const match of text.matchAll(/\{\{\s*([^{}]*?)\s*\}\}/g)) {
     if (!KNOWN_PLACEHOLDERS.includes(match[1])) found.add(`{{${match[1]}}}`);
-  }
-  // Only the exact spelling is documented, so flag spaced variants too.
-  for (const match of text.matchAll(/\{\{(\s+(?:firstName|lastName)\s*|(?:firstName|lastName)\s+)\}\}/g)) {
-    found.add(match[0]);
   }
   return [...found];
 }
@@ -64,18 +75,116 @@ const CAMPAIGN_TONE = { QUEUED: "neutral", SENDING: "waitlisted", SENT: "accepte
 const CAMPAIGN_LABEL = { QUEUED: "Queued", SENDING: "Sending", SENT: "Sent", FAILED: "Failed" };
 const isActive = (campaign) => campaign.status === "QUEUED" || campaign.status === "SENDING";
 
-function Campaign({ campaign }) {
+const RECIPIENT_PAGE_SIZE = 25;
+const RECIPIENT_TONE = { PENDING: "pending", SENT: "accepted", FAILED: "rejected" };
+const RECIPIENT_LABEL = { PENDING: "Pending", SENT: "Sent", FAILED: "Failed" };
+
+function CampaignRecipients({ campaign, onClose }) {
+  const ids = useId();
+  const [status, setStatus] = useState("");
+  const [page, setPage] = useState(0);
+  const load = useCallback(
+    (signal) => api.campaignRecipients(campaign.id, { status, page, size: RECIPIENT_PAGE_SIZE }, signal),
+    [campaign.id, status, page],
+  );
+  const list = useAsync(load);
+  const items = list.data?.items || [];
+  const total = list.data?.total || 0;
+
+  return (
+    <Modal
+      variant="drawer"
+      title={`Recipients of “${campaign.subject}”`}
+      onDismiss={onClose}
+      footer={
+        <button type="button" className="btn" onClick={onClose}>
+          Close
+        </button>
+      }
+    >
+      <div className="field">
+        <label htmlFor={`${ids}-status`}>Status</label>
+        <select
+          id={`${ids}-status`}
+          value={status}
+          onChange={(e) => {
+            setStatus(e.target.value);
+            setPage(0);
+          }}
+        >
+          <option value="">All</option>
+          <option value="SENT">Sent</option>
+          <option value="FAILED">Failed</option>
+          <option value="PENDING">Pending</option>
+        </select>
+      </div>
+
+      {list.error && <ErrorBlock title="Could not load the recipients" error={list.error} onRetry={list.reload} />}
+      {!list.error && !list.data && <LoadingBlock label="Loading recipients…" />}
+      {!list.error && list.data && items.length === 0 && (
+        <EmptyBlock title={status ? "Nobody has this status" : "No per-person record was kept for this email."}>
+          {status ? "Choose All to see everyone this email was addressed to." : null}
+        </EmptyBlock>
+      )}
+
+      {list.data && items.length > 0 && (
+        <div className={`table-wrap${list.loading ? " is-loading" : ""}`} aria-busy={list.loading}>
+          <table className="data-table">
+            <caption className="sr-only">Everyone this email was addressed to</caption>
+            <thead>
+              <tr>
+                <th scope="col">Name</th>
+                <th scope="col">Email</th>
+                <th scope="col">Status</th>
+                <th scope="col">Sent</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((item) => (
+                <tr key={item.email}>
+                  <th scope="row" data-label="Name">
+                    {fullName(item)}
+                  </th>
+                  <td data-label="Email" className="cell-break">
+                    {item.email}
+                  </td>
+                  <td data-label="Status">
+                    <Tag tone={RECIPIENT_TONE[item.status] || "neutral"}>{RECIPIENT_LABEL[item.status] || item.status}</Tag>
+                  </td>
+                  <td data-label="Sent" className="cell-nowrap">
+                    {formatDateTime(item.sentAt) || <span className="muted">Not sent</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {list.data && total > 0 && (
+        <Pagination page={page} size={list.data.size || RECIPIENT_PAGE_SIZE} total={total} onPage={setPage} disabled={list.loading} />
+      )}
+    </Modal>
+  );
+}
+
+function Campaign({ campaign, onShowRecipients }) {
   const recipients = campaign.recipientCount || 0;
   const sent = campaign.sentCount || 0;
   const failed = campaign.failedCount || 0;
   const done = recipients > 0 ? Math.min(100, Math.round(((sent + failed) / recipients) * 100)) : 0;
+  const sentWithFailures = campaign.status === "SENT" && failed > 0;
   return (
     <li className="campaign">
       <div className="campaign-head">
         <strong>{campaign.subject}</strong>
         <span className="tag-row">
           <Tag tone="neutral">{campaignKind(campaign.kind).label}</Tag>
-          <Tag tone={CAMPAIGN_TONE[campaign.status] || "neutral"}>{CAMPAIGN_LABEL[campaign.status] || campaign.status}</Tag>
+          {sentWithFailures ? (
+            <Tag tone="waitlisted">Sent with failures</Tag>
+          ) : (
+            <Tag tone={CAMPAIGN_TONE[campaign.status] || "neutral"}>{CAMPAIGN_LABEL[campaign.status] || campaign.status}</Tag>
+          )}
         </span>
       </div>
       <p className="campaign-meta">
@@ -86,7 +195,16 @@ function Campaign({ campaign }) {
       <dl className="campaign-counts">
         <div>
           <dt>Recipients</dt>
-          <dd>{formatNumber(recipients)}</dd>
+          <dd>
+            <button
+              type="button"
+              className="link-btn"
+              aria-label={`${plural(recipients, "recipient")} of “${campaign.subject}”, show who`}
+              onClick={() => onShowRecipients(campaign)}
+            >
+              {formatNumber(recipients)}
+            </button>
+          </dd>
         </div>
         <div>
           <dt>Sent</dt>
@@ -127,6 +245,7 @@ export default function Email({ admin, query }) {
   const [confirming, setConfirming] = useState(false);
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState(null);
+  const [recipientsOf, setRecipientsOf] = useState(null);
 
   const { kind, audience, school, subject, body } = draft;
   const ready = subject.trim() !== "" && body.trim() !== "";
@@ -240,7 +359,7 @@ export default function Email({ admin, query }) {
 
   return (
     <>
-      <PageHeader title="Email" description="Write to pre-registrants or registrants. Choose the kind first: it decides who can receive it and whether they can unsubscribe.">
+      <PageHeader title="Email" description="Write to pre-registrants or registrants. Choose the kind first: it decides who can receive it and whether they can unsubscribe. Event updates go only to accepted hackers.">
         <button
           type="button"
           className="btn"
@@ -252,7 +371,7 @@ export default function Email({ admin, query }) {
 
       <div className="composer">
         <form
-          className="card composer-form"
+          className="card"
           aria-label="Compose email"
           onSubmit={(e) => {
             e.preventDefault();
@@ -286,16 +405,25 @@ export default function Email({ admin, query }) {
 
           <div className="field">
             <label htmlFor={`${ids}-audience`}>Audience</label>
-            <select id={`${ids}-audience`} value={audience} aria-describedby={`${ids}-audience-hint`} onChange={(e) => update({ audience: e.target.value, school: "" })}>
+            <select
+              id={`${ids}-audience`}
+              value={audience}
+              disabled={audiences.length === 1}
+              aria-invalid={fieldErrors.audience ? true : undefined}
+              aria-describedby={`${ids}-audience-hint${fieldErrors.audience ? ` ${ids}-audience-error` : ""}`}
+              onChange={(e) => update({ audience: e.target.value, school: "" })}
+            >
               {audiences.map((a) => (
                 <option key={a.value} value={a.value}>
                   {a.label}
                 </option>
               ))}
             </select>
+            <FieldError id={`${ids}-audience-error`} message={fieldErrors.audience} />
             <p id={`${ids}-audience-hint`} className="hint">
-              {audienceInfo.hint}
-              {kind === "EVENT_UPDATE" && " Pre-registrants cannot be sent an event update."}
+              {kind === "EVENT_UPDATE"
+                ? "Event updates go only to accepted hackers: people who are accepted and have already been sent their acceptance email. To write to anyone else, send an announcement."
+                : audienceInfo.hint}
             </p>
           </div>
 
@@ -344,15 +472,10 @@ export default function Email({ admin, query }) {
               type="text"
               maxLength={200}
               value={subject}
-              aria-invalid={fieldErrors.subject ? true : undefined}
-              aria-describedby={fieldErrors.subject ? `${ids}-subject-error` : undefined}
+              {...errorProps(fieldErrors.subject, `${ids}-subject-error`)}
               onChange={(e) => update({ subject: e.target.value })}
             />
-            {fieldErrors.subject && (
-              <p id={`${ids}-subject-error`} className="inline-error">
-                {fieldErrors.subject}
-              </p>
-            )}
+            <FieldError id={`${ids}-subject-error`} message={fieldErrors.subject} />
           </div>
 
           <div className="field">
@@ -366,11 +489,7 @@ export default function Email({ admin, query }) {
               aria-describedby={`${ids}-body-hint${fieldErrors.body ? ` ${ids}-body-error` : ""}`}
               onChange={(e) => update({ body: e.target.value })}
             />
-            {fieldErrors.body && (
-              <p id={`${ids}-body-error`} className="inline-error">
-                {fieldErrors.body}
-              </p>
-            )}
+            <FieldError id={`${ids}-body-error`} message={fieldErrors.body} />
             <div id={`${ids}-body-hint`} className="hint placeholder-hint">
               <span>Plain text. Leave a blank line between paragraphs. Personalize with:</span>
               <span className="placeholder-buttons">
@@ -385,7 +504,7 @@ export default function Email({ admin, query }) {
             {unknown.length > 0 && (
               <p className="notice notice-warn">
                 {unknown.join(", ")} {unknown.length === 1 ? "is" : "are"} not a supported placeholder and will be sent exactly as
-                written. Use {"{{firstName}}"} or {"{{lastName}}"}.
+                written. Only {"{{firstName}}"} and {"{{lastName}}"} are filled in.
               </p>
             )}
           </div>
@@ -461,11 +580,13 @@ export default function Email({ admin, query }) {
         {campaigns.length > 0 && (
           <ul className="campaigns">
             {campaigns.map((campaign) => (
-              <Campaign key={campaign.id} campaign={campaign} />
+              <Campaign key={campaign.id} campaign={campaign} onShowRecipients={setRecipientsOf} />
             ))}
           </ul>
         )}
       </section>
+
+      {recipientsOf && <CampaignRecipients key={recipientsOf.id} campaign={recipientsOf} onClose={() => setRecipientsOf(null)} />}
 
       {replaceTemplate && (
         <ConfirmDialog

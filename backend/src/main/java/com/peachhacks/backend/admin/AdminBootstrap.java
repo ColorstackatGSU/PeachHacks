@@ -40,7 +40,7 @@ public class AdminBootstrap implements ApplicationRunner {
 		if (admins.findByEmail(email).isPresent()) {
 			return;
 		}
-		if (password.length() < AuthService.MIN_PASSWORD_LENGTH || password.length() > AuthService.MAX_PASSWORD_LENGTH) {
+		if (password.length() < AuthService.MIN_PASSWORD_LENGTH || !AuthService.fitsBcrypt(password)) {
 			log.error("ADMIN_BOOTSTRAP_PASSWORD must be {} to {} characters; bootstrap admin {} was not created",
 					AuthService.MIN_PASSWORD_LENGTH, AuthService.MAX_PASSWORD_LENGTH, email);
 			return;

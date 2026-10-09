@@ -1,5 +1,6 @@
 package com.peachhacks.backend.email;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -11,7 +12,9 @@ import org.springframework.core.task.TaskExecutor;
 import org.springframework.core.task.TaskRejectedException;
 import org.springframework.stereotype.Service;
 
+import com.peachhacks.backend.admin.AdminRole;
 import com.peachhacks.backend.config.EmailProperties;
+import com.peachhacks.backend.config.PlatformProperties;
 import com.peachhacks.backend.email.EmailComposer.Content;
 import com.peachhacks.backend.email.EmailComposer.Footer;
 import com.peachhacks.backend.email.EmailComposer.InlineImage;
@@ -37,8 +40,11 @@ public class MailService {
 
 	private final EmailProperties properties;
 
+	private final PlatformProperties platform;
+
 	public MailService(EmailSender sender, EmailComposer composer, @Qualifier("mailExecutor") TaskExecutor mailExecutor,
-			EmailProperties properties) {
+			EmailProperties properties, PlatformProperties platform) {
+		this.platform = platform;
 		this.sender = sender;
 		this.composer = composer;
 		this.mailExecutor = mailExecutor;
@@ -72,6 +78,23 @@ public class MailService {
 				paragraphs);
 		sendInBackground(
 				composer.compose(email, "We received your PeachHacks registration", content, Footer.REGISTERED));
+	}
+
+	/**
+	 * To the owner of an address that someone tried to register a second time. It carries
+	 * nothing from the new submission.
+	 */
+	public void sendAlreadyRegistered(String email) {
+		Content content = Content.of("You are already registered for PeachHacks. Nothing was changed.",
+				"You're already registered",
+				List.of(greeting(null),
+						"Someone just filled in the PeachHacks registration form with this email address. You are"
+								+ " already registered, so nothing was changed and your registration stands as it"
+								+ " was.",
+						"If that was you, there is nothing more to do. If it was not, you can ignore this email.",
+						"The PeachHacks team"));
+		sendInBackground(
+				composer.compose(email, "You're already registered for PeachHacks", content, Footer.REGISTERED));
 	}
 
 	private static void addSchoolInboxParagraph(List<String> paragraphs, String schoolEmail) {
@@ -115,8 +138,10 @@ public class MailService {
 	}
 
 	/**
-	 * The QR code travels inside the message (shown inline and listed as an attachment)
-	 * because many mail clients block images loaded from a server.
+	 * The acceptance email. It points to the hacker platform first, since that is where an
+	 * accepted hacker does everything else. The QR code travels inside the message (shown
+	 * inline and listed as an attachment) because many mail clients block images loaded
+	 * from a server.
 	 */
 	public void sendTicket(String email, String firstName, String ticketUrl, byte[] qrPng, String googleWalletUrl) {
 		sendInBackground(ticketMessage(email, firstName, ticketUrl, qrPng, googleWalletUrl));
@@ -127,22 +152,30 @@ public class MailService {
 	 * @throws RuntimeException when it did not
 	 */
 	public void sendTicketNow(String email, String firstName, String ticketUrl, byte[] qrPng,
-			String googleWalletUrl) {
-		sender.send(ticketMessage(email, firstName, ticketUrl, qrPng, googleWalletUrl));
+			String googleWalletUrl, String idempotencyKey) {
+		sender.send(ticketMessage(email, firstName, ticketUrl, qrPng, googleWalletUrl)
+			.withIdempotencyKey(idempotencyKey));
 	}
 
 	private EmailMessage ticketMessage(String email, String firstName, String ticketUrl, byte[] qrPng,
 			String googleWalletUrl) {
 		Content content = Content
-			.of("Your application was accepted. Your ticket is inside.", "You're in!",
+			.of("Your application was accepted. Your ticket is inside, and the hacker platform is open to you.",
+					"You're in!",
 					List.of(greeting(firstName),
 							"Your application to PeachHacks has been accepted, and we can't wait to see you.",
-							"Below is your ticket. Open it on your phone and show the QR code when you arrive; we"
-									+ " scan the same code at workshops."))
-			.withPrimary("View your ticket", ticketUrl)
+							"Your next stop is the hacker platform. Sign in with this email address, with Google or"
+									+ " with a password you choose there, and you can:",
+							"• Connect your Discord to join our server with the Hacker role\n"
+									+ "• Find a team, or see who is looking for one\n"
+									+ "• Pull up your ticket whenever you need it"))
+			.withPrimary("Open the hacker platform", platform.baseUrl())
 			.withImage(new InlineImage(TICKET_CONTENT_ID, "Your PeachHacks ticket QR code", 240))
+			.withSecondary("View your ticket", ticketUrl)
 			.withClosing(List.of(
-					"Keep this email. If the QR code does not show above, it is attached as an image, and the"
+					"The QR code above is your ticket. Show it on your phone when you arrive; we scan the same code"
+							+ " at workshops.",
+					"Keep this email. If the QR code does not show, it is attached as an image, and the ticket"
 							+ " link always works.",
 					SIGN_OFF));
 		if (googleWalletUrl != null) {
@@ -153,35 +186,80 @@ public class MailService {
 					new EmailMessage.Attachment("peachhacks-ticket.png", "image/png", qrPng, TICKET_CONTENT_ID)));
 	}
 
-	public void sendAdminWelcome(String email, String name, String addedBy) {
+	public void sendPlatformPasswordLink(String email, String firstName, String url, Duration validFor) {
 		Content content = Content
-			.of(addedBy + " added you as an admin for PeachHacks.", "You're a PeachHacks admin",
-					List.of(greeting(name), addedBy + " added you as an admin for PeachHacks.",
-							"Sign in with this email address:"))
-			.withPrimary("Sign in to the admin site", properties.adminBaseUrl())
-			.withClosing(List.of(
-					"Your password was set by the person who added you, so ask them for it. If you were not"
-							+ " expecting this, you can ignore this email.",
+			.of("Use this link to choose a password for the PeachHacks hacker platform.", "Choose your password",
+					List.of(greeting(firstName),
+							"Here is your link to the PeachHacks hacker platform, where you can find a team, connect"
+									+ " your Discord and pull up your ticket. Choose a password to sign in:"))
+			.withPrimary("Choose a password", url)
+			.withClosing(List.of("The link works for " + validity(validFor) + " and can be used once.",
+					"If you did not ask for this, you can ignore this email and nothing changes.",
 					"The PeachHacks team"));
 		sendInBackground(
-				composer.compose(email, "You've been added as a PeachHacks admin", content, Footer.ADMIN_ACCOUNT));
+				composer.compose(email, "Your PeachHacks platform sign-in link", content, Footer.REGISTERED));
 	}
 
-	public void sendVolunteerWelcome(String email, String name, String addedBy) {
+	public String adminPasswordUrl(String token) {
+		return properties.adminBaseUrl() + "/#/set-password?token=" + token;
+	}
+
+	/** The email says which kind of account it is; a volunteer is also told what the account is for. */
+	public void sendInvite(String email, String name, AdminRole role, String addedBy, String token,
+			Duration validFor) {
+		boolean volunteer = role == AdminRole.VOLUNTEER;
+		String account = volunteer ? "a check-in volunteer" : "an admin";
+		List<String> paragraphs = new ArrayList<>();
+		paragraphs.add(greeting(name));
+		paragraphs.add(addedBy + " added you as " + account + " for PeachHacks.");
+		if (volunteer) {
+			paragraphs.add("On the day, you can look hackers up by name or email and check them in as they"
+					+ " arrive. Your account only opens the check-in screen; if someone is not on"
+					+ " the list or something looks wrong, ask an organizer.");
+		}
+		paragraphs.add("Choose a password to finish setting up your account. You will sign in with this"
+				+ " email address.");
 		Content content = Content
-			.of(addedBy + " added you as a check-in volunteer for PeachHacks.", "You're a check-in volunteer",
-					List.of(greeting(name), addedBy + " added you as a check-in volunteer for PeachHacks.",
-							"On the day, you can look hackers up by name or email and check them in as they"
-									+ " arrive. Your account only opens the check-in screen; if someone is not on"
-									+ " the list or something looks wrong, ask an organizer.",
-							"Sign in with this email address:"))
-			.withPrimary("Sign in to check-in", properties.adminBaseUrl())
-			.withClosing(List.of(
-					"Your password was set by the person who added you, so ask them for it. If you were not"
-							+ " expecting this, you can ignore this email.",
-					"The PeachHacks team"));
-		sendInBackground(composer.compose(email, "You've been added as a PeachHacks check-in volunteer", content,
+			.of(addedBy + " added you as " + account + " for PeachHacks. Choose a password to finish.",
+					volunteer ? "You're a check-in volunteer" : "You're a PeachHacks admin", paragraphs)
+			.withPrimary("Set your password", adminPasswordUrl(token))
+			.withClosing(inviteClosing(validFor, addedBy));
+		sendInBackground(composer.compose(email,
+				"You've been added as a PeachHacks " + (volunteer ? "check-in volunteer" : "admin"), content,
 				Footer.ADMIN_ACCOUNT));
+	}
+
+	public void sendPasswordReset(String email, String name, String token, Duration validFor) {
+		Content content = Content
+			.of("Use this link to choose a new password for the PeachHacks admin site.", "Reset your password",
+					List.of(greeting(name),
+							"Someone asked to reset the password for your account on the PeachHacks admin site."
+									+ " If that was you, choose a new one here:"))
+			.withPrimary("Choose a new password", adminPasswordUrl(token))
+			.withClosing(List.of("The link works for " + validity(validFor) + " and can be used once.",
+					"If this was not you, you can ignore this email and your password stays the same.",
+					"The PeachHacks team"));
+		sendInBackground(
+				composer.compose(email, "Reset your PeachHacks admin password", content, Footer.ADMIN_ACCOUNT));
+	}
+
+	private static List<String> inviteClosing(Duration validFor, String addedBy) {
+		return List.of(
+				"The link works for " + validity(validFor) + " and can be used once. If it has expired, ask "
+						+ addedBy + " to send a new one.",
+				"If you were not expecting this, you can ignore this email.", "The PeachHacks team");
+	}
+
+	static String validity(Duration duration) {
+		long days = duration.toDays();
+		if (days >= 1) {
+			return (days == 1) ? "1 day" : days + " days";
+		}
+		long hours = duration.toHours();
+		if (hours >= 1) {
+			return (hours == 1) ? "1 hour" : hours + " hours";
+		}
+		return Math.max(1, duration.toMinutes()) + " minutes";
 	}
 
 	private static String greeting(String firstName) {

@@ -16,7 +16,6 @@ import java.util.UUID;
 
 import com.peachhacks.backend.config.EmailProperties;
 import com.peachhacks.backend.config.GoogleWalletProperties;
-import com.peachhacks.backend.registration.Registration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tools.jackson.databind.json.JsonMapper;
@@ -60,14 +59,6 @@ public class GoogleWallet {
 		if (this.key != null) {
 			log.info("Google Wallet passes: on, class {}.{}", properties.issuerId(), properties.classId());
 		}
-	}
-
-	public boolean enabled() {
-		return key != null;
-	}
-
-	public Optional<String> saveUrl(Registration r, String ticketUrl) {
-		return saveUrl(r.getId(), r.getFirstName(), r.getLastName(), r.getSchool(), ticketUrl);
 	}
 
 	/** The barcode is the ticket URL itself, so a scanned pass and a scanned email look the same. */

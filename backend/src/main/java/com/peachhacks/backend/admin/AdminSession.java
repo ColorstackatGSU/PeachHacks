@@ -38,12 +38,4 @@ public class AdminSession {
 		return id;
 	}
 
-	public UUID getAdminId() {
-		return adminId;
-	}
-
-	public Instant getExpiresAt() {
-		return expiresAt;
-	}
-
 }

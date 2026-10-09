@@ -28,7 +28,8 @@ public class AudienceService {
 	public List<Recipient> recipients(CampaignKind kind, Audience audience, String school) {
 		if (!kind.allows(audience)) {
 			throw ApiException.invalidField("audience",
-					"An event update can only go to people who registered. Choose registrants or accepted hackers.");
+					"An event update can only go to accepted hackers. Choose the accepted audience, or send an"
+							+ " announcement instead.");
 		}
 		String schoolFilter = Texts.clean(school);
 		String table = audience.registered() ? "registrations" : "pre_registrations";

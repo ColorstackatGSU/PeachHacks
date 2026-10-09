@@ -1,18 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { confirmSchoolEmail, resendSchoolEmailConfirmation } from './api.js';
 import { SubmitButton, TextField } from './fields.jsx';
-import { CONTACT_EMAIL } from './options.js';
+import { CONTACT_EMAIL } from '../home/site.js';
+import { useFocusOnChange } from './hooks.js';
+import { readQueryParam } from './page.jsx';
 import { Card, FormAlert, PageShell } from './PageShell.jsx';
 import { describeFailure, focusFirstInvalid, isEmail } from './validation.js';
 
 const TITLE_ID = 'confirm-email-title';
 
-function readToken() {
-  return new URLSearchParams(window.location.search).get('token')?.trim() || '';
-}
-
 export default function ConfirmEmailPage() {
-  const [token] = useState(readToken);
+  const [token] = useState(() => readQueryParam('token'));
   // confirm | submitting | done | invalid | resending | resent
   const [view, setView] = useState(token ? 'confirm' : 'invalid');
   const [schoolEmail, setSchoolEmail] = useState('');
@@ -20,15 +18,8 @@ export default function ConfirmEmailPage() {
   const [retrying, setRetrying] = useState(false);
   const [email, setEmail] = useState('');
   const [emailError, setEmailError] = useState('');
-  const headingRef = useRef(null);
   const formRef = useRef(null);
-  const moveFocus = useRef(false);
-
-  useEffect(() => {
-    if (!moveFocus.current || view === 'submitting' || view === 'resending') return;
-    moveFocus.current = false;
-    headingRef.current?.focus();
-  }, [view]);
+  const { headingRef, requestFocus } = useFocusOnChange(view !== 'submitting' && view !== 'resending');
 
   useEffect(() => {
     if (emailError) focusFirstInvalid(formRef.current);
@@ -43,12 +34,12 @@ export default function ConfirmEmailPage() {
     try {
       const result = await confirmSchoolEmail(token);
       setSchoolEmail(typeof result?.schoolEmail === 'string' ? result.schoolEmail : '');
-      moveFocus.current = true;
+      requestFocus();
       setView('done');
     } catch (error) {
       // 404 is an unknown or expired token; 400 means the token was malformed.
       if (error?.code === 'NOT_FOUND' || error?.code === 'VALIDATION_ERROR') {
-        moveFocus.current = true;
+        requestFocus();
         setView('invalid');
       } else {
         setFailure(describeFailure(error));
@@ -69,7 +60,7 @@ export default function ConfirmEmailPage() {
     setFailure('');
     try {
       await resendSchoolEmailConfirmation(email.trim());
-      moveFocus.current = true;
+      requestFocus();
       setView('resent');
     } catch (error) {
       setFailure(describeFailure(error));

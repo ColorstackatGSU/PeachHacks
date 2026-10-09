@@ -12,27 +12,26 @@ import org.springframework.transaction.annotation.Transactional;
 
 public interface EmailCampaignRepository extends JpaRepository<EmailCampaign, UUID> {
 
+	String UNFINISHED = "c.status in (com.peachhacks.backend.email.EmailCampaign.Status.QUEUED,"
+			+ " com.peachhacks.backend.email.EmailCampaign.Status.SENDING)";
+
 	List<EmailCampaign> findAllByOrderByCreatedAtDesc();
 
-	@Transactional
-	@Modifying
-	@Query("update EmailCampaign c set c.status = :status, c.sentCount = :sent, c.failedCount = :failed where c.id = :id")
-	void updateProgress(@Param("id") UUID id, @Param("status") EmailCampaign.Status status, @Param("sent") int sent,
-			@Param("failed") int failed);
+	@Query("select c from EmailCampaign c where " + UNFINISHED + " order by c.createdAt, c.id")
+	List<EmailCampaign> findUnfinished();
 
-	@Transactional
-	@Modifying
-	@Query("update EmailCampaign c set c.status = :status, c.sentCount = :sent, c.failedCount = :failed,"
-			+ " c.completedAt = :completedAt where c.id = :id")
-	void complete(@Param("id") UUID id, @Param("status") EmailCampaign.Status status, @Param("sent") int sent,
-			@Param("failed") int failed, @Param("completedAt") Instant completedAt);
+	/** school is '' for a campaign that is not narrowed to one school. */
+	@Query("select count(c) > 0 from EmailCampaign c where " + UNFINISHED + " and c.kind = :kind"
+			+ " and c.audience = :audience and coalesce(c.school, '') = :school and c.subject = :subject"
+			+ " and c.body = :body")
+	boolean existsUnfinishedCopy(@Param("kind") CampaignKind kind, @Param("audience") Audience audience,
+			@Param("school") String school, @Param("subject") String subject, @Param("body") String body);
 
-	/** Campaigns left unfinished by a previous process can never resume. */
+	/** Leaves the counts as they are. */
 	@Transactional
 	@Modifying
 	@Query("update EmailCampaign c set c.status = com.peachhacks.backend.email.EmailCampaign.Status.FAILED,"
-			+ " c.completedAt = :now where c.status in (com.peachhacks.backend.email.EmailCampaign.Status.QUEUED,"
-			+ " com.peachhacks.backend.email.EmailCampaign.Status.SENDING)")
-	int failInterrupted(@Param("now") Instant now);
+			+ " c.completedAt = :now where c.id = :id")
+	void fail(@Param("id") UUID id, @Param("now") Instant now);
 
 }

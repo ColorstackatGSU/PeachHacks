@@ -45,7 +45,7 @@ const SCHOOLS = [
 ];
 const FIRST = ["Amara", "Diego", "Priya", "Jordan", "Mei", "Kwame", "Sofia", "Noah", "Aaliyah", "Ethan", "Zainab", "Lucas", "Imani", "Mateo", "Hana", "Tunde", "Chloe", "Rahul", "Nia", "Omar", "Grace", "Andre", "Linh", "Camila"];
 const LAST = ["Okafor", "Ramirez", "Patel", "Williams", "Chen", "Mensah", "Garcia", "Kim", "Johnson", "Nguyen", "Hassan", "Silva", "Brown", "Adeyemi", "Tanaka", "Lopez", "Davis", "Sharma", "Jackson", "Ali", "Thompson", "Moreau", "Tran", "Reyes"];
-const LEVELS = ["Undergraduate University (3+ year)", "Undergraduate University (2 year)", "Graduate University (Masters, Professional, Doctoral, etc)", "Code School / Bootcamp", "High School"];
+const LEVELS = ["Undergraduate University (3+ year)", "Undergraduate University (2 year - community college or similar)", "Graduate University (Masters, Professional, Doctoral, etc)", "Code School / Bootcamp", "High School"];
 const MAJORS = ["Computer science, computer engineering, or software engineering", "Information systems, information technology, or system administration", "Mathematics or statistics", "Business discipline (such as accounting, finance, marketing, etc.)", "Undecided / No Declared Major"];
 const STATUSES = ["PENDING", "PENDING", "PENDING", "ACCEPTED", "ACCEPTED", "WAITLISTED", "REJECTED"];
 
@@ -112,6 +112,8 @@ function makeRegistration(base, createdAt) {
     ...confirmation(base, createdAt),
     school: base.school,
     levelOfStudy: pickSkewed(LEVELS),
+    graduationYear: 2027 + Math.floor(rand() * 4),
+    graduationMonth: pick([5, 5, 5, 12, 8]),
     countryOfResidence: rand() > 0.08 ? "US" : pick(["CA", "NG", "IN", "MX"]),
     mlhCodeOfConduct: true,
     mlhDataSharing: true,
@@ -130,11 +132,9 @@ function makeRegistration(base, createdAt) {
     highestEducation: pick(["Secondary/High School", "Undergraduate University (3+ year)", "Less than Secondary / High School", null]),
     highestEducationOther: null,
     tshirtSize: pick(["S", "M", "L", "XL", null]),
-    shippingAddress: rand() > 0.6
-      ? { line1: `${100 + Math.floor(rand() * 900)} Peachtree St NE`, line2: rand() > 0.7 ? "Apt 4B" : null, city: "Atlanta", state: "GA", country: "US", postalCode: "30303" }
-      : null,
     majorFieldOfStudy: pickSkewed(MAJORS),
     majorOther: null,
+    githubUrl: rand() > 0.6 ? `https://github.com/${base.email.split("@")[0].replace(/\./g, "-")}` : null,
     linkedinUrl: rand() > 0.5 ? `https://www.linkedin.com/in/${base.email.split("@")[0].replace(/\./g, "-")}` : null,
     status,
     ...acceptance(status, createdAt),
@@ -142,7 +142,6 @@ function makeRegistration(base, createdAt) {
     resume: resumeRoll > 0.45
       ? { fileName: `${base.firstName}_${base.lastName}_Resume.pdf`, size: 60000 + Math.floor(rand() * 900000), uploadedAt: createdAt }
       : null,
-    resumeOptIn: resumeRoll > 0.65,
     createdAt,
   };
 }
@@ -168,7 +167,19 @@ const admins = [
   { id: uuid(), email: "logistics@peachhacks.local", name: "Logistics Lead", role: "ADMIN", createdAt: new Date(now - 21 * DAY).toISOString() },
   { id: uuid(), email: "volunteer@peachhacks.local", name: "Door Volunteer", role: "VOLUNTEER", createdAt: new Date(now - 2 * DAY).toISOString() },
 ];
-const settings = { registrationOpen: false };
+const MOCK_PASSWORD_URL = `${window.location.origin}/#/set-password?token=mock`;
+const settings = { registrationOpen: false, previewActive: false };
+const discord = {
+  configured: true,
+  verified: 12,
+  messagePostedAt: null,
+  welcomes: true,
+  gateway: "Connected. PeachBot hears when someone joins.",
+  lastJoinSeen: null,
+  lastWelcome: null,
+  applications: true,
+  message: "**Verify to get into PeachHacks**\nPress Verify to open the hacker channels.",
+};
 // One token per role so a reload keeps whichever account was signed in.
 const TOKENS = { "mock-token": admins[0], "mock-volunteer-token": admins[2] };
 const sessions = new Set(Object.keys(TOKENS));
@@ -255,7 +266,41 @@ const campaigns = [
     createdAt: new Date(now - 12 * DAY).toISOString(),
     completedAt: new Date(now - 12 * DAY + 90000).toISOString(),
   },
+  {
+    id: uuid(),
+    kind: "ANNOUNCEMENT",
+    subject: "PeachHacks pre-registration is open",
+    body: "Hi {{firstName}},\n\nPre-registration is open. Sign up to hear first when registration opens.\n\nThe PeachHacks team",
+    audience: "PRE_REGISTRANTS",
+    school: null,
+    recipientCount: 38,
+    sentCount: 38,
+    failedCount: 0,
+    status: "SENT",
+    createdBy: "Local Admin",
+    createdAt: new Date(now - 45 * DAY).toISOString(),
+    completedAt: new Date(now - 45 * DAY + 30000).toISOString(),
+  },
 ];
+// Who each campaign was addressed to, by campaign id. The older seeded campaign has no
+// entry, like one sent before per-person records were kept.
+const campaignPeople = new Map([[campaigns[0].id, preRegistrations.slice(0, campaigns[0].recipientCount)]]);
+
+// Statuses follow the campaign's counters: the first `sentCount` people are sent, and
+// whoever is left when it finishes has failed.
+function campaignRecipients(campaign) {
+  const finished = campaign.status === "SENT" || campaign.status === "FAILED";
+  return (campaignPeople.get(campaign.id) || []).map((p, index) => {
+    const sent = index < campaign.sentCount;
+    return {
+      email: p.email,
+      firstName: p.firstName,
+      lastName: p.lastName,
+      status: sent ? "SENT" : finished ? "FAILED" : "PENDING",
+      sentAt: sent ? campaign.completedAt || campaign.createdAt : null,
+    };
+  });
+}
 
 const byNewest = (a, b) => (a.createdAt < b.createdAt ? 1 : -1);
 // Mock mode stores no files: every resume downloads as the same placeholder, and the
@@ -302,7 +347,6 @@ function filterPeople(list, params) {
       if (checkedIn && String(Boolean(findCheckIn(item.id, generalEvent.id))) !== checkedIn) return false;
       if (resume === "any" && !item.resume) return false;
       if (resume === "none" && item.resume) return false;
-      if (resume === "opted-in" && !(item.resume && item.resumeOptIn)) return false;
       if (schoolEmailConfirmed && String(Boolean(item.schoolEmailConfirmed)) !== schoolEmailConfirmed) return false;
       if (ageReviewFilter && String(ageReview(item)) !== ageReviewFilter) return false;
       if (!q) return true;
@@ -328,7 +372,6 @@ function summary(r) {
   return {
     id, firstName, lastName, email, schoolEmail, schoolEmailConfirmed, schoolEmailConfirmedAt, school, levelOfStudy, countryOfResidence, age, status, acceptedAt, acceptanceNotifiedAt, createdAt, checkedInAt,
     hasResume: Boolean(r.resume),
-    resumeOptIn: Boolean(r.resume && r.resumeOptIn),
     ageReview: ageReview(r),
   };
 }
@@ -349,19 +392,20 @@ const csvResponse = (rows, name) =>
   });
 
 const REGISTERED_AUDIENCES = ["REGISTRANTS", "ACCEPTED"];
+const ACTIVE_CAMPAIGN = ["QUEUED", "SENDING"];
 const CAMPAIGN_KINDS = ["EVENT_UPDATE", "ANNOUNCEMENT"];
 
 function campaignErrors(body) {
   const fieldErrors = {};
   if (!CAMPAIGN_KINDS.includes(body.kind)) fieldErrors.kind = "Choose the kind of email";
-  else if (body.kind === "EVENT_UPDATE" && !REGISTERED_AUDIENCES.includes(body.audience)) {
-    fieldErrors.audience = "An event update can only go to people who registered. Choose registrants or accepted hackers.";
+  else if (body.kind === "EVENT_UPDATE" && body.audience !== "ACCEPTED") {
+    fieldErrors.audience = "An event update can only go to accepted hackers.";
   }
   return fieldErrors;
 }
 
-// Only an announcement leaves out people who unsubscribed.
-function audienceEmails(kind, audience, school) {
+// Only an announcement leaves out people who unsubscribed. One entry per email address.
+function audiencePeople(kind, audience, school) {
   const registered = registeredEmails();
   const unsubscribed = new Set(preRegistrations.filter((p) => p.unsubscribed).map((p) => p.email.toLowerCase()));
   let pool;
@@ -371,13 +415,13 @@ function audienceEmails(kind, audience, school) {
   if (kind === "ANNOUNCEMENT") pool = pool.filter((p) => !unsubscribed.has(p.email.toLowerCase()));
   if (audience === "PRE_REGISTRANTS_NOT_REGISTERED") pool = pool.filter((p) => !registered.has(p.email.toLowerCase()));
   if (school) pool = pool.filter((p) => p.school === school);
-  return new Set(pool.map((p) => p.email.toLowerCase()));
+  return [...new Map(pool.map((p) => [p.email.toLowerCase(), p])).values()];
 }
 
 // Campaigns advance on a clock so the history list can be seen refreshing.
 function tickCampaigns() {
   campaigns.forEach((c) => {
-    if (c.status !== "QUEUED" && c.status !== "SENDING") return;
+    if (!ACTIVE_CAMPAIGN.includes(c.status)) return;
     const elapsed = Date.now() - new Date(c.createdAt).getTime();
     if (elapsed < 3000) return;
     const progress = Math.min(1, (elapsed - 3000) / 12000);
@@ -476,6 +520,19 @@ function handle(method, path, params, body, token) {
     return respond(200, { token: mockToken, expiresAt: new Date(Date.now() + 8 * 3600000).toISOString(), admin: TOKENS[mockToken] });
   }
 
+  if (path === "/admin/auth/forgot-password" && method === "POST") return respond(204);
+  if (path === "/admin/auth/set-password/check" && method === "POST") {
+    if (body.token === "expired") return fail(400, "INVALID_PASSWORD_LINK", "This link has expired or was already used. Ask for a new one.");
+    const invited = admins.find((a) => a.pending) || admins[2];
+    return respond(200, { email: invited.email, name: invited.name, invite: Boolean(invited.pending) });
+  }
+  if (path === "/admin/auth/set-password" && method === "POST") {
+    admins.forEach((a) => {
+      a.pending = false;
+    });
+    return respond(204);
+  }
+
   if (!token || !sessions.has(token)) return fail(401, "UNAUTHORIZED", "Sign in to continue.");
   const currentAdmin = TOKENS[token];
 
@@ -484,6 +541,12 @@ function handle(method, path, params, body, token) {
 
   if (path === "/admin/auth/logout" && method === "POST") {
     sessions.delete(token);
+    return respond(204);
+  }
+  if (path === "/admin/auth/change-password" && method === "POST") {
+    if (body.currentPassword === "wrong") {
+      return fail(400, "VALIDATION_ERROR", "Check the highlighted fields.", { currentPassword: "That is not your current password." });
+    }
     return respond(204);
   }
   if (path === "/admin/auth/me") {
@@ -562,13 +625,18 @@ function handle(method, path, params, body, token) {
       const r = registrations.find((reg) => reg.ticketToken === tokenFrom(body.code));
       if (!r) return respond(200, { result: "NOT_RECOGNISED", event: eventRef, item: null });
       if (findCheckIn(r.id, event.id)) return respond(200, { result: "ALREADY_CHECKED_IN", event: eventRef, item: checkInItem(r, event) });
-      if (r.status !== "ACCEPTED" && !body.override) return respond(200, { result: "NOT_ACCEPTED", event: eventRef, item: checkInItem(r, event) });
+      if (r.status !== "ACCEPTED") return respond(200, { result: "NOT_ACCEPTED", event: eventRef, item: checkInItem(r, event) });
       record(r);
       return respond(200, { result: "CHECKED_IN", event: eventRef, item: checkInItem(r, event) });
     }
     const r = registrations.find((reg) => reg.id === path.split("/").pop());
     if (!r) return fail(404, "NOT_FOUND", "Registration not found.");
-    if (method === "POST") record(r);
+    if (method === "POST") {
+      if (r.status !== "ACCEPTED") {
+        return fail(409, "NOT_ACCEPTED", "This person is not accepted, so they cannot be checked in.");
+      }
+      record(r);
+    }
     if (method === "DELETE") {
       const index = checkIns.findIndex((c) => c.registrationId === r.id && c.eventId === event.id);
       if (index >= 0) checkIns.splice(index, 1);
@@ -591,7 +659,6 @@ function handle(method, path, params, body, token) {
         total: registrations.length,
         checkedIn: eventCount(generalEvent.id),
         withResume: registrations.filter((r) => r.resume).length,
-        resumeOptIn: registrations.filter((r) => r.resume && r.resumeOptIn).length,
         schoolEmailConfirmed: registrations.filter((r) => r.schoolEmailConfirmed).length,
         bySchool: bySchool(registrations),
         byDay: byDay(registrations),
@@ -626,12 +693,11 @@ function handle(method, path, params, body, token) {
           ...r,
           checked_in_at: findCheckIn(r.id, generalEvent.id)?.checkedInAt || null,
           has_resume: Boolean(r.resume),
-          resume_opt_in: Boolean(r.resume && r.resumeOptIn),
           school_email: r.schoolEmail,
           school_email_confirmed: r.schoolEmailConfirmed,
           age_review: ageReview(r),
         };
-        ["ticketToken", "resume", "resumeOptIn", "schoolEmail", "schoolEmailConfirmed", "schoolEmailConfirmedAt"].forEach((key) => delete row[key]);
+        ["ticketToken", "resume", "schoolEmail", "schoolEmailConfirmed", "schoolEmailConfirmedAt"].forEach((key) => delete row[key]);
         return row;
       }),
       "registrations.csv",
@@ -706,7 +772,6 @@ function handle(method, path, params, body, token) {
     if (!r.resume) return fail(404, "NOT_FOUND", "This registration has no resume.");
     if (method === "DELETE") {
       r.resume = null;
-      r.resumeOptIn = false;
       return respond(204);
     }
     return new Response(MOCK_PDF, {
@@ -737,18 +802,34 @@ function handle(method, path, params, body, token) {
 
   if (path === "/admin/settings") {
     if (method === "PUT") settings.registrationOpen = Boolean(body.registrationOpen);
-    return respond(200, { registrationOpen: settings.registrationOpen });
+    return respond(200, { ...settings });
+  }
+  if (path === "/admin/settings/registration-preview") {
+    settings.previewActive = method === "POST";
+    if (method === "POST") return respond(200, { url: "https://www.peachhacks.com/?preview=mock-preview-key#register" });
+    return respond(200, { ...settings });
+  }
+
+  if (path === "/admin/discord") return respond(200, discord);
+  if (path === "/admin/discord/recap" && method === "POST") return respond(204);
+  if (path === "/admin/discord/verification-message" && method === "POST") {
+    discord.messagePostedAt = new Date().toISOString();
+    if (body.message) discord.message = body.message;
+    return respond(200, discord);
   }
 
   if (path === "/admin/emails/recipient-count" && method === "POST") {
     const fieldErrors = campaignErrors(body);
     if (Object.keys(fieldErrors).length) return fail(400, "VALIDATION_ERROR", "Check the highlighted fields.", fieldErrors);
-    return respond(200, { recipientCount: audienceEmails(body.kind, body.audience, body.school).size });
+    return respond(200, { recipientCount: audiencePeople(body.kind, body.audience, body.school).length });
   }
   if (path === "/admin/emails/preview" && method === "POST") {
     const escape = (value) => String(value || "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
     const [firstName = "", ...rest] = currentAdmin.name.split(/\s+/);
-    const personal = (value) => String(value || "").replaceAll("{{firstName}}", firstName).replaceAll("{{lastName}}", rest.join(" "));
+    const personal = (value) =>
+      String(value || "")
+        .replace(/\{\{\s*firstName\s*\}\}/g, () => firstName)
+        .replace(/\{\{\s*lastName\s*\}\}/g, () => rest.join(" "));
     const paragraphs = personal(body.body).split(/\n\s*\n/).map((p) => `<p>${escape(p.trim()).replaceAll("\n", "<br>")}</p>`).join("");
     const footer = body.kind === "EVENT_UPDATE"
       ? "You are receiving this because you registered for PeachHacks."
@@ -768,6 +849,13 @@ function handle(method, path, params, body, token) {
       if (!body.subject?.trim()) fieldErrors.subject = "Subject is required";
       if (!body.body?.trim()) fieldErrors.body = "Body is required";
       if (Object.keys(fieldErrors).length) return fail(400, "VALIDATION_ERROR", "Check the highlighted fields.", fieldErrors);
+      tickCampaigns();
+      const same = (c) =>
+        ["kind", "audience", "subject", "body"].every((key) => c[key] === body[key]) && (c.school || null) === (body.school || null);
+      if (campaigns.some((c) => ACTIVE_CAMPAIGN.includes(c.status) && same(c))) {
+        return fail(409, "CAMPAIGN_ALREADY_SENDING", "This exact email is already being sent. Wait for it to finish before sending it again.");
+      }
+      const people = audiencePeople(body.kind, body.audience, body.school);
       const campaign = {
         id: uuid(),
         kind: body.kind,
@@ -775,7 +863,7 @@ function handle(method, path, params, body, token) {
         body: body.body,
         audience: body.audience,
         school: body.school || null,
-        recipientCount: audienceEmails(body.kind, body.audience, body.school).size,
+        recipientCount: people.length,
         sentCount: 0,
         failedCount: 0,
         status: "QUEUED",
@@ -784,10 +872,20 @@ function handle(method, path, params, body, token) {
         completedAt: null,
       };
       campaigns.unshift(campaign);
+      campaignPeople.set(campaign.id, people);
       return respond(202, campaign);
     }
     tickCampaigns();
     return respond(200, campaigns);
+  }
+
+  const recipientsMatch = /^\/admin\/emails\/([^/]+)\/recipients$/.exec(path);
+  if (recipientsMatch) {
+    tickCampaigns();
+    const campaign = campaigns.find((c) => c.id === recipientsMatch[1]);
+    if (!campaign) return fail(404, "NOT_FOUND", "Email not found.");
+    const status = params.get("status") || "";
+    return respond(200, paginate(campaignRecipients(campaign).filter((r) => !status || r.status === status), params));
   }
 
   if (path === "/admin/admins") {
@@ -796,14 +894,20 @@ function handle(method, path, params, body, token) {
       if (!body.name?.trim()) fieldErrors.name = "Name is required";
       if (!/^\S+@\S+\.\S+$/.test(body.email || "")) fieldErrors.email = "Must be a valid email";
       else if (admins.some((a) => a.email.toLowerCase() === body.email.toLowerCase())) fieldErrors.email = "An account with this email already exists";
-      if ((body.password || "").length < 10) fieldErrors.password = "Must be at least 10 characters";
       if (body.role && !["ADMIN", "VOLUNTEER"].includes(body.role)) fieldErrors.role = "Role must be ADMIN or VOLUNTEER";
       if (Object.keys(fieldErrors).length) return fail(400, "VALIDATION_ERROR", "Check the highlighted fields.", fieldErrors);
-      const admin = { id: uuid(), email: body.email, name: body.name, role: body.role || "ADMIN", createdAt: new Date().toISOString() };
+      const admin = { id: uuid(), email: body.email, name: body.name, role: body.role || "ADMIN", createdAt: new Date().toISOString(), pending: true };
       admins.push(admin);
-      return respond(201, admin);
+      return respond(201, { ...admin, setPasswordUrl: MOCK_PASSWORD_URL });
     }
     return respond(200, admins);
+  }
+  const inviteMatch = /^\/admin\/admins\/([^/]+)\/invite$/.exec(path);
+  if (inviteMatch && method === "POST") {
+    const invited = admins.find((a) => a.id === inviteMatch[1]);
+    if (!invited) return fail(404, "NOT_FOUND", "Admin not found.");
+    if (!invited.pending) return fail(400, "VALIDATION_ERROR", "This account already has a password.");
+    return respond(200, { ...invited, setPasswordUrl: MOCK_PASSWORD_URL });
   }
   const adminMatch = /^\/admin\/admins\/([^/]+)$/.exec(path);
   if (adminMatch && method === "DELETE") {

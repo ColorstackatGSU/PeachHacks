@@ -1,9 +1,22 @@
-import React from 'react';
+import { setMotionPaused, useMotionPaused } from './reducedMotion.js';
 import { useRegistrationCta } from './registration.js';
-import { CONTACT_EMAIL, EVENT_DATES, EVENT_PLACE, SPONSOR_EMAIL, SPONSOR_FORM_PATH, isHomePage, sectionHref, sectionLinks, socialLinks } from './site.js';
+import {
+  CODE_OF_CONDUCT_URL, CONTACT_EMAIL, EVENT_DATES, EVENT_PLACE, EVENT_YEAR, SPONSOR_EMAIL, SPONSOR_FORM_PATH, isHomePage,
+  sectionHref, sectionLinks, socialLinks,
+} from './site.js';
 
 function SiteFooter() {
   const cta = useRegistrationCta();
+  const motionPaused = useMotionPaused();
+
+  // Pausing also unpins the hero, which changes the height of the page above
+  // the footer; the button stays where the visitor pressed it.
+  const toggleMotion = (event) => {
+    const button = event.currentTarget;
+    const before = button.getBoundingClientRect().top;
+    setMotionPaused(!motionPaused);
+    window.scrollBy({ top: button.getBoundingClientRect().top - before, behavior: 'instant' });
+  };
 
   return (
     <footer className="site-footer">
@@ -42,6 +55,7 @@ function SiteFooter() {
             <ul>
               <li><a className="footer-link" href={cta.href}>{cta.label}</a></li>
               <li><a className="footer-link" href={SPONSOR_FORM_PATH}>Sponsor PeachHacks</a></li>
+              <li><a className="footer-link" href={CODE_OF_CONDUCT_URL} target="_blank" rel="noopener noreferrer" aria-label="Code of Conduct (opens in a new tab)">Code of Conduct</a></li>
             </ul>
           </nav>
 
@@ -53,7 +67,17 @@ function SiteFooter() {
             </ul>
           </div>
         </div>
-        <p className="footer-legal">PeachHacks 2027 <span aria-hidden="true">·</span> Hosted by ColorStack at Georgia State University</p>
+        <div className="footer-legal">
+          <p className="footer-legal-text">PeachHacks {EVENT_YEAR} <span aria-hidden="true">·</span> Hosted by ColorStack at Georgia State University</p>
+          <p className="footer-legal-text footer-legal-links">
+            <a className="footer-link" href="/privacy">Privacy Policy</a>
+            <span aria-hidden="true">·</span>
+            <a className="footer-link" href="/terms">Terms of Service</a>
+          </p>
+          <button type="button" className="motion-toggle" aria-pressed={motionPaused} onClick={toggleMotion}>
+            {motionPaused ? 'Play animation' : 'Pause animation'}
+          </button>
+        </div>
       </div>
     </footer>
   );

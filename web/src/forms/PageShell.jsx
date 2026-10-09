@@ -1,5 +1,4 @@
-/* eslint-disable react/prop-types -- the project has no prop-types dependency and React 19 ignores propTypes */
-import { CONTACT_EMAIL } from './options.js';
+import { CONTACT_EMAIL } from '../home/site.js';
 
 export function PageShell({ children }) {
   return (
@@ -19,6 +18,11 @@ export function PageShell({ children }) {
       <footer className="pf-footer">
         <p>
           Questions? Email <a className="pf-footer-link" href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
+        </p>
+        <p className="pf-footer-legal">
+          <a className="pf-footer-link" href="/privacy">Privacy Policy</a>
+          <span aria-hidden="true"> · </span>
+          <a className="pf-footer-link" href="/terms">Terms of Service</a>
         </p>
       </footer>
     </div>

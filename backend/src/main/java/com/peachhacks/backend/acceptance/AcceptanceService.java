@@ -4,10 +4,10 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.List;
-import java.util.Locale;
 import java.util.UUID;
 
 import com.peachhacks.backend.config.AcceptanceProperties;
+import com.peachhacks.backend.registration.RegistrationRepository;
 
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
@@ -62,19 +62,20 @@ public class AcceptanceService {
 
 	private final AcceptanceProperties properties;
 
-	private final String host;
+	private final AgeReview ageReview;
 
-	public AcceptanceService(JdbcClient jdbc, AcceptanceMailer mailer, AcceptanceProperties properties) {
+	public AcceptanceService(JdbcClient jdbc, AcceptanceMailer mailer, AcceptanceProperties properties,
+			AgeReview ageReview) {
 		this.jdbc = jdbc;
 		this.mailer = mailer;
 		this.properties = properties;
-		this.host = properties.hostSchoolName().toLowerCase(Locale.ROOT);
+		this.ageReview = ageReview;
 	}
 
 	@Transactional(readOnly = true)
 	public Summary summary() {
 		BigDecimal target = properties.hostSchoolTarget();
-		long[] n = jdbc.sql("""
+		long[] n = ageReview.bind(jdbc.sql("""
 				select count(*),
 					count(*) filter (where status = 'ACCEPTED'),
 					count(*) filter (where status = 'ACCEPTED' and notified),
@@ -95,11 +96,7 @@ public class AcceptanceService {
 							where e.general and c.registration_id = r.id) as checked_in
 					from registrations r
 				) x
-				""".formatted(IS_HOST, AgeReview.NEEDED))
-			.param("host", host)
-			.param("hostLength", host.length())
-			.param("minimumAge", properties.nonHostMinimumAge())
-			.query((rs, rowNum) -> {
+				""".formatted(IS_HOST, AgeReview.NEEDED))).query((rs, rowNum) -> {
 			long[] counts = new long[13];
 			for (int i = 0; i < counts.length; i++) {
 				counts[i] = rs.getLong(i + 1);
@@ -113,14 +110,12 @@ public class AcceptanceService {
 		Shares shares = new Shares(HostSchoolShare.of(n[7], accepted, target),
 				HostSchoolShare.of(n[6], registrations, target), HostSchoolShare.of(n[8], n[3], target),
 				HostSchoolShare.of(n[10], n[9], target));
-		List<SchoolCount> bySchool = jdbc.sql("""
+		List<SchoolCount> bySchool = ageReview.bind(jdbc.sql("""
 				select r.school, count(*) as total, %s as host from registrations r
 				where r.status = 'ACCEPTED'
 				group by r.school
 				order by total desc, r.school asc
-				""".formatted(IS_HOST))
-			.param("host", host)
-			.param("hostLength", host.length())
+				""".formatted(IS_HOST)))
 			.query((rs, rowNum) -> new SchoolCount(rs.getString("school"), rs.getLong("total"), rs.getBoolean("host")))
 			.list();
 		return new Summary(totals, new HostSchool(properties.hostSchoolName(), target), shares, bySchool,
@@ -129,16 +124,13 @@ public class AcceptanceService {
 
 	/** Everyone accepted and not yet told, longest-waiting first. */
 	public List<Waiting> waiting() {
-		return jdbc.sql("""
+		return ageReview.bind(jdbc.sql("""
 				select r.id, r.first_name, r.last_name, r.email, r.school, %s as host, %s as age_review,
 					r.accepted_at
 				from registrations r
-				where r.status = 'ACCEPTED' and r.acceptance_notified_at is null
+				where %s
 				order by r.accepted_at asc nulls first, lower(r.last_name), lower(r.first_name), r.id
-				""".formatted(IS_HOST, AgeReview.NEEDED))
-			.param("host", host)
-			.param("hostLength", host.length())
-			.param("minimumAge", properties.nonHostMinimumAge())
+				""".formatted(IS_HOST, AgeReview.NEEDED, RegistrationRepository.WAITING)))
 			.query((rs, rowNum) -> {
 				OffsetDateTime acceptedAt = rs.getObject("accepted_at", OffsetDateTime.class);
 				return new Waiting(rs.getObject("id", UUID.class), rs.getString("first_name"),

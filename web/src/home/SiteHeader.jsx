@@ -1,8 +1,8 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRegistrationCta } from './registration.js';
 import { isHomePage, sectionHref, sectionLinks } from './site.js';
 
-const HEADER_HEIGHT = 56;
+const HEADER_HEIGHT = 72;
 const FLOW_SCROLL_THRESHOLD = 24;
 
 // Over the pinned hero the bar stays transparent so the artwork reads as one
@@ -17,7 +17,7 @@ function useSolidHeader() {
       frame = 0;
       const pin = document.querySelector('.hero-pin');
       const hero = document.getElementById('hero');
-      const afterHero = document.getElementById('partners');
+      const afterHero = document.getElementById('faq');
       const pinned = pin && hero && afterHero && pin.offsetHeight > hero.offsetHeight + 8;
       setSolid(pinned ? afterHero.getBoundingClientRect().top <= HEADER_HEIGHT : window.scrollY > FLOW_SCROLL_THRESHOLD);
     };

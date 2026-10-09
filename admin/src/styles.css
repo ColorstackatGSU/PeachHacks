@@ -1,6 +1,5 @@
 :root {
   --navy: #001f3a;
-  --blue: #003f64;
   --peach: #fca324;
   --peach-hover: #ffb341;
   --cream: #f4f6ed;
@@ -19,7 +18,6 @@
   --good: #7fdca0;
   --bad: #ff8a8a;
   --bad-strong: #e5484d;
-  --shadow: 0 10px 0 rgba(0, 12, 24, .28);
   --radius: 6px;
   --sidebar-w: 232px;
 
@@ -104,6 +102,7 @@ main:focus { outline: none; }
   font-size: 15px;
 }
 .field textarea { min-height: 220px; line-height: 1.55; resize: vertical; }
+.field textarea.discord-message { min-height: 150px; }
 .field input::placeholder { color: rgba(185, 211, 220, .7); }
 .field input:focus-visible, .field select:focus-visible, .field textarea:focus-visible { outline: 2px solid var(--peach); outline-offset: 1px; }
 .field [aria-invalid="true"] { border-color: var(--bad); }
@@ -175,6 +174,10 @@ main:focus { outline: none; }
 .signin-card h1 { font-size: 26px; font-weight: 800; letter-spacing: -.03em; text-align: center; }
 .signin-card form { display: grid; gap: 16px; }
 .signin-card .btn-primary { min-height: 46px; margin-top: 4px; font-size: 15px; }
+.signin-switch { justify-self: center; }
+.signin-card .btn-block { text-align: center; text-decoration: none; }
+.invite-notice { display: grid; gap: 8px; margin: 16px 0; }
+.invite-notice .link-btn { justify-self: start; }
 .signin-foot { color: var(--text-2); font-size: 12.5px; text-align: center; }
 
 .gate-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 14px; padding: 14px 18px; border: 1px solid var(--line); border-left: 4px solid var(--mist); border-radius: var(--radius); background: var(--panel); }

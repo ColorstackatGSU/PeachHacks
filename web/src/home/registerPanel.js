@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react';
-import { REGISTER_PANEL_HASH, prefersReducedMotion } from './site.js';
+import { prefersReducedMotion } from './reducedMotion.js';
+import { REGISTER_PANEL_HASH } from './site.js';
 
 const SCROLL_TIMEOUT_MS = 1500;
 const BACK_TIMEOUT_MS = 400;
@@ -65,18 +66,20 @@ function onUrlChange() {
   sync();
 }
 
-// /?register=1 is what the redirects from the old form pages land on.
-const params = new URLSearchParams(window.location.search);
-if (params.get('register') === '1') {
-  params.delete('register');
-  const query = params.toString();
-  window.history.replaceState(null, '', `${window.location.pathname}${query ? `?${query}` : ''}${REGISTER_PANEL_HASH}`);
+// The homepage is also rendered at build time, where there is no URL to read.
+if (typeof window !== 'undefined') {
+  // /?register=1 is what the redirects from the old form pages land on.
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('register') === '1') {
+    params.delete('register');
+    const query = params.toString();
+    window.history.replaceState(null, '', `${window.location.pathname}${query ? `?${query}` : ''}${REGISTER_PANEL_HASH}`);
+  }
+  shown = isRequested();
+  window.addEventListener('popstate', onUrlChange);
+  window.addEventListener('hashchange', onUrlChange);
 }
-shown = isRequested();
 export const openedOnLoad = shown;
-
-window.addEventListener('popstate', onUrlChange);
-window.addEventListener('hashchange', onUrlChange);
 
 export function openRegisterPanel(trigger) {
   if (isRequested()) return;
@@ -113,6 +116,8 @@ function subscribe(listener) {
   return () => listeners.delete(listener);
 }
 
+const closedOnServer = () => false;
+
 export function useRegisterPanelShown() {
-  return useSyncExternalStore(subscribe, isRegisterPanelShown);
+  return useSyncExternalStore(subscribe, isRegisterPanelShown, closedOnServer);
 }

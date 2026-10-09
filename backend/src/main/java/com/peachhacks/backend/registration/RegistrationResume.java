@@ -27,8 +27,6 @@ public class RegistrationResume {
 	@Column(name = "size_bytes")
 	private int size;
 
-	private boolean sponsorOptIn;
-
 	private Instant uploadedAt;
 
 	protected RegistrationResume() {
@@ -44,10 +42,6 @@ public class RegistrationResume {
 
 	public int getSize() {
 		return size;
-	}
-
-	public boolean isSponsorOptIn() {
-		return sponsorOptIn;
 	}
 
 	public Instant getUploadedAt() {

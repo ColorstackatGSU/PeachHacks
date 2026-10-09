@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { markRegistrationClosed, retryRegistrationStatus, useRegistrationStatus } from '../home/registration.js';
+import { useFocusOnChange } from './hooks.js';
 import { Card } from './PageShell.jsx';
 import PreRegisterForm from './PreRegisterForm.jsx';
 import RegisterForm from './RegisterForm.jsx';
@@ -16,27 +17,20 @@ export default function RegisterPanel({ titleId, onClose, onDone }) {
   const status = useRegistrationStatus();
   const [registered, setRegistered] = useState(null);
   const [carriedOver, setCarriedOver] = useState(null);
-  const headingRef = useRef(null);
-  const moveFocus = useRef(false);
-
-  // Move focus to the new heading when the view changes because of something
+  // Focus moves to the new heading when the view changes because of something
   // the visitor did (retry, submit), but not when the panel first opens.
-  useEffect(() => {
-    if (!moveFocus.current || status === 'loading') return;
-    moveFocus.current = false;
-    headingRef.current?.focus();
-  }, [status, registered]);
+  const { headingRef, requestFocus } = useFocusOnChange(status !== 'loading');
 
   const retry = () => {
-    moveFocus.current = true;
+    requestFocus();
     retryRegistrationStatus();
   };
 
   const handleSuccess = useCallback((email, schoolEmail) => {
-    moveFocus.current = true;
+    requestFocus();
     setRegistered({ email, schoolEmail });
     onDone();
-  }, [onDone]);
+  }, [onDone, requestFocus]);
 
   const handleClosed = useCallback((values) => {
     setCarriedOver({

@@ -27,6 +27,10 @@ public class Admin {
 
 	private Instant createdAt;
 
+	private String passwordTokenHash;
+
+	private Instant passwordTokenExpiresAt;
+
 	protected Admin() {
 	}
 
@@ -53,6 +57,22 @@ public class Admin {
 
 	String getPasswordHash() {
 		return passwordHash;
+	}
+
+	/** Invited, and the owner has not chosen a password yet. */
+	public boolean isPending() {
+		return passwordHash == null;
+	}
+
+	void issuePasswordToken(String tokenHash, Instant expiresAt) {
+		this.passwordTokenHash = tokenHash;
+		this.passwordTokenExpiresAt = expiresAt;
+	}
+
+	void changePassword(String passwordHash) {
+		this.passwordHash = passwordHash;
+		this.passwordTokenHash = null;
+		this.passwordTokenExpiresAt = null;
 	}
 
 	public AdminRole getRole() {

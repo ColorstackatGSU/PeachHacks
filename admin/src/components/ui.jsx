@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
 import { isAccepted, isNotified } from "../lib/acceptance.js";
 import { errorText, formatNumber, statusLabel } from "../lib/format.js";
+import { href } from "../lib/router.js";
 
 export function Spinner({ label = "Loading" }) {
   return (
@@ -60,6 +61,21 @@ export function InlineError({ error, children }) {
   );
 }
 
+// Spread onto the input that a FieldError with the same id belongs to.
+export const errorProps = (message, id) => ({
+  "aria-invalid": message ? true : undefined,
+  "aria-describedby": message ? id : undefined,
+});
+
+export function FieldError({ id, message }) {
+  if (!message) return null;
+  return (
+    <p id={id} className="inline-error">
+      {message}
+    </p>
+  );
+}
+
 export function StatusBadge({ status }) {
   return <span className={`badge badge-${String(status).toLowerCase()}`}>{statusLabel(status)}</span>;
 }
@@ -70,13 +86,33 @@ export function AcceptanceBadge({ item }) {
   return (
     <span className="tag-row">
       <StatusBadge status={item.status} />
-      {isNotified(item) ? <Tag tone="accepted">Told</Tag> : <Tag tone="waitlisted">Not told yet</Tag>}
+      <ToldTag told={isNotified(item)} />
     </span>
   );
 }
 
 export function Tag({ tone = "neutral", children }) {
   return <span className={`badge badge-${tone}`}>{children}</span>;
+}
+
+export const ToldTag = ({ told }) => (told ? <Tag tone="accepted">Told</Tag> : <Tag tone="waitlisted">Not told yet</Tag>);
+
+export const ConfirmedTag = ({ confirmed }) =>
+  confirmed ? <Tag tone="accepted">Confirmed</Tag> : <Tag tone="waitlisted">Unconfirmed</Tag>;
+
+export function Tile({ label, value, note, to }) {
+  return (
+    <div className="tile">
+      <span className="tile-label">{label}</span>
+      <strong className="tile-value">{formatNumber(value)}</strong>
+      {note && <span className="tile-note">{note}</span>}
+      {to && (
+        <a className="tile-link" href={href(to)}>
+          View list
+        </a>
+      )}
+    </div>
+  );
 }
 
 export function PageHeader({ title, description, children }) {
@@ -136,7 +172,7 @@ export function ToastProvider({ children }) {
       {children}
       <div className="toasts" aria-live="polite" aria-atomic="false">
         {toasts.map((toast) => (
-          <div key={toast.id} className={`toast toast-${toast.tone}`} role={toast.tone === "error" ? "alert" : "status"}>
+          <div key={toast.id} className={`toast${toast.tone === "error" ? " toast-error" : ""}`} role={toast.tone === "error" ? "alert" : "status"}>
             <span>{toast.message}</span>
             <button type="button" className="toast-close" aria-label="Dismiss" onClick={() => dismiss(toast.id)}>
               ×

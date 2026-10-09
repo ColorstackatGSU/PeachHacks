@@ -4,7 +4,8 @@ public enum CampaignKind {
 
 	/**
 	 * Logistics for people who are coming. Always delivered, whatever the unsubscribed flag
-	 * says, and without an unsubscribe link, so it may only go to people who registered.
+	 * says, and without an unsubscribe link, so it may only go to accepted hackers who
+	 * have been told they are in.
 	 */
 	EVENT_UPDATE,
 
@@ -12,7 +13,7 @@ public enum CampaignKind {
 	ANNOUNCEMENT;
 
 	public boolean allows(Audience audience) {
-		return this == ANNOUNCEMENT || audience.registered();
+		return this == ANNOUNCEMENT || audience == Audience.ACCEPTED;
 	}
 
 }

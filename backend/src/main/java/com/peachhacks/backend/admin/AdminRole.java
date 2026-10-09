@@ -13,13 +13,10 @@ public enum AdminRole {
 		return "ROLE_" + name();
 	}
 
-	public static AdminRole parseOrDefault(String value) {
-		String cleaned = Texts.clean(value);
-		if (cleaned == null) {
-			return ADMIN;
-		}
+	/** There is no default: an account is never given a role nobody chose. */
+	public static AdminRole parse(String value) {
 		try {
-			return valueOf(cleaned.toUpperCase(Locale.ROOT));
+			return valueOf(Texts.orEmpty(value).toUpperCase(Locale.ROOT));
 		}
 		catch (IllegalArgumentException ex) {
 			throw ApiException.invalidField("role", "Role must be ADMIN or VOLUNTEER");

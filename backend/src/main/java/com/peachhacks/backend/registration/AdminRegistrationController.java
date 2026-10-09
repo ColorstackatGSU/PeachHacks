@@ -9,20 +9,23 @@ import java.util.UUID;
 
 import com.peachhacks.backend.acceptance.AcceptanceMailer;
 import com.peachhacks.backend.acceptance.AgeReview;
+import com.peachhacks.backend.admin.AdminPrincipal;
 import com.peachhacks.backend.checkin.CheckIn;
 import com.peachhacks.backend.checkin.CheckInService;
 import com.peachhacks.backend.common.Csv;
 import com.peachhacks.backend.common.PageResponse;
-import com.peachhacks.backend.ticket.GoogleWallet;
 import com.peachhacks.backend.ticket.Tickets;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -47,21 +50,21 @@ public class AdminRegistrationController {
 	}
 
 	private static final List<String> CSV_HEADER = List.of("id", "status", "createdAt", "firstName", "lastName", "age",
-			"phone", "email", "school", "levelOfStudy", "countryOfResidence", "mlhCodeOfConduct", "mlhDataSharing",
+			"phone", "email", "school", "levelOfStudy", "graduationYear", "graduationMonth",
+			"countryOfResidence", "mlhCodeOfConduct", "mlhDataSharing",
 			"mlhEmailOptIn", "dietaryRestrictions", "dietaryDetails", "underrepresentedGroup", "gender",
 			"genderSelfDescribe", "pronouns", "pronounsOther", "raceEthnicity", "raceEthnicityOther",
 			"sexualOrientation", "sexualOrientationOther", "highestEducation", "highestEducationOther", "tshirtSize",
-			"shippingLine1", "shippingLine2", "shippingCity", "shippingState", "shippingCountry",
-			"shippingPostalCode", "majorFieldOfStudy", "majorOther", "linkedinUrl", "checked_in_at",
-			"has_resume", "resume_opt_in", "school_email", "school_email_confirmed", "age_review");
+			"majorFieldOfStudy", "majorOther", "linkedinUrl", "githubUrl", "checked_in_at",
+			"has_resume", "school_email", "school_email_confirmed", "age_review");
+
+	private static final Logger log = LoggerFactory.getLogger(AdminRegistrationController.class);
 
 	private final RegistrationService service;
 
 	private final CheckInService checkIns;
 
 	private final Tickets tickets;
-
-	private final GoogleWallet googleWallet;
 
 	private final ResumeService resumes;
 
@@ -70,13 +73,11 @@ public class AdminRegistrationController {
 	private final AgeReview ageReview;
 
 	public AdminRegistrationController(RegistrationService service, CheckInService checkIns, Tickets tickets,
-			GoogleWallet googleWallet, ResumeService resumes, AcceptanceMailer acceptanceMailer,
-			AgeReview ageReview) {
+			ResumeService resumes, AcceptanceMailer acceptanceMailer, AgeReview ageReview) {
 		this.ageReview = ageReview;
 		this.service = service;
 		this.checkIns = checkIns;
 		this.tickets = tickets;
-		this.googleWallet = googleWallet;
 		this.resumes = resumes;
 		this.acceptanceMailer = acceptanceMailer;
 	}
@@ -104,7 +105,8 @@ public class AdminRegistrationController {
 			@RequestParam(required = false) String school, @RequestParam(required = false) String status,
 			@RequestParam(required = false) Boolean checkedIn, @RequestParam(required = false) String resume,
 			@RequestParam(required = false) Boolean schoolEmailConfirmed,
-			@RequestParam(name = "ageReview", required = false) Boolean ageReviewFilter) {
+			@RequestParam(name = "ageReview", required = false) Boolean ageReviewFilter,
+			@AuthenticationPrincipal AdminPrincipal admin) {
 		Map<UUID, CheckIn> general = checkIns.general();
 		Map<UUID, RegistrationResume> uploaded = resumes.byRegistration();
 		Set<UUID> flagged = ageReview.all();
@@ -112,21 +114,21 @@ public class AdminRegistrationController {
 		for (Registration r : service.search(q, school, status, checkedIn, resume, schoolEmailConfirmed,
 				ageReviewFilter, Pageable.unpaged())) {
 			RegistrationResume file = uploaded.get(r.getId());
-			ShippingAddress address = (r.getShippingAddress() != null) ? r.getShippingAddress()
-					: new ShippingAddress(null, null, null, null, null, null);
 			csv.row(Arrays.asList(r.getId(), r.getStatus(), r.getCreatedAt(), r.getFirstName(), r.getLastName(),
-					r.getAge(), r.getPhone(), r.getEmail(), r.getSchool(), r.getLevelOfStudy(),
+					r.getAge(), r.getPhone(), r.getEmail(), r.getSchool(), r.getLevelOfStudy(), r.getGraduationYear(), r.getGraduationMonth(),
 					r.getCountryOfResidence(), r.isMlhCodeOfConduct(), r.isMlhDataSharing(), r.isMlhEmailOptIn(),
 					String.join("; ", r.getDietaryRestrictions()), r.getDietaryDetails(),
 					r.getUnderrepresentedGroup(), r.getGender(), r.getGenderSelfDescribe(), r.getPronouns(),
 					r.getPronounsOther(), String.join("; ", r.getRaceEthnicity()), r.getRaceEthnicityOther(),
 					r.getSexualOrientation(), r.getSexualOrientationOther(), r.getHighestEducation(),
-					r.getHighestEducationOther(), r.getTshirtSize(), address.line1(), address.line2(), address.city(),
-					address.state(), address.country(), address.postalCode(), r.getMajorFieldOfStudy(),
-					r.getMajorOther(), r.getLinkedinUrl(), checkedInAt(general, r), file != null,
-					file != null && file.isSponsorOptIn(), r.getSchoolEmail(), r.isSchoolEmailConfirmed(),
-					flagged.contains(r.getId())));
+					r.getHighestEducationOther(), r.getTshirtSize(), r.getMajorFieldOfStudy(), r.getMajorOther(),
+					r.getLinkedinUrl(), r.getGithubUrl(), checkedInAt(general, r), file != null,
+					r.getSchoolEmail(), r.isSchoolEmailConfirmed(), flagged.contains(r.getId())));
 		}
+		log.info("Registrations CSV of {} rows ({}) exported by {}", csv.rows(),
+				Csv.filters("q", q, "school", school, "status", status, "checkedIn", checkedIn, "resume", resume,
+						"schoolEmailConfirmed", schoolEmailConfirmed, "ageReview", ageReviewFilter),
+				admin.email());
 		return csv.toResponse("peachhacks-registrations");
 	}
 
@@ -164,12 +166,12 @@ public class AdminRegistrationController {
 			.findFirst()
 			.orElse(null);
 		boolean hasTicket = r.getStatus() == RegistrationStatus.ACCEPTED;
-		String ticketUrl = hasTicket ? tickets.url(r.getTicketToken()) : null;
+		Tickets.Links links = hasTicket ? tickets.links(r) : new Tickets.Links(null, null);
 		RegistrationResume resume = resumes.find(r.getId()).orElse(null);
 		return new RegistrationDetail(r, (general != null) ? general.checkedInAt() : null,
 				(general != null) ? general.checkedInBy() : null, all, hasTicket ? r.getTicketToken() : null,
-				ticketUrl, hasTicket ? googleWallet.saveUrl(r, ticketUrl).orElse(null) : null,
-				(resume != null) ? ResumeInfo.from(resume) : null, resume != null && resume.isSponsorOptIn(),
+				links.url(), links.googleWalletUrl(),
+				(resume != null) ? ResumeInfo.from(resume) : null,
 				ageReview.needed(r.getId()));
 	}
 

@@ -1,5 +1,6 @@
 package com.peachhacks.backend.registration;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -10,12 +11,17 @@ import java.util.UUID;
 
 import com.peachhacks.backend.acceptance.AgeReview;
 import com.peachhacks.backend.common.ApiException;
+import com.peachhacks.backend.common.RateLimiter;
 import com.peachhacks.backend.common.RequestValidator;
 import com.peachhacks.backend.common.Texts;
+import com.peachhacks.backend.discord.DiscordApplications;
+import com.peachhacks.backend.discord.DiscordVerification;
 import com.peachhacks.backend.email.MailService;
 import com.peachhacks.backend.registration.ResumeUpload.ResumeFile;
 import com.peachhacks.backend.schoolemail.SchoolEmailService;
 import com.peachhacks.backend.stats.SettingsService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
@@ -30,7 +36,11 @@ public class RegistrationService {
 
 	private static final Set<String> ISO_COUNTRIES = Set.of(Locale.getISOCountries());
 
-	private static final Set<String> RESUME_FILTERS = Set.of("opted-in", "any", "none");
+	private static final Set<String> RESUME_FILTERS = Set.of("any", "none");
+
+	private static final Duration ALREADY_REGISTERED_EMAIL_INTERVAL = Duration.ofHours(1);
+
+	private static final Logger log = LoggerFactory.getLogger(RegistrationService.class);
 
 	private final RegistrationRepository repository;
 
@@ -46,12 +56,23 @@ public class RegistrationService {
 
 	private final AgeReview ageReview;
 
+	private final RateLimiter rateLimiter;
+
+	private final DiscordVerification discord;
+
+	private final DiscordApplications applications;
+
 	private final TransactionTemplate transaction;
 
 	public RegistrationService(RegistrationRepository repository, SettingsService settings,
 			RequestValidator validator, MailService mailService, ResumeService resumes,
-			SchoolEmailService schoolEmails, AgeReview ageReview, PlatformTransactionManager transactionManager) {
+			SchoolEmailService schoolEmails, AgeReview ageReview, RateLimiter rateLimiter,
+			DiscordVerification discord, DiscordApplications applications,
+			PlatformTransactionManager transactionManager) {
+		this.discord = discord;
+		this.applications = applications;
 		this.ageReview = ageReview;
+		this.rateLimiter = rateLimiter;
 		this.repository = repository;
 		this.settings = settings;
 		this.validator = validator;
@@ -61,8 +82,18 @@ public class RegistrationService {
 		this.transaction = new TransactionTemplate(transactionManager);
 	}
 
+	/**
+	 * A submission for an email that is already registered is answered exactly like a new
+	 * one, with an id that belongs to nothing, so the form cannot be used to find out who
+	 * has registered. Nothing is stored from it; the address's owner is told by email.
+	 */
 	public UUID submit(RegistrationRequest request) {
-		if (!settings.isRegistrationOpen()) {
+		return submit(request, null);
+	}
+
+	/** previewKey lets an organizer with the preview link register while the gate is closed. */
+	public UUID submit(RegistrationRequest request, String previewKey) {
+		if (!settings.isRegistrationOpenFor(previewKey)) {
 			throw new ApiException(HttpStatus.FORBIDDEN, "REGISTRATION_CLOSED",
 					"Registration is not open yet. Pre-register to hear from us when it opens.");
 		}
@@ -74,29 +105,43 @@ public class RegistrationService {
 			throw ApiException.invalidField("countryOfResidence", "Choose a country from the list");
 		}
 		ResumeFile resume = (request.resume() != null) ? request.resume().toFile() : null;
-		boolean resumeOptIn = resume != null && Boolean.TRUE.equals(request.resumeOptIn());
 		Registration registration = Registration.from(request);
 		if (repository.existsByEmail(registration.getEmail())) {
-			throw alreadyRegistered();
+			return alreadyRegistered(registration.getEmail());
 		}
 		try {
 			transaction.executeWithoutResult(status -> {
 				repository.saveAndFlush(registration);
 				if (resume != null) {
-					resumes.store(registration.getId(), resume, resumeOptIn);
+					resumes.store(registration.getId(), resume);
 				}
 			});
 		}
 		catch (DataIntegrityViolationException ex) {
 			// Two submissions for one email at the same moment: the unique index decides.
-			throw alreadyRegistered();
+			return alreadyRegistered(registration.getEmail());
 		}
-		// A pair confirmed at pre-registration stays confirmed, and then nothing is mailed.
-		boolean unconfirmed = schoolEmails.requestConfirmation(registration.getEmail(), registration.getSchoolEmail(),
-				registration.getFirstName());
-		mailService.sendRegistrationConfirmation(registration.getEmail(), registration.getFirstName(),
-				unconfirmed ? registration.getSchoolEmail() : null);
+		applications.announce(registration);
+		try {
+			// A pair confirmed at pre-registration stays confirmed, and then nothing is mailed.
+			boolean unconfirmed = schoolEmails.requestConfirmation(registration.getEmail(),
+					registration.getSchoolEmail(), registration.getFirstName());
+			mailService.sendRegistrationConfirmation(registration.getEmail(), registration.getFirstName(),
+					unconfirmed ? registration.getSchoolEmail() : null);
+		}
+		catch (RuntimeException ex) {
+			// The registration is committed; the person must not be told that it failed.
+			log.error("Registration {} was saved, but its confirmation emails could not be prepared",
+					registration.getId(), ex);
+		}
 		return registration.getId();
+	}
+
+	private UUID alreadyRegistered(String email) {
+		if (rateLimiter.tryAcquire("already-registered:" + email, 1, ALREADY_REGISTERED_EMAIL_INTERVAL)) {
+			mailService.sendAlreadyRegistered(email);
+		}
+		return UUID.randomUUID();
 	}
 
 	public Page<Registration> search(String q, String school, String status, Boolean checkedIn, String resume,
@@ -121,19 +166,24 @@ public class RegistrationService {
 	public record BulkStatusResult(int changed, int unchanged, int notFound, int acceptedAgeReview) {
 	}
 
-	/** Nothing is emailed here: an accepted registration waits until the acceptance emails are sent. */
+	/**
+	 * Nothing is emailed here: an accepted registration waits until the acceptance emails are
+	 * sent. A linked Discord account gains or loses the Hacker role right away.
+	 */
 	public Registration updateStatus(UUID id, RegistrationStatus status) {
-		return transaction.execute(tx -> {
+		Registration updated = transaction.execute(tx -> {
 			Registration registration = get(id);
 			registration.changeStatus(status, Instant.now());
 			return registration;
 		});
+		discord.syncRoles(List.of(id));
+		return updated;
 	}
 
 	/** Ids that no longer exist are counted, not refused, so one deleted row does not block the rest. */
 	public BulkStatusResult updateStatuses(List<UUID> ids, RegistrationStatus status) {
 		Set<UUID> distinct = new LinkedHashSet<>(ids);
-		return transaction.execute(tx -> {
+		BulkStatusResult result = transaction.execute(tx -> {
 			Instant now = Instant.now();
 			List<Registration> found = repository.findAllById(distinct);
 			List<UUID> changed = new ArrayList<>();
@@ -146,6 +196,8 @@ public class RegistrationService {
 			return new BulkStatusResult(changed.size(), found.size() - changed.size(),
 					distinct.size() - found.size(), acceptedAgeReview);
 		});
+		discord.syncRoles(distinct);
+		return result;
 	}
 
 	public void resendSchoolEmailConfirmation(UUID id) {
@@ -173,14 +225,9 @@ public class RegistrationService {
 		}
 		String filter = cleaned.toLowerCase(Locale.ROOT);
 		if (!RESUME_FILTERS.contains(filter)) {
-			throw ApiException.invalidField("resume", "Resume filter must be opted-in, any or none");
+			throw ApiException.invalidField("resume", "Resume filter must be any or none");
 		}
 		return filter;
-	}
-
-	private static ApiException alreadyRegistered() {
-		return new ApiException(HttpStatus.CONFLICT, "ALREADY_REGISTERED",
-				"This email address is already registered for PeachHacks.");
 	}
 
 }

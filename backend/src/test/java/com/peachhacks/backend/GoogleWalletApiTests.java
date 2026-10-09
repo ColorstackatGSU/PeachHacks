@@ -33,7 +33,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest(properties = { "app.admin.bootstrap-email=organizer@test.local",
 		"app.admin.bootstrap-password=correct-horse-battery", "app.rate-limit.public-per-minute=100000",
-		"app.rate-limit.login-per-minute=100000", "app.google-wallet.issuer-id=3388000000012345678",
+		"app.rate-limit.login-per-minute=100000", "app.rate-limit.sign-up-per-window=100000",
+		"app.rate-limit.sign-up-global-per-hour=100000", "app.google-wallet.issuer-id=3388000000012345678",
 		"app.google-wallet.service-account-email=wallet@project.iam.gserviceaccount.com" })
 @AutoConfigureMockMvc
 @Testcontainers(disabledWithoutDocker = true)
@@ -82,7 +83,7 @@ class GoogleWalletApiTests {
 		String created = mockMvc
 			.perform(post("/public/registrations").contentType(MediaType.APPLICATION_JSON).content("""
 					{"firstName":"Ada","lastName":"Lovelace","age":19,"phone":"404 555 0100","email":"%s","schoolEmail":"ada@school.edu",
-					 "school":"Georgia State University","levelOfStudy":"Undergraduate University (3+ year)",
+					 "school":"Georgia State University","levelOfStudy":"Undergraduate University (3+ year)","graduationYear":2028,"graduationMonth":5,
 					 "countryOfResidence":"US","mlhCodeOfConduct":true,"mlhDataSharing":true,"mlhEmailOptIn":false}
 					""".formatted(email)))
 			.andExpect(status().isCreated())

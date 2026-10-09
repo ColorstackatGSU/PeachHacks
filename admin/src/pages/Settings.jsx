@@ -2,14 +2,99 @@ import { useId, useState } from "react";
 import { api } from "../api/client.js";
 import { EventsCard } from "../components/EventsCard.jsx";
 import { ConfirmDialog } from "../components/Modal.jsx";
-import { EmptyBlock, ErrorBlock, InlineError, LoadingBlock, PageHeader, Tag, useToast } from "../components/ui.jsx";
-import { ROLES, errorText, formatDate, roleLabel } from "../lib/format.js";
+import {
+  EmptyBlock,
+  ErrorBlock,
+  FieldError,
+  InlineError,
+  LoadingBlock,
+  PageHeader,
+  Tag,
+  errorProps,
+  useToast,
+} from "../components/ui.jsx";
+import { ROLES, errorText, formatDate, formatDateTime, roleLabel } from "../lib/format.js";
 import { useAsync } from "../lib/hooks.js";
 import { href } from "../lib/router.js";
+import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from "./SetPassword.jsx";
 
 const EMAIL_SHORTCUT = "/email?template=registration-open&audience=PRE_REGISTRANTS_NOT_REGISTERED";
 
 const loadSettings = (signal) => api.settings(signal);
+
+function RegistrationPreview({ initiallyActive }) {
+  const notify = useToast();
+  const [active, setActive] = useState(initiallyActive);
+  const [link, setLink] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const run = async (action) => {
+    setBusy(true);
+    try {
+      await action();
+    } catch (error) {
+      notify(errorText(error), "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const create = () =>
+    run(async () => {
+      const result = await api.createPreviewLink();
+      setLink(result?.url || null);
+      setActive(true);
+    });
+
+  const end = () =>
+    run(async () => {
+      await api.endPreview();
+      setLink(null);
+      setActive(false);
+      notify("Preview ended. The link no longer works.");
+    });
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(link);
+      notify("Link copied.");
+    } catch {
+      notify("Could not copy. Select the link and copy it yourself.", "error");
+    }
+  };
+
+  return (
+    <div className="notice">
+      <p>
+        <strong>Try registration before it opens.</strong> A preview link shows the Register button and the full form on
+        the device that opens it, while everyone else still sees pre-registration. Registrations made through it are
+        real: you can accept them, send their ticket and sign in to the hacker platform with them.
+      </p>
+      {link && (
+        <>
+          <p>Open this link, or send it to another organizer. It will not be shown again.</p>
+          <div className="input-with-button">
+            <input type="text" readOnly value={link} aria-label="Registration preview link" onFocus={(e) => e.target.select()} />
+            <button type="button" className="btn btn-small" onClick={copy}>
+              Copy
+            </button>
+          </div>
+        </>
+      )}
+      {active && !link && <p>A preview link is active. Making a new one stops the old link working.</p>}
+      <p className="tag-row">
+        <button type="button" className="btn btn-small" onClick={create} disabled={busy}>
+          {active ? "Make a new preview link" : "Make a preview link"}
+        </button>
+        {active && (
+          <button type="button" className="btn btn-small btn-danger-quiet" onClick={end} disabled={busy}>
+            End preview
+          </button>
+        )}
+      </p>
+    </div>
+  );
+}
 
 function RegistrationGate() {
   const notify = useToast();
@@ -52,7 +137,7 @@ function RegistrationGate() {
 
       {known && (
         <>
-          <div className={`gate ${open ? "is-open" : "is-closed"}`}>
+          <div className={`gate${open ? " is-open" : ""}`}>
             <div className="gate-text">
               <strong id={`${ids}-label`}>Registration is {open ? "open" : "closed"}</strong>
               <p id={`${ids}-desc`}>
@@ -98,6 +183,8 @@ function RegistrationGate() {
             </div>
           </dl>
 
+          {!open && <RegistrationPreview initiallyActive={Boolean(settings.data?.previewActive)} />}
+
           {justOpened && open && (
             <div className="callout" role="status">
               <div>
@@ -139,8 +226,186 @@ function RegistrationGate() {
   );
 }
 
+const loadDiscord = (signal) => api.discord(signal);
+
+const MAX_DISCORD_MESSAGE = 900;
+
+function DiscordVerification() {
+  const notify = useToast();
+  const ids = useId();
+  const discord = useAsync(loadDiscord);
+  const [published, setPublished] = useState(null);
+  const [draft, setDraft] = useState(null);
+  const [confirming, setConfirming] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [publishError, setPublishError] = useState(null);
+
+  const status = published || discord.data;
+  const text = draft ?? status?.message ?? "";
+  const tooLong = text.length > MAX_DISCORD_MESSAGE;
+  const changed = draft !== null && draft !== status?.message;
+
+  const [recapping, setRecapping] = useState(false);
+
+  const recap = async () => {
+    setRecapping(true);
+    try {
+      await api.postDiscordRecap();
+      notify("The recap is in the applications channel.");
+    } catch (error) {
+      notify(errorText(error), "error");
+    } finally {
+      setRecapping(false);
+    }
+  };
+
+  const publish = async () => {
+    setPublishing(true);
+    setPublishError(null);
+    try {
+      const wasPosted = Boolean(status?.messagePostedAt);
+      setPublished(await api.publishDiscordVerification(text));
+      setDraft(null);
+      setConfirming(false);
+      notify(wasPosted ? "The verification message in Discord was updated." : "The verification message is up in Discord.");
+    } catch (error) {
+      setPublishError(error);
+    } finally {
+      setPublishing(false);
+    }
+  };
+
+  return (
+    <section className="card" aria-labelledby={`${ids}-title`}>
+      <div className="card-head">
+        <h2 id={`${ids}-title`}>PeachBot</h2>
+        <span className="muted">Gives the Hacker role in Discord to accepted hackers, and takes it away when they are no longer accepted.</span>
+      </div>
+
+      {!status && discord.error && <ErrorBlock error={discord.error} onRetry={discord.reload} />}
+      {!status && !discord.error && <LoadingBlock label="Checking PeachBot…" />}
+
+      {status && !status.configured && (
+        <p className="notice">
+          PeachBot is not set up on the server yet. Add the <code>DISCORD_*</code> values to the backend (see its README, “PeachBot”) and redeploy.
+        </p>
+      )}
+
+      {status?.configured && (
+        <>
+          <dl className="explain">
+            <div>
+              <dt>Connected so far</dt>
+              <dd>
+                {status.verified} {status.verified === 1 ? "hacker has" : "hackers have"} connected a Discord account.
+              </dd>
+            </div>
+            <div>
+              <dt>Verification message</dt>
+              <dd>{status.messagePostedAt ? `Last published ${formatDate(status.messagePostedAt)}.` : "Not posted yet."}</dd>
+            </div>
+            <div>
+              <dt>How hackers verify</dt>
+              <dd>They press Connect Discord on the hacker platform. The Verify button in Discord gives the role to anyone who has done that, and points everyone else to the platform.</dd>
+            </div>
+          </dl>
+
+          <div className="field">
+            <label htmlFor={`${ids}-message`}>Message above the Verify button</label>
+            <textarea
+              id={`${ids}-message`}
+              className="discord-message"
+              value={text}
+              onChange={(event) => setDraft(event.target.value)}
+              {...errorProps(tooLong ? "too long" : null, `${ids}-message-hint`)}
+            />
+            <p id={`${ids}-message-hint`} className="hint">
+              {text.length} of {MAX_DISCORD_MESSAGE} characters. Discord formatting works: **bold**, *italic*, and a blank line for a new paragraph. Mentions such as @everyone do not ping anyone.
+            </p>
+          </div>
+
+          <p className="tag-row">
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={tooLong || text.trim() === ""}
+              onClick={() => {
+                setPublishError(null);
+                setConfirming(true);
+              }}
+            >
+              {status.messagePostedAt ? (changed ? "Save and update in Discord" : "Update in Discord") : "Post the verification message"}
+            </button>
+            {changed && (
+              <button type="button" className="btn" onClick={() => setDraft(null)}>
+                Discard changes
+              </button>
+            )}
+          </p>
+
+          <dl className="explain">
+            <div>
+              <dt>Welcomes</dt>
+              <dd>
+                {status.welcomes ? "On. Everyone who joins the server gets a welcome card, once." : "Off. Set DISCORD_WELCOME_CHANNEL_ID on the backend to turn them on."}
+                {discord.data?.gateway && (
+                  <>
+                    <br />
+                    <strong>Connection:</strong> {discord.data.gateway}
+                  </>
+                )}
+                {discord.data?.lastJoinSeen && (
+                  <>
+                    <br />
+                    Last join seen {formatDateTime(discord.data.lastJoinSeen)}.
+                  </>
+                )}
+                {discord.data?.lastWelcome && (
+                  <>
+                    <br />
+                    {discord.data.lastWelcome}
+                  </>
+                )}
+              </dd>
+            </div>
+            <div>
+              <dt>Applications channel</dt>
+              <dd>{status.applications ? "On. Each new application is posted, with a recap every evening at 9 PM Atlanta time." : "Off. Set DISCORD_APPLICATIONS_CHANNEL_ID on the backend to turn it on."}</dd>
+            </div>
+            <div>
+              <dt>Recap now</dt>
+              <dd>
+                <button type="button" className="btn btn-small" disabled={!status.applications || recapping} onClick={recap}>
+                  {recapping ? "Posting…" : "Post the recap now"}
+                </button>
+              </dd>
+            </div>
+          </dl>
+        </>
+      )}
+
+      {confirming && (
+        <ConfirmDialog
+          title={status?.messagePostedAt ? "Update the verification message?" : "Post the verification message?"}
+          confirmLabel={status?.messagePostedAt ? "Update in Discord" : "Post to Discord"}
+          busy={publishing}
+          error={publishError}
+          onConfirm={publish}
+          onCancel={() => setConfirming(false)}
+        >
+          {status?.messagePostedAt ? (
+            <p>The message that is already in the verification channel is edited in place, so it keeps its spot. If someone deleted it, a new one is posted.</p>
+          ) : (
+            <p>PeachBot posts this message with a Verify button in the verification channel. Everyone who can see that channel can press it.</p>
+          )}
+        </ConfirmDialog>
+      )}
+    </section>
+  );
+}
+
 const loadAdmins = (signal) => api.admins(signal);
-const EMPTY_FORM = { name: "", email: "", password: "", role: "ADMIN" };
+const EMPTY_FORM = { name: "", email: "", role: "ADMIN" };
 
 function AdminAccounts({ admin }) {
   const notify = useToast();
@@ -150,7 +415,8 @@ function AdminAccounts({ admin }) {
   const [fieldErrors, setFieldErrors] = useState({});
   const [formError, setFormError] = useState(null);
   const [adding, setAdding] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
+  const [invite, setInvite] = useState(null);
+  const [resending, setResending] = useState(null);
   const [pendingRemove, setPendingRemove] = useState(null);
   const [removing, setRemoving] = useState(false);
   const [removeError, setRemoveError] = useState(null);
@@ -163,28 +429,45 @@ function AdminAccounts({ admin }) {
     const errors = {};
     if (form.name.trim() === "") errors.name = "Enter a name.";
     if (!/^\S+@\S+\.\S+$/.test(form.email.trim())) errors.email = "Enter a valid email address.";
-    if (form.password.length < 10) errors.password = "Use at least 10 characters.";
     setFieldErrors(errors);
     setFormError(null);
     if (Object.keys(errors).length > 0) return;
 
     setAdding(true);
     try {
-      await api.createAdmin({
-        name: form.name.trim(),
-        email: form.email.trim(),
-        password: form.password,
-        role: form.role,
-      });
-      notify(`Added ${form.name.trim()} as ${form.role === "VOLUNTEER" ? "a volunteer" : "an admin"}.`);
+      const created = await api.createAdmin({ name: form.name.trim(), email: form.email.trim(), role: form.role });
+      notify(`Invited ${form.name.trim()} as ${form.role === "VOLUNTEER" ? "a volunteer" : "an admin"}.`);
+      setInvite({ name: form.name.trim(), email: form.email.trim(), url: created?.setPasswordUrl || null });
       setForm(EMPTY_FORM);
-      setShowPassword(false);
       admins.reload();
     } catch (error) {
       if (error?.fieldErrors) setFieldErrors(error.fieldErrors);
       else setFormError(error);
     } finally {
       setAdding(false);
+    }
+  };
+
+  const resend = async (row) => {
+    setResending(row.id);
+    try {
+      const result = await api.resendInvite(row.id);
+      notify(`Sent ${row.name || row.email} a new invite.`);
+      setInvite({ name: row.name || row.email, email: row.email, url: result?.setPasswordUrl || null });
+    } catch (error) {
+      notify(errorText(error), "error");
+      admins.reload();
+    } finally {
+      setResending(null);
+    }
+  };
+
+  const copyInvite = async () => {
+    try {
+      await navigator.clipboard.writeText(invite.url);
+      notify("Link copied.");
+    } catch {
+      notify("Could not copy. Select the link and copy it yourself.", "error");
     }
   };
 
@@ -203,13 +486,7 @@ function AdminAccounts({ admin }) {
     }
   };
 
-  const describe = (key) => (fieldErrors[key] ? `${ids}-${key}-error` : undefined);
-  const fieldError = (key) =>
-    fieldErrors[key] ? (
-      <p id={`${ids}-${key}-error`} className="inline-error">
-        {fieldErrors[key]}
-      </p>
-    ) : null;
+  const fieldError = (key) => <FieldError id={`${ids}-${key}-error`} message={fieldErrors[key]} />;
 
   return (
     <section className="card" aria-labelledby={`${ids}-title`}>
@@ -249,7 +526,8 @@ function AdminAccounts({ admin }) {
                 return (
                   <tr key={row.id}>
                     <th scope="row" data-label="Name">
-                      {row.name || "(no name)"} {isSelf && <Tag tone="neutral">You</Tag>}
+                      {row.name || "(no name)"} {isSelf && <Tag tone="neutral">You</Tag>}{" "}
+                      {row.pending && <Tag tone="pending">Invited, no password yet</Tag>}
                     </th>
                     <td data-label="Email" className="cell-break">
                       {row.email}
@@ -264,17 +542,30 @@ function AdminAccounts({ admin }) {
                       {isSelf ? (
                         <span className="muted small">You cannot remove yourself</span>
                       ) : (
-                        <button
-                          type="button"
-                          className="btn btn-small btn-danger-quiet"
-                          aria-label={`Remove ${roleLabel(row.role).toLowerCase()} ${row.name || row.email}`}
-                          onClick={() => {
-                            setRemoveError(null);
-                            setPendingRemove(row);
-                          }}
-                        >
-                          Remove
-                        </button>
+                        <>
+                          {row.pending && (
+                            <button
+                              type="button"
+                              className="btn btn-small"
+                              disabled={resending === row.id}
+                              aria-label={`Resend invite to ${row.name || row.email}`}
+                              onClick={() => resend(row)}
+                            >
+                              {resending === row.id ? "Sending…" : "Resend invite"}
+                            </button>
+                          )}{" "}
+                          <button
+                            type="button"
+                            className="btn btn-small btn-danger-quiet"
+                            aria-label={`Remove ${roleLabel(row.role).toLowerCase()} ${row.name || row.email}`}
+                            onClick={() => {
+                              setRemoveError(null);
+                              setPendingRemove(row);
+                            }}
+                          >
+                            Remove
+                          </button>
+                        </>
                       )}
                     </td>
                   </tr>
@@ -285,8 +576,32 @@ function AdminAccounts({ admin }) {
         </div>
       )}
 
+      {invite && (
+        <div className="notice invite-notice" role="status">
+          <p>
+            <strong>{invite.name}</strong> was emailed a link at {invite.email} to set their own password. It works for 7
+            days and can be used once.
+          </p>
+          {invite.url && (
+            <>
+              <p>If the email does not arrive, send them this link yourself. It will not be shown again.</p>
+              <div className="input-with-button">
+                <input type="text" readOnly value={invite.url} aria-label="Set-password link" onFocus={(e) => e.target.select()} />
+                <button type="button" className="btn btn-small" onClick={copyInvite}>
+                  Copy
+                </button>
+              </div>
+            </>
+          )}
+          <button type="button" className="link-btn" onClick={() => setInvite(null)}>
+            Dismiss
+          </button>
+        </div>
+      )}
+
       <form className="admin-form" onSubmit={add} noValidate aria-labelledby={`${ids}-add`}>
         <h3 id={`${ids}-add`}>Add an account</h3>
+        <p className="hint">They get an email with a link to choose their own password.</p>
         <div className="field account-type">
           <label htmlFor={`${ids}-role`}>Account type</label>
           <select id={`${ids}-role`} value={form.role} onChange={set("role")} aria-describedby={`${ids}-role-hint`}>
@@ -304,40 +619,18 @@ function AdminAccounts({ admin }) {
         <div className="admin-form-grid">
           <div className="field">
             <label htmlFor={`${ids}-name`}>Name</label>
-            <input id={`${ids}-name`} type="text" autoComplete="off" value={form.name} onChange={set("name")} aria-invalid={fieldErrors.name ? true : undefined} aria-describedby={describe("name")} />
+            <input id={`${ids}-name`} type="text" autoComplete="off" value={form.name} onChange={set("name")} {...errorProps(fieldErrors.name, `${ids}-name-error`)} />
             {fieldError("name")}
           </div>
           <div className="field">
             <label htmlFor={`${ids}-email`}>Email</label>
-            <input id={`${ids}-email`} type="email" autoComplete="off" value={form.email} onChange={set("email")} aria-invalid={fieldErrors.email ? true : undefined} aria-describedby={describe("email")} />
+            <input id={`${ids}-email`} type="email" autoComplete="off" value={form.email} onChange={set("email")} {...errorProps(fieldErrors.email, `${ids}-email-error`)} />
             {fieldError("email")}
           </div>
-          <div className="field">
-            <label htmlFor={`${ids}-password`}>Password</label>
-            <div className="input-with-button">
-              <input
-                id={`${ids}-password`}
-                type={showPassword ? "text" : "password"}
-                autoComplete="new-password"
-                minLength={10}
-                value={form.password}
-                onChange={set("password")}
-                aria-invalid={fieldErrors.password ? true : undefined}
-                aria-describedby={`${ids}-password-hint${fieldErrors.password ? ` ${ids}-password-error` : ""}`}
-              />
-              <button type="button" className="btn btn-small" aria-pressed={showPassword} onClick={() => setShowPassword((v) => !v)}>
-                {showPassword ? "Hide" : "Show"}
-              </button>
-            </div>
-            <p id={`${ids}-password-hint`} className="hint">
-              At least 10 characters. Share it with them privately; they sign in with this email and password.
-            </p>
-            {fieldError("password")}
-          </div>
         </div>
-        <InlineError>{formError ? errorText(formError) : null}</InlineError>
+        <InlineError error={formError} />
         <button type="submit" className="btn btn-primary" disabled={adding}>
-          {adding ? "Adding…" : form.role === "VOLUNTEER" ? "Add volunteer" : "Add admin"}
+          {adding ? "Sending invite…" : form.role === "VOLUNTEER" ? "Invite volunteer" : "Invite admin"}
         </button>
       </form>
 
@@ -361,13 +654,85 @@ function AdminAccounts({ admin }) {
   );
 }
 
+function ChangePassword() {
+  const notify = useToast();
+  const ids = useId();
+  const [form, setForm] = useState({ current: "", next: "", repeat: "" });
+  const [fieldErrors, setFieldErrors] = useState({});
+  const [formError, setFormError] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  const set = (key) => (event) => setForm((prev) => ({ ...prev, [key]: event.target.value }));
+
+  const save = async (event) => {
+    event.preventDefault();
+    const errors = {};
+    if (form.current === "") errors.currentPassword = "Enter your current password.";
+    if (form.next.length < MIN_PASSWORD_LENGTH) errors.newPassword = `Use at least ${MIN_PASSWORD_LENGTH} characters.`;
+    else if (form.next.length > MAX_PASSWORD_LENGTH) errors.newPassword = `Use at most ${MAX_PASSWORD_LENGTH} characters.`;
+    else if (form.next !== form.repeat) errors.repeat = "The two passwords do not match.";
+    setFieldErrors(errors);
+    setFormError(null);
+    if (Object.keys(errors).length > 0) return;
+
+    setSaving(true);
+    try {
+      await api.changePassword(form.current, form.next);
+      notify("Password changed. Other devices signed in to your account were signed out.");
+      setForm({ current: "", next: "", repeat: "" });
+    } catch (error) {
+      if (error?.fieldErrors) setFieldErrors(error.fieldErrors);
+      else setFormError(error);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const field = (key, name, label, autoComplete) => (
+    <div className="field">
+      <label htmlFor={`${ids}-${key}`}>{label}</label>
+      <input
+        id={`${ids}-${key}`}
+        type="password"
+        autoComplete={autoComplete}
+        value={form[key]}
+        onChange={set(key)}
+        {...errorProps(fieldErrors[name], `${ids}-${key}-error`)}
+      />
+      <FieldError id={`${ids}-${key}-error`} message={fieldErrors[name]} />
+    </div>
+  );
+
+  return (
+    <section className="card" aria-labelledby={`${ids}-title`}>
+      <div className="card-head">
+        <h2 id={`${ids}-title`}>Your password</h2>
+        <span className="muted">Forgot it? Sign out and use “Forgot password?” on the sign-in page.</span>
+      </div>
+      <form className="admin-form" onSubmit={save} noValidate aria-labelledby={`${ids}-title`}>
+        <div className="admin-form-grid">
+          {field("current", "currentPassword", "Current password", "current-password")}
+          {field("next", "newPassword", "New password", "new-password")}
+          {field("repeat", "repeat", "New password again", "new-password")}
+        </div>
+        <InlineError error={formError} />
+        <button type="submit" className="btn btn-primary" disabled={saving}>
+          {saving ? "Saving…" : "Change password"}
+        </button>
+      </form>
+    </section>
+  );
+}
+
 export default function Settings({ admin }) {
   return (
     <>
       <PageHeader title="Settings" description="Open or close registration, set up check-in events and manage who can sign in." />
       <RegistrationGate />
       <EventsCard />
+      <DiscordVerification />
       <AdminAccounts admin={admin} />
+      <ChangePassword />
     </>
   );
 }

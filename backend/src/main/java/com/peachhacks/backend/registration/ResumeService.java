@@ -33,7 +33,8 @@ public class ResumeService {
 	/** One person in the sponsor resume book. */
 	public record BookEntry(UUID registrationId, String firstName, String lastName, String email,
 			String schoolEmail, String school,
-			String levelOfStudy, String major, String linkedinUrl) {
+			String levelOfStudy, Integer graduationYear, Integer graduationMonth, String major, String linkedinUrl,
+			String githubUrl) {
 	}
 
 	/** A stored resume ready to send: its file name and bytes. */
@@ -42,7 +43,8 @@ public class ResumeService {
 
 	private static final List<String> INDEX_HEADER = List.of("first_name", "last_name", "email",
 			"school_email", "school",
-			"level_of_study", "major", "linkedin_url", "file_name");
+			"level_of_study", "graduation_year", "graduation_month", "major", "linkedin_url", "github_url",
+			"file_name");
 
 	private static final int MAX_NAME_PART = 40;
 
@@ -56,17 +58,16 @@ public class ResumeService {
 	}
 
 	/** Joins the caller's transaction so the registration and its resume are stored together. */
-	void store(UUID registrationId, ResumeFile file, boolean sponsorOptIn) {
+	void store(UUID registrationId, ResumeFile file) {
 		jdbc.sql("""
 				insert into registration_resumes
-					(registration_id, file_name, size_bytes, content, sponsor_opt_in, uploaded_at)
-				values (:id, :fileName, :size, :content, :optIn, :uploadedAt)
+					(registration_id, file_name, size_bytes, content, uploaded_at)
+				values (:id, :fileName, :size, :content, :uploadedAt)
 				""")
 			.param("id", registrationId)
 			.param("fileName", file.fileName())
 			.param("size", file.content().length)
 			.param("content", file.content())
-			.param("optIn", sponsorOptIn)
 			.param("uploadedAt", Timestamp.from(Instant.now()))
 			.update();
 	}
@@ -104,16 +105,16 @@ public class ResumeService {
 	}
 
 	/**
-	 * Everyone whose resume may go to sponsors: they opted in, they uploaded one and they
-	 * were accepted. attendedOnly narrows it to people with a general check-in.
+	 * Everyone whose resume goes to sponsors: they uploaded one (the form says at the upload
+	 * that sponsors receive it) and they were accepted. attendedOnly narrows it to people with a general check-in.
 	 */
 	public List<BookEntry> book(boolean attendedOnly) {
 		return jdbc.sql("""
-				select r.id, r.first_name, r.last_name, r.email, r.school_email, r.school, r.level_of_study,
-					coalesce(r.major_other, r.major_field_of_study) as major, r.linkedin_url
+				select r.id, r.first_name, r.last_name, r.email, r.school_email, r.school, r.level_of_study, r.graduation_year, r.graduation_month,
+					coalesce(r.major_other, r.major_field_of_study) as major, r.linkedin_url, r.github_url
 				from registrations r
 				join registration_resumes x on x.registration_id = r.id
-				where x.sponsor_opt_in and r.status = 'ACCEPTED'
+				where r.status = 'ACCEPTED'
 					and (:attendedOnly = false or exists (select 1 from check_ins c
 						join events e on e.id = c.event_id where c.registration_id = r.id and e.general))
 				order by lower(r.last_name), lower(r.first_name), r.id
@@ -122,14 +123,16 @@ public class ResumeService {
 			.query((rs, rowNum) -> new BookEntry(rs.getObject("id", UUID.class), rs.getString("first_name"),
 					rs.getString("last_name"), rs.getString("email"), rs.getString("school_email"),
 					rs.getString("school"),
-					rs.getString("level_of_study"), rs.getString("major"), rs.getString("linkedin_url")))
+					rs.getString("level_of_study"), rs.getObject("graduation_year", Integer.class),
+					rs.getObject("graduation_month", Integer.class),
+					rs.getString("major"), rs.getString("linkedin_url"), rs.getString("github_url")))
 			.list();
 	}
 
 	/**
 	 * Writes one PDF per entry and an index.csv straight to the stream, holding a single
-	 * resume in memory at a time. The opt-in is checked again per file, so someone who
-	 * withdrew or was removed after the list was read is left out of both.
+	 * resume in memory at a time. Each file is read again as it is written, so someone whose
+	 * resume was removed after the list was read is left out of both.
 	 */
 	public void writeBook(List<BookEntry> entries, OutputStream out) throws IOException {
 		Csv index = new Csv(INDEX_HEADER);
@@ -137,7 +140,7 @@ public class ResumeService {
 		try (ZipOutputStream zip = new ZipOutputStream(out, StandardCharsets.UTF_8)) {
 			for (BookEntry entry : entries) {
 				Optional<byte[]> content = jdbc
-					.sql("select content from registration_resumes where registration_id = :id and sponsor_opt_in")
+					.sql("select content from registration_resumes where registration_id = :id")
 					.param("id", entry.registrationId())
 					.query((rs, rowNum) -> rs.getBytes("content"))
 					.optional();
@@ -150,7 +153,8 @@ public class ResumeService {
 				zip.closeEntry();
 				index.row(Arrays.asList(entry.firstName(), entry.lastName(), entry.email(), entry.schoolEmail(),
 						entry.school(),
-						entry.levelOfStudy(), entry.major(), entry.linkedinUrl(), fileName));
+						entry.levelOfStudy(), entry.graduationYear(), entry.graduationMonth(), entry.major(), entry.linkedinUrl(),
+						entry.githubUrl(), fileName));
 			}
 			zip.putNextEntry(new ZipEntry("index.csv"));
 			zip.write(index.toString().getBytes(StandardCharsets.UTF_8));

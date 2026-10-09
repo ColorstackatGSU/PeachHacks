@@ -3,6 +3,7 @@ package com.peachhacks.backend.email;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -54,6 +55,8 @@ public class EmailComposer {
 
 	private static final int PREHEADER_LENGTH = 110;
 
+	private static final int MAX_PRINTED_URL_LENGTH = 100;
+
 	/** A link shown as a button, with the plain URL underneath for clients that drop the button. */
 	public record Action(String label, String url) {
 	}
@@ -63,15 +66,16 @@ public class EmailComposer {
 	}
 
 	/**
-	 * What a system email says, in reading order: heading, opening paragraphs, the actions,
-	 * an optional image, closing paragraphs. Paragraphs are plain text. preheader is the
-	 * preview line an inbox shows beside the subject.
+	 * What a system email says, in reading order: heading, opening paragraphs, the primary
+	 * action, an optional image, the secondary actions, closing paragraphs. Paragraphs are
+	 * plain text. preheader is the preview line an inbox shows beside the subject.
 	 */
-	public record Content(String preheader, String heading, List<String> opening, Action primary, Action secondary,
-			InlineImage image, List<String> closing) {
+	public record Content(String preheader, String heading, List<String> opening, Action primary,
+			List<Action> secondary, InlineImage image, List<String> closing) {
 
 		public Content {
 			opening = List.copyOf(opening);
+			secondary = (secondary != null) ? List.copyOf(secondary) : List.of();
 			closing = (closing != null) ? List.copyOf(closing) : List.of();
 		}
 
@@ -83,8 +87,11 @@ public class EmailComposer {
 			return new Content(preheader, heading, opening, new Action(label, url), secondary, image, closing);
 		}
 
+		/** Adds one; an email can carry several, shown in the order they were added. */
 		public Content withSecondary(String label, String url) {
-			return new Content(preheader, heading, opening, primary, new Action(label, url), image, closing);
+			List<Action> actions = new ArrayList<>(secondary);
+			actions.add(new Action(label, url));
+			return new Content(preheader, heading, opening, primary, actions, image, closing);
 		}
 
 		public Content withImage(InlineImage inline) {
@@ -151,7 +158,7 @@ public class EmailComposer {
 			.append(escape(content.heading()))
 			.append("</h1>");
 		for (String paragraph : content.opening()) {
-			appendParagraph(html, text, paragraph, false);
+			appendParagraph(html, text, escape(paragraph), paragraph);
 		}
 		if (content.primary() != null) {
 			appendAction(html, text, content.primary(), true);
@@ -168,11 +175,11 @@ public class EmailComposer {
 				.append(escape(image.alt()))
 				.append("\" style=\"display:block;border:0;background:#ffffff\"></p>");
 		}
-		if (content.secondary() != null) {
-			appendAction(html, text, content.secondary(), false);
+		for (Action action : content.secondary()) {
+			appendAction(html, text, action, false);
 		}
 		for (String paragraph : content.closing()) {
-			appendParagraph(html, text, paragraph, false);
+			appendParagraph(html, text, escape(paragraph), paragraph);
 		}
 		return message(to, subject.strip(), content.preheader(), html, text, footer);
 	}
@@ -180,17 +187,22 @@ public class EmailComposer {
 	/**
 	 * An organizer-written campaign. The body is plain text: blank lines separate
 	 * paragraphs, {{firstName}} and {{lastName}} are filled in, and bare http(s) URLs
-	 * become links. Nothing else is markup.
+	 * become links. Nothing else is markup. Links are made from the organizer's text
+	 * before the names go in, so a name can never become a link.
 	 */
 	public EmailMessage composeCampaign(String to, String subject, String body, String firstName, String lastName,
 			Footer footer) {
 		String personalSubject = personalize(subject, firstName, lastName).replaceAll("[\\r\\n]+", " ").strip();
-		String personalBody = personalize(body, firstName, lastName).replace("\r\n", "\n").replace('\r', '\n').strip();
+		String template = body.replace("\r\n", "\n").replace('\r', '\n').strip();
+		String personalBody = personalize(template, firstName, lastName);
 		StringBuilder html = new StringBuilder();
 		StringBuilder text = new StringBuilder();
-		for (String paragraph : PARAGRAPH_BREAK.split(personalBody)) {
+		for (String paragraph : PARAGRAPH_BREAK.split(template)) {
 			if (!paragraph.isBlank()) {
-				appendParagraph(html, text, paragraph.strip(), true);
+				String linked = linkify(paragraph.strip());
+				appendParagraph(html, text,
+						personalize(linked, escapeOrNull(firstName), escapeOrNull(lastName)),
+						personalize(paragraph.strip(), firstName, lastName));
 			}
 		}
 		String flat = personalBody.replaceAll("\\s+", " ");
@@ -319,10 +331,9 @@ public class EmailComposer {
 		return new EmailMessage(to, subject, html.toString(), text.toString(), headers);
 	}
 
-	private static void appendParagraph(StringBuilder html, StringBuilder text, String paragraph, boolean linkUrls) {
-		String escaped = linkUrls ? linkify(paragraph) : escape(paragraph);
+	private static void appendParagraph(StringBuilder html, StringBuilder text, String escaped, String plain) {
 		html.append("<p style=\"").append(PARAGRAPH_STYLE).append("\">").append(escaped.replace("\n", "<br>")).append("</p>");
-		text.append(paragraph).append("\n\n");
+		text.append(plain).append("\n\n");
 	}
 
 	/**
@@ -333,6 +344,9 @@ public class EmailComposer {
 		String url = escape(action.url());
 		String label = escape(action.label());
 		String fill = primary ? PEACH : CREAM;
+		// A Google Wallet link is a signed token of well over a thousand characters; printed
+		// in full it buries the rest of the email.
+		boolean shortEnough = action.url().length() <= MAX_PRINTED_URL_LENGTH;
 		int width = Math.max(200, action.label().length() * 10 + 64);
 		html.append("<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\"")
 			.append(" style=\"margin:4px 0 10px\"><tr><td>")
@@ -367,12 +381,13 @@ public class EmailComposer {
 			.append("<p class=\"ph-url\" style=\"margin:0 0 20px;font-family:")
 			.append(FONT)
 			.append(";font-size:13px;line-height:1.5;color:#5b7286;word-break:break-all\">")
-			.append("Or open this link: <a class=\"ph-link\" href=\"")
+			.append(shortEnough ? "Or open this link: " : "Button not working? ")
+			.append("<a class=\"ph-link\" href=\"")
 			.append(url)
 			.append("\" style=\"color:")
 			.append(NAVY)
 			.append(";text-decoration:underline\">")
-			.append(url)
+			.append(shortEnough ? url : "Open this link instead")
 			.append("</a></p>");
 		text.append(action.label()).append(": ").append(action.url()).append("\n\n");
 	}
@@ -422,6 +437,10 @@ public class EmailComposer {
 
 	private static String escape(String value) {
 		return HtmlUtils.htmlEscape(value, "UTF-8");
+	}
+
+	private static String escapeOrNull(String value) {
+		return (value != null) ? escape(value) : null;
 	}
 
 	private static String personalize(String template, String firstName, String lastName) {

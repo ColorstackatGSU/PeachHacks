@@ -1,8 +1,8 @@
 import { useSyncExternalStore } from 'react';
+import { API_BASE_URL } from '../forms/api.js';
+import { previewHeaders } from '../forms/preview.js';
 import { REGISTER_PANEL_HREF } from './site.js';
 
-const DEFAULT_API_BASE = import.meta.env.DEV ? 'http://localhost:8080' : 'https://api.peachhacks.com';
-const API_BASE = (import.meta.env.VITE_API_BASE_URL || DEFAULT_API_BASE).replace(/\/+$/, '');
 const STATUS_TIMEOUT_MS = 5000;
 const CACHE_KEY = 'peachhacks:registration-open';
 
@@ -49,7 +49,10 @@ function requestStatus() {
   requested = true;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), STATUS_TIMEOUT_MS);
-  fetch(`${API_BASE}/public/status`, { headers: { Accept: 'application/json' }, signal: controller.signal })
+  fetch(`${API_BASE_URL}/public/status`, {
+    headers: { Accept: 'application/json', ...previewHeaders() },
+    signal: controller.signal,
+  })
     .then((response) => (response.ok ? response.json() : null))
     .then((data) => {
       if (typeof data?.registrationOpen !== 'boolean') settle('error');
@@ -67,14 +70,18 @@ function subscribe(listener) {
 
 const getOpen = () => registrationOpen;
 const getStatus = () => status;
+// The pre-rendered homepage is built before anyone knows whether registration
+// is open, so the first render always carries the pre-registration wording.
+const closedOnServer = () => false;
+const loadingOnServer = () => 'loading';
 
 export function useRegistrationCta() {
-  return useSyncExternalStore(subscribe, getOpen) ? REGISTER_CTA : PRE_REGISTER_CTA;
+  return useSyncExternalStore(subscribe, getOpen, closedOnServer) ? REGISTER_CTA : PRE_REGISTER_CTA;
 }
 
 // loading | open | closed | error
 export function useRegistrationStatus() {
-  return useSyncExternalStore(subscribe, getStatus);
+  return useSyncExternalStore(subscribe, getStatus, loadingOnServer);
 }
 
 export function retryRegistrationStatus() {

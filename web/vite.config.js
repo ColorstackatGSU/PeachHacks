@@ -14,7 +14,9 @@ export default defineConfig({
       input: {
         main: resolve(rootDir, "index.html"),
         confirmEmail: resolve(rootDir, "confirm-email.html"),
+        privacy: resolve(rootDir, "privacy.html"),
         sponsorForm: resolve(rootDir, "sponsor-form.html"),
+        terms: resolve(rootDir, "terms.html"),
         ticket: resolve(rootDir, "ticket.html"),
         unsubscribe: resolve(rootDir, "unsubscribe.html"),
       },

@@ -4,11 +4,15 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 
+import com.peachhacks.backend.admin.AdminPrincipal;
 import com.peachhacks.backend.common.Csv;
 import com.peachhacks.backend.common.PageResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -19,6 +23,8 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/admin/pre-registrations")
 public class AdminPreRegistrationController {
+
+	private static final Logger log = LoggerFactory.getLogger(AdminPreRegistrationController.class);
 
 	private final PreRegistrationService service;
 
@@ -37,7 +43,8 @@ public class AdminPreRegistrationController {
 	@GetMapping("/export.csv")
 	ResponseEntity<byte[]> export(@RequestParam(required = false) String q,
 			@RequestParam(required = false) String school,
-			@RequestParam(required = false) Boolean schoolEmailConfirmed) {
+			@RequestParam(required = false) Boolean schoolEmailConfirmed,
+			@AuthenticationPrincipal AdminPrincipal admin) {
 		Csv csv = new Csv(List.of("id", "firstName", "lastName", "email", "school", "schoolEmail", "unsubscribed",
 				"registered", "createdAt", "school_email_confirmed"));
 		for (PreRegistrationView row : service.search(q, school, schoolEmailConfirmed, Pageable.unpaged())) {
@@ -45,6 +52,8 @@ public class AdminPreRegistrationController {
 					row.schoolEmail(), row.unsubscribed(), row.registered(), row.createdAt(),
 					row.schoolEmailConfirmed()));
 		}
+		log.info("Pre-registrations CSV of {} rows ({}) exported by {}", csv.rows(),
+				Csv.filters("q", q, "school", school, "schoolEmailConfirmed", schoolEmailConfirmed), admin.email());
 		return csv.toResponse("peachhacks-pre-registrations");
 	}
 

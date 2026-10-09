@@ -6,12 +6,16 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import com.jayway.jsonpath.JsonPath;
+import com.peachhacks.backend.admin.AdminRole;
 import com.peachhacks.backend.common.Csv;
 import com.peachhacks.backend.config.EmailProperties;
+import com.peachhacks.backend.config.PlatformProperties;
 import com.peachhacks.backend.email.EmailComposer.Content;
 import com.peachhacks.backend.email.EmailComposer.Footer;
 import com.sun.net.httpserver.HttpServer;
@@ -19,6 +23,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import org.springframework.mock.env.MockEnvironment;
 import org.springframework.web.client.RestClientException;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -34,7 +39,14 @@ class EmailDeliveryTests {
 
 	private final List<String> authorizationHeaders = new CopyOnWriteArrayList<>();
 
+	private final List<String> idempotencyKeys = new CopyOnWriteArrayList<>();
+
 	private final AtomicInteger responseStatus = new AtomicInteger(200);
+
+	/** Answers given before responseStatus applies, one per request. */
+	private final Queue<Integer> firstResponses = new ConcurrentLinkedQueue<>();
+
+	private volatile String responseBody = "{\"id\":\"stub\"}";
 
 	private HttpServer server;
 
@@ -45,7 +57,8 @@ class EmailDeliveryTests {
 
 	private final List<EmailMessage> sent = new ArrayList<>();
 
-	private final MailService mail = new MailService(sent::add, composer, Runnable::run, properties);
+	private final MailService mail = new MailService(sent::add, composer, Runnable::run, properties,
+			new PlatformProperties("https://platform.peachhacks.com/", null, null, null, null, null, null));
 
 	@BeforeEach
 	void startServer() throws Exception {
@@ -53,9 +66,11 @@ class EmailDeliveryTests {
 		server.createContext("/emails", exchange -> {
 			requestBodies.add(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
 			authorizationHeaders.add(exchange.getRequestHeaders().getFirst("Authorization"));
-			byte[] body = "{\"id\":\"stub\"}".getBytes(StandardCharsets.UTF_8);
+			idempotencyKeys.add(String.valueOf(exchange.getRequestHeaders().getFirst("Idempotency-Key")));
+			byte[] body = responseBody.getBytes(StandardCharsets.UTF_8);
+			Integer scripted = firstResponses.poll();
 			exchange.getResponseHeaders().add("Content-Type", "application/json");
-			exchange.sendResponseHeaders(responseStatus.get(), body.length);
+			exchange.sendResponseHeaders((scripted != null) ? scripted : responseStatus.get(), body.length);
 			exchange.getResponseBody().write(body);
 			exchange.close();
 		});
@@ -119,10 +134,15 @@ class EmailDeliveryTests {
 		assertThat(message.subject()).contains("You're in");
 		assertThat(message.text()).contains("Hi Ada,")
 			.contains("accepted")
+			.contains("Open the hacker platform: https://platform.peachhacks.com\n")
+			.contains("Connect your Discord")
 			.contains("View your ticket: " + url)
 			.doesNotContainIgnoringCase("wallet");
+		assertThat(message.text().indexOf("Open the hacker platform")).as("the platform comes before the ticket link")
+			.isLessThan(message.text().indexOf("View your ticket"));
 		assertThat(message.html()).contains("href=\"https://www.peachhacks.com/ticket?t=abc&amp;x=1\"")
 			.contains(">View your ticket</a>")
+			.contains(">Open the hacker platform</a>")
 			.contains("src=\"cid:peachhacks-ticket\"")
 			.contains(">You&#39;re in!</h1>")
 			.doesNotContainIgnoringCase("wallet");
@@ -138,6 +158,14 @@ class EmailDeliveryTests {
 		assertThat(sent.get(1).html())
 			.contains("href=\"https://pay.google.com/gp/v/save/a.b.c\"")
 			.contains(">Add to Google Wallet</a>");
+
+		String longLink = "https://pay.google.com/gp/v/save/" + "a".repeat(1500);
+		mail.sendTicket("ada@example.com", "Ada", url, PNG, longLink);
+		assertThat(sent.get(2).html()).as("a very long link is offered, not printed")
+			.contains("href=\"" + longLink + "\"")
+			.contains(">Open this link instead</a>")
+			.doesNotContain(">" + longLink + "</a>");
+		assertThat(sent.get(2).text()).contains("Add to Google Wallet: " + longLink);
 	}
 
 	@Test
@@ -156,6 +184,95 @@ class EmailDeliveryTests {
 				"http://127.0.0.1:" + server.getAddress().getPort());
 
 		assertThatThrownBy(() -> sender.send(plain())).isInstanceOf(RestClientException.class);
+		assertThat(requestBodies).as("a rejection is final, so it is not retried").hasSize(1);
+	}
+
+	@Test
+	void resendSenderRetriesServerErrorsAndRateLimitsWithTheSameIdempotencyKey() {
+		firstResponses.addAll(List.of(500, 429, 503));
+
+		quickSender().send(plain());
+
+		assertThat(requestBodies).hasSize(4);
+		assertThat(idempotencyKeys).hasSize(4).doesNotContain("null");
+		assertThat(idempotencyKeys.stream().distinct().toList()).as("every attempt is the same send").hasSize(1);
+
+		quickSender().send(plain());
+		assertThat(idempotencyKeys.get(4)).as("another send is another key").isNotEqualTo(idempotencyKeys.get(0));
+	}
+
+	@Test
+	void resendSenderGivesUpAfterFourAttempts() {
+		responseStatus.set(503);
+
+		assertThatThrownBy(() -> quickSender().send(plain())).isInstanceOf(RestClientException.class)
+			.hasMessageContaining("503");
+		assertThat(requestBodies).hasSize(ResendEmailSender.MAX_ATTEMPTS);
+	}
+
+	@Test
+	void anIdempotencyKeyOnTheMessageIsSentAndARepeatTheProviderRecognisesCountsAsSent() {
+		quickSender().send(plain().withIdempotencyKey("acceptance-abc-1"));
+		assertThat(idempotencyKeys).containsExactly("acceptance-abc-1");
+
+		responseStatus.set(409);
+		responseBody = "{\"statusCode\":409,\"name\":\"invalid_idempotent_request\",\"message\":\"Same key, different payload\"}";
+		quickSender().send(plain().withIdempotencyKey("acceptance-abc-1"));
+		assertThat(requestBodies).as("taken already, so not retried and not an error").hasSize(2);
+
+		assertThatThrownBy(() -> quickSender().send(plain())).as("only for a key the caller chose")
+			.isInstanceOf(RestClientException.class);
+		responseBody = "{\"statusCode\":409,\"name\":\"concurrent_idempotent_requests\"}";
+		assertThatThrownBy(() -> quickSender().send(plain().withIdempotencyKey("acceptance-abc-1")))
+			.isInstanceOf(RestClientException.class);
+	}
+
+	@Test
+	void productionRefusesToStartWithoutAnEmailProviderAndDevelopmentLogsInstead() {
+		EmailConfig config = new EmailConfig();
+		EmailProperties configured = new EmailProperties("re_test_key", null, null, null, null, Duration.ZERO);
+		MockEnvironment production = new MockEnvironment();
+		production.setActiveProfiles("prod");
+		MockEnvironment local = new MockEnvironment();
+		local.setActiveProfiles("local");
+
+		assertThatThrownBy(() -> config.emailSender(properties, production)).isInstanceOf(IllegalStateException.class)
+			.hasMessageContaining("RESEND_API_KEY is not set");
+		assertThat(config.emailSender(configured, production)).isInstanceOf(ResendEmailSender.class);
+		assertThat(config.emailSender(properties, local)).isInstanceOf(LoggingEmailSender.class);
+		assertThat(config.emailSender(properties, new MockEnvironment())).isInstanceOf(LoggingEmailSender.class);
+	}
+
+	@Test
+	void aNameThatLooksLikeALinkIsNeverTurnedIntoOne() {
+		EmailMessage message = composer.composeCampaign("ada@example.com", "Hi {{firstName}}",
+				"Hi {{firstName}} {{ lastName }},\n\nRegister at https://www.peachhacks.com/register today.",
+				"https://evil.example/login", "<b>http://evil.example</b>", Footer.REGISTERED);
+
+		assertThat(message.html()).contains("Hi https://evil.example/login &lt;b&gt;http://evil.example&lt;/b&gt;,")
+			.contains("href=\"https://www.peachhacks.com/register\"")
+			.doesNotContain("href=\"https://evil.example")
+			.doesNotContain("href=\"http://evil.example")
+			.doesNotContain("<b>");
+		assertThat(message.text()).startsWith("Hi https://evil.example/login <b>http://evil.example</b>,");
+	}
+
+	@Test
+	void theAlreadyRegisteredNoticeCarriesNothingFromTheNewSubmission() {
+		mail.sendAlreadyRegistered("ada@example.com");
+
+		assertThat(sent).hasSize(1);
+		EmailMessage message = sent.get(0);
+		assertThat(message.to()).isEqualTo("ada@example.com");
+		assertThat(message.subject()).isEqualTo("You're already registered for PeachHacks");
+		assertThat(message.text()).startsWith("Hi,")
+			.contains("You are already registered, so nothing was changed")
+			.contains("you can ignore this email")
+			.contains("You are receiving this because you registered for PeachHacks.")
+			.doesNotContainIgnoringCase("unsubscribe");
+		assertThat(message.html()).contains(LOGO).contains(">You&#39;re already registered</h1>");
+		assertThat(message.headers()).isEmpty();
+		assertThat(message.attachments()).isEmpty();
 	}
 
 	@Test
@@ -215,7 +332,7 @@ class EmailDeliveryTests {
 	void essentialEmailsSayWhyTheyWereSentAndNeverOfferToUnsubscribe() {
 		sendEverySystemEmail("Ada", "Grace");
 
-		assertThat(sent).hasSize(7);
+		assertThat(sent).hasSize(8);
 		for (EmailMessage message : sent) {
 			assertThat(message.headers()).as(message.subject()).doesNotContainKey("List-Unsubscribe");
 			assertThat(message.html()).as(message.subject())
@@ -253,8 +370,9 @@ class EmailDeliveryTests {
 		assertButton(sent.get(3), "View your ticket", "https://www.peachhacks.com/ticket?t=abc");
 		assertButton(sent.get(4), "View your ticket", "https://www.peachhacks.com/ticket?t=abc");
 		assertButton(sent.get(4), "Add to Google Wallet", "https://pay.google.com/gp/v/save/a.b.c");
-		assertButton(sent.get(5), "Sign in to the admin site", "https://admin.peachhacks.com");
-		assertButton(sent.get(6), "Sign in to check-in", "https://admin.peachhacks.com");
+		assertButton(sent.get(5), "Set your password", "https://admin.peachhacks.com/#/set-password?token=tok");
+		assertButton(sent.get(6), "Set your password", "https://admin.peachhacks.com/#/set-password?token=tok");
+		assertButton(sent.get(7), "Choose a new password", "https://admin.peachhacks.com/#/set-password?token=tok");
 		assertThat(sent.get(0).html()).doesNotContain("v:roundrect");
 		assertThat(sent.get(1).html()).doesNotContain("v:roundrect");
 	}
@@ -323,23 +441,24 @@ class EmailDeliveryTests {
 	}
 
 	@Test
-	void adminWelcomeLinksToTheAdminSiteAndNeverCarriesAPassword() {
-		mail.sendAdminWelcome("new@peachhacks.com", "Ada", "Grace");
+	void adminInviteLinksToChoosingAPasswordAndNeverCarriesOne() {
+		mail.sendInvite("new@peachhacks.com", "Ada", AdminRole.ADMIN, "Grace", "tok_en-1", Duration.ofDays(7));
 
 		assertThat(sent).hasSize(1);
 		EmailMessage message = sent.get(0);
 		assertThat(message.to()).isEqualTo("new@peachhacks.com");
 		assertThat(message.text()).contains("Hi Ada,")
 			.contains("Grace added you as an admin")
-			.contains("https://admin.peachhacks.com")
-			.doesNotContain("admin.peachhacks.com/")
+			.contains("Set your password: https://admin.peachhacks.com/#/set-password?token=tok_en-1")
+			.contains("works for 7 days")
+			.contains("ask Grace to send a new one")
 			.doesNotContainIgnoringCase("unsubscribe");
 		assertThat(message.headers()).isEmpty();
 	}
 
 	@Test
-	void volunteerWelcomeExplainsCheckInAndNeverCarriesAPassword() {
-		mail.sendVolunteerWelcome("door@peachhacks.com", "Ada", "Grace");
+	void volunteerInviteExplainsCheckInAndLinksToChoosingAPassword() {
+		mail.sendInvite("door@peachhacks.com", "Ada", AdminRole.VOLUNTEER, "Grace", "tok_en-1", Duration.ofDays(1));
 
 		assertThat(sent).hasSize(1);
 		EmailMessage message = sent.get(0);
@@ -348,15 +467,31 @@ class EmailDeliveryTests {
 		assertThat(message.text()).contains("Hi Ada,")
 			.contains("Grace added you as a check-in volunteer")
 			.contains("check them in")
-			.contains("https://admin.peachhacks.com")
-			.contains("ask them for it")
+			.contains("https://admin.peachhacks.com/#/set-password?token=tok_en-1")
+			.contains("works for 1 day and")
 			.doesNotContain("as an admin")
 			.doesNotContainIgnoringCase("unsubscribe");
 	}
 
+	@Test
+	void passwordResetSaysHowLongTheLinkLastsAndThatIgnoringItIsSafe() {
+		mail.sendPasswordReset("new@peachhacks.com", "Ada", "tok_en-1", Duration.ofHours(1));
+
+		assertThat(sent).hasSize(1);
+		EmailMessage message = sent.get(0);
+		assertThat(message.subject()).isEqualTo("Reset your PeachHacks admin password");
+		assertThat(message.text()).contains("Hi Ada,")
+			.contains("Choose a new password: https://admin.peachhacks.com/#/set-password?token=tok_en-1")
+			.contains("works for 1 hour")
+			.contains("your password stays the same")
+			.doesNotContainIgnoringCase("unsubscribe");
+		assertThat(MailService.validity(Duration.ofMinutes(30))).isEqualTo("30 minutes");
+		assertThat(MailService.validity(Duration.ofHours(12))).isEqualTo("12 hours");
+	}
+
 	/**
 	 * In order: pre-registration, registration, school email, ticket, ticket with a wallet
-	 * link, admin welcome, volunteer welcome.
+	 * link, admin invite, volunteer invite, password reset.
 	 */
 	private void sendEverySystemEmail(String name, String addedBy) {
 		mail.sendPreRegistrationConfirmation("ada@example.com", name, "ada@school.edu");
@@ -365,9 +500,10 @@ class EmailDeliveryTests {
 				"https://www.peachhacks.com/confirm-email?token=t&x=1", 14);
 		mail.sendTicket("ada@example.com", name, "https://www.peachhacks.com/ticket?t=abc", PNG, null);
 		mail.sendTicketNow("ada@example.com", name, "https://www.peachhacks.com/ticket?t=abc", PNG,
-				"https://pay.google.com/gp/v/save/a.b.c");
-		mail.sendAdminWelcome("new@peachhacks.com", name, addedBy);
-		mail.sendVolunteerWelcome("door@peachhacks.com", name, addedBy);
+				"https://pay.google.com/gp/v/save/a.b.c", "acceptance-test");
+		mail.sendInvite("new@peachhacks.com", name, AdminRole.ADMIN, addedBy, "tok", Duration.ofDays(7));
+		mail.sendInvite("door@peachhacks.com", name, AdminRole.VOLUNTEER, addedBy, "tok", Duration.ofDays(7));
+		mail.sendPasswordReset("new@peachhacks.com", name, "tok", Duration.ofHours(1));
 	}
 
 	/** A button for Outlook (VML) and for everyone else, the bare URL under it, and the same URL in the text. */
@@ -380,6 +516,11 @@ class EmailDeliveryTests {
 			.contains(">" + label + "</a>")
 			.contains(">" + escaped + "</a>");
 		assertThat(message.text()).as(message.subject()).contains(label + ": " + url);
+	}
+
+	private ResendEmailSender quickSender() {
+		return new ResendEmailSender("re_test_key", "PeachHacks <hello@peachhacks.com>",
+				"http://127.0.0.1:" + server.getAddress().getPort(), Duration.ofMillis(1));
 	}
 
 	private EmailMessage plain() {

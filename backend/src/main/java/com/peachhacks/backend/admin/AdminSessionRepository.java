@@ -18,6 +18,11 @@ public interface AdminSessionRepository extends JpaRepository<AdminSession, UUID
 
 	@Transactional
 	@Modifying
+	@Query("delete from AdminSession s where s.adminId = :adminId and s.tokenHash <> :keepTokenHash")
+	int deleteOthersByAdminId(@Param("adminId") UUID adminId, @Param("keepTokenHash") String keepTokenHash);
+
+	@Transactional
+	@Modifying
 	@Query("delete from AdminSession s where s.expiresAt <= :now")
 	int deleteExpired(@Param("now") Instant now);
 

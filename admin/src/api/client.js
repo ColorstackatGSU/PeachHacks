@@ -1,4 +1,4 @@
-export const API_BASE = (
+const API_BASE = (
   import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? "http://localhost:8080" : "https://api.peachhacks.com")
 ).replace(/\/+$/, "");
 
@@ -20,7 +20,7 @@ function getTransport() {
   return transportReady;
 }
 
-export class ApiError extends Error {
+class ApiError extends Error {
   constructor({ status = 0, code = "UNKNOWN", message, fieldErrors = null }) {
     super(message || "Something went wrong.");
     this.name = "ApiError";
@@ -189,6 +189,13 @@ export const api = {
     json("POST", "/admin/auth/login", { body: { email, password }, auth: false }),
   logout: () => json("POST", "/admin/auth/logout"),
   me: (signal) => json("GET", "/admin/auth/me", { signal }),
+  forgotPassword: (email) => json("POST", "/admin/auth/forgot-password", { body: { email }, auth: false }),
+  checkPasswordLink: (token, signal) =>
+    json("POST", "/admin/auth/set-password/check", { body: { token }, signal, auth: false }),
+  setPassword: (token, password) =>
+    json("POST", "/admin/auth/set-password", { body: { token, password }, auth: false }),
+  changePassword: (currentPassword, newPassword) =>
+    json("POST", "/admin/auth/change-password", { body: { currentPassword, newPassword } }),
 
   stats: (signal) => json("GET", "/admin/stats", { signal }),
 
@@ -215,10 +222,10 @@ export const api = {
   resendSchoolEmail: (id) => json("POST", `/admin/registrations/${encodeURIComponent(id)}/school-email/resend`),
   downloadResume: (id) => download(`/admin/registrations/${encodeURIComponent(id)}/resume`, null, "resume.pdf"),
   deleteResume: (id) => json("DELETE", `/admin/registrations/${encodeURIComponent(id)}/resume`),
-  // The resume book holds accepted registrants who opted in, so the same filters on the
-  // list endpoint give the number of resumes it will contain.
+  // The resume book holds accepted registrants who uploaded a resume, so the same filters
+  // on the list endpoint give the number of resumes it will contain.
   resumeBookCount: async (attendedOnly, signal) => {
-    const query = { resume: "opted-in", status: "ACCEPTED", checkedIn: attendedOnly ? "true" : "", size: 1 };
+    const query = { resume: "any", status: "ACCEPTED", checkedIn: attendedOnly ? "true" : "", size: 1 };
     const result = await json("GET", "/admin/registrations", { query, signal });
     return result?.total ?? 0;
   },
@@ -234,14 +241,22 @@ export const api = {
     download(`/admin/events/${encodeURIComponent(id)}/export.csv`, null, `peachhacks-attendees-${stamp()}.csv`),
 
   checkInList: (query, signal) => json("GET", "/admin/check-in", { query, signal }),
+  // Someone who is not accepted is refused with 409 `NOT_ACCEPTED`.
   checkIn: (id, eventId) => changing(json("POST", `/admin/check-in/${encodeURIComponent(id)}`, { query: { eventId } })),
   undoCheckIn: (id, eventId) =>
     changing(json("DELETE", `/admin/check-in/${encodeURIComponent(id)}`, { query: { eventId } })),
-  scanTicket: ({ code, eventId, override = false }) =>
-    json("POST", "/admin/check-in/scan", { body: { code, eventId: eventId || null, override } }),
+  scanTicket: ({ code, eventId }) => json("POST", "/admin/check-in/scan", { body: { code, eventId: eventId || null } }),
 
   settings: (signal) => json("GET", "/admin/settings", { signal }),
   saveSettings: (registrationOpen) => json("PUT", "/admin/settings", { body: { registrationOpen } }),
+  // The link is only in this answer; making another one stops the previous link working.
+  createPreviewLink: () => json("POST", "/admin/settings/registration-preview"),
+  endPreview: () => json("DELETE", "/admin/settings/registration-preview"),
+
+  discord: (signal) => json("GET", "/admin/discord", { signal }),
+  // Saves the text and posts it, or edits the message that is already up.
+  postDiscordRecap: () => json("POST", "/admin/discord/recap"),
+  publishDiscordVerification: (message) => json("POST", "/admin/discord/verification-message", { body: { message } }),
 
   recipientCount: (kind, audience, school, signal) =>
     json("POST", "/admin/emails/recipient-count", { body: { kind, audience, school: school || null }, signal }),
@@ -252,9 +267,12 @@ export const api = {
   sendEmail: ({ kind, audience, school, subject, body }) =>
     json("POST", "/admin/emails", { body: { kind, audience, school: school || null, subject, body } }),
   campaigns: (signal) => json("GET", "/admin/emails", { signal }),
+  campaignRecipients: (id, query, signal) =>
+    json("GET", `/admin/emails/${encodeURIComponent(id)}/recipients`, { query, signal }),
 
   admins: (signal) => json("GET", "/admin/admins", { signal }),
-  createAdmin: ({ name, email, password, role }) =>
-    json("POST", "/admin/admins", { body: { name, email, password, role } }),
+  // Both answer with `setPasswordUrl`, the link the invite email carries.
+  createAdmin: ({ name, email, role }) => json("POST", "/admin/admins", { body: { name, email, role } }),
+  resendInvite: (id) => json("POST", `/admin/admins/${encodeURIComponent(id)}/invite`),
   deleteAdmin: (id) => json("DELETE", `/admin/admins/${encodeURIComponent(id)}`),
 };

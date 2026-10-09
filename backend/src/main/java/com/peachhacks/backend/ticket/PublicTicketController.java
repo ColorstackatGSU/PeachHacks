@@ -34,14 +34,10 @@ public class PublicTicketController {
 
 	private final Tickets tickets;
 
-	private final GoogleWallet googleWallet;
-
-	public PublicTicketController(RegistrationRepository registrations, CheckInService checkIns, Tickets tickets,
-			GoogleWallet googleWallet) {
+	public PublicTicketController(RegistrationRepository registrations, CheckInService checkIns, Tickets tickets) {
 		this.registrations = registrations;
 		this.checkIns = checkIns;
 		this.tickets = tickets;
-		this.googleWallet = googleWallet;
 	}
 
 	@GetMapping("/{token}")
@@ -50,7 +46,7 @@ public class PublicTicketController {
 		return ResponseEntity.ok()
 			.cacheControl(CacheControl.noStore())
 			.body(new Ticket(r.getFirstName(), r.getLastName(), r.getSchool(), checkIns.generalCheckedIn(r.getId()),
-					googleWallet.saveUrl(r, tickets.url(r.getTicketToken())).orElse(null)));
+					tickets.links(r).googleWalletUrl()));
 	}
 
 	@GetMapping("/{token}/qr.png")

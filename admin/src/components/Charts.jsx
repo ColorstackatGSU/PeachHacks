@@ -1,13 +1,15 @@
 import { useState } from "react";
 import { formatDay, formatNumber } from "../lib/format.js";
 
-export function BarList({ rows, labelKey, total, tone = "peach", initialLimit = 10, emptyText = "No data yet.", unit = "people" }) {
+const BAR_LIMIT = 10;
+
+export function BarList({ rows, labelKey, total, tone = "peach", emptyText = "No data yet." }) {
   const [expanded, setExpanded] = useState(false);
   if (!rows || rows.length === 0) return <p className="muted">{emptyText}</p>;
 
   const max = Math.max(...rows.map((row) => row.count), 1);
   const sum = total || rows.reduce((acc, row) => acc + row.count, 0) || 1;
-  const visible = expanded ? rows : rows.slice(0, initialLimit);
+  const visible = expanded ? rows : rows.slice(0, BAR_LIMIT);
   const hidden = rows.length - visible.length;
 
   return (
@@ -28,14 +30,14 @@ export function BarList({ rows, labelKey, total, tone = "peach", initialLimit = 
               </span>
               <span className="barlist-value">
                 <strong>{formatNumber(row.count)}</strong>
-                <span className="sr-only"> {unit}, </span>
+                <span className="sr-only"> people, </span>
                 <span className="barlist-share">{Math.round((row.count / sum) * 100)}%</span>
               </span>
             </li>
           );
         })}
       </ol>
-      {(hidden > 0 || expanded) && rows.length > initialLimit && (
+      {(hidden > 0 || expanded) && rows.length > BAR_LIMIT && (
         <button type="button" className="link-btn" aria-expanded={expanded} onClick={() => setExpanded((v) => !v)}>
           {expanded ? "Show fewer" : `Show all ${formatNumber(rows.length)}`}
         </button>

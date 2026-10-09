@@ -7,6 +7,10 @@ RUN mvn -B -q -DskipTests package \
     && java -Djarmode=tools -jar target/app.jar extract --layers --launcher --destination /extracted
 
 FROM eclipse-temurin:21-jre
+# PeachBot draws its welcome card with Java2D, which needs fontconfig and one font.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends fontconfig fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
 RUN groupadd --system spring && useradd --system --gid spring --no-create-home spring
 WORKDIR /app
 COPY --from=build /extracted/dependencies/ ./

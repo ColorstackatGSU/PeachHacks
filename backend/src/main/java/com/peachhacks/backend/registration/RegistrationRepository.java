@@ -19,6 +19,34 @@ public interface RegistrationRepository extends JpaRepository<Registration, UUID
 	String AGE_REVIEW_FILTER = " and (:anyAgeReview = true or (:ageReview = true and " + AgeReview.NEEDED
 			+ ") or (:ageReview = false and not " + AgeReview.NEEDED + "))";
 
+	/** SQL over registrations, with or without an alias: accepted and not yet told. */
+	String WAITING = "status = 'ACCEPTED' and acceptance_notified_at is null";
+
+	String SEARCH_FILTER = """
+			(lower(concat(r.firstName, ' ', r.lastName)) like :pattern or r.email like :pattern
+				or r.schoolEmail like :pattern)
+				and (:school = '' or r.school = :school)
+				and (:anyStatus = true or r.status = :status)
+				and (:anyAttendance = true
+					or (:checkedIn = true and exists (select 1 from CheckIn c, Event e
+						where c.registrationId = r.id and e.id = c.eventId and e.general = true))
+					or (:checkedIn = false and not exists (select 1 from CheckIn c, Event e
+						where c.registrationId = r.id and e.id = c.eventId and e.general = true)))
+				and (:resume = ''
+					or (:resume = 'any' and exists (select 1 from RegistrationResume x
+						where x.registrationId = r.id))
+					or (:resume = 'none' and not exists (select 1 from RegistrationResume x
+						where x.registrationId = r.id)))
+				and (:anyConfirmation = true
+					or (:confirmed = true and r.schoolEmailConfirmedAt is not null)
+					or (:confirmed = false and r.schoolEmailConfirmedAt is null))
+			""" + AGE_REVIEW_FILTER;
+
+	String CHECK_IN_FILTER = """
+			lower(r.firstName) like :pattern or lower(r.lastName) like :pattern or r.email like :pattern
+				or lower(concat(r.firstName, ' ', r.lastName)) like :pattern
+			""";
+
 	/** Emails are stored lower-cased; pass a lower-cased value. */
 	boolean existsByEmail(String email);
 
@@ -27,62 +55,18 @@ public interface RegistrationRepository extends JpaRepository<Registration, UUID
 	/** Returns 0 when the registration stopped waiting in the meantime (moved out of ACCEPTED, or already told). */
 	@Transactional
 	@Modifying
-	@Query("update Registration r set r.acceptanceNotifiedAt = :now where r.id = :id"
-			+ " and r.status = com.peachhacks.backend.registration.RegistrationStatus.ACCEPTED"
-			+ " and r.acceptanceNotifiedAt is null")
+	@Query(value = "update registrations set acceptance_notified_at = :now where id = :id and " + WAITING,
+			nativeQuery = true)
 	int markAcceptanceNotified(@Param("id") UUID id, @Param("now") Instant now);
 
 	/**
 	 * checkedIn is about the general event and only applies when anyAttendance is false.
-	 * resume is '' (no filter), 'any', 'opted-in' or 'none'. confirmed is about the school
+	 * resume is '' (no filter), 'any' or 'none'. confirmed is about the school
 	 * email and only applies when anyConfirmation is false. ageReview only applies when
 	 * anyAgeReview is false; minimumAge, host and hostLength come from AgeReview.
 	 */
-	@Query(value = """
-			select r from Registration r
-			where (lower(concat(r.firstName, ' ', r.lastName)) like :pattern or r.email like :pattern
-				or r.schoolEmail like :pattern)
-				and (:school = '' or r.school = :school)
-				and (:anyStatus = true or r.status = :status)
-				and (:anyAttendance = true
-					or (:checkedIn = true and exists (select 1 from CheckIn c, Event e
-						where c.registrationId = r.id and e.id = c.eventId and e.general = true))
-					or (:checkedIn = false and not exists (select 1 from CheckIn c, Event e
-						where c.registrationId = r.id and e.id = c.eventId and e.general = true)))
-				and (:resume = ''
-					or (:resume = 'any' and exists (select 1 from RegistrationResume x
-						where x.registrationId = r.id))
-					or (:resume = 'opted-in' and exists (select 1 from RegistrationResume x
-						where x.registrationId = r.id and x.sponsorOptIn = true))
-					or (:resume = 'none' and not exists (select 1 from RegistrationResume x
-						where x.registrationId = r.id)))
-				and (:anyConfirmation = true
-					or (:confirmed = true and r.schoolEmailConfirmedAt is not null)
-					or (:confirmed = false and r.schoolEmailConfirmedAt is null))
-			""" + AGE_REVIEW_FILTER + """
-			order by r.createdAt desc, r.id desc
-			""", countQuery = """
-			select count(r) from Registration r
-			where (lower(concat(r.firstName, ' ', r.lastName)) like :pattern or r.email like :pattern
-				or r.schoolEmail like :pattern)
-				and (:school = '' or r.school = :school)
-				and (:anyStatus = true or r.status = :status)
-				and (:anyAttendance = true
-					or (:checkedIn = true and exists (select 1 from CheckIn c, Event e
-						where c.registrationId = r.id and e.id = c.eventId and e.general = true))
-					or (:checkedIn = false and not exists (select 1 from CheckIn c, Event e
-						where c.registrationId = r.id and e.id = c.eventId and e.general = true)))
-				and (:resume = ''
-					or (:resume = 'any' and exists (select 1 from RegistrationResume x
-						where x.registrationId = r.id))
-					or (:resume = 'opted-in' and exists (select 1 from RegistrationResume x
-						where x.registrationId = r.id and x.sponsorOptIn = true))
-					or (:resume = 'none' and not exists (select 1 from RegistrationResume x
-						where x.registrationId = r.id)))
-				and (:anyConfirmation = true
-					or (:confirmed = true and r.schoolEmailConfirmedAt is not null)
-					or (:confirmed = false and r.schoolEmailConfirmedAt is null))
-			""" + AGE_REVIEW_FILTER)
+	@Query(value = "select r from Registration r where " + SEARCH_FILTER + " order by r.createdAt desc, r.id desc",
+			countQuery = "select count(r) from Registration r where " + SEARCH_FILTER)
 	Page<Registration> search(@Param("pattern") String pattern, @Param("school") String school,
 			@Param("anyStatus") boolean anyStatus, @Param("status") RegistrationStatus status,
 			@Param("anyAttendance") boolean anyAttendance, @Param("checkedIn") boolean checkedIn,
@@ -95,17 +79,10 @@ public interface RegistrationRepository extends JpaRepository<Registration, UUID
 	 * Each row is a Registration and its CheckIn for the event (or null), people who still
 	 * need checking in first so a volunteer typing a name sees them at the top.
 	 */
-	@Query(value = """
-			select r, c from Registration r
-			left join CheckIn c on c.registrationId = r.id and c.eventId = :eventId
-			where lower(r.firstName) like :pattern or lower(r.lastName) like :pattern or r.email like :pattern
-				or lower(concat(r.firstName, ' ', r.lastName)) like :pattern
-			order by case when c.id is null then 0 else 1 end, lower(r.lastName), lower(r.firstName), r.id
-			""", countQuery = """
-			select count(r) from Registration r
-			where lower(r.firstName) like :pattern or lower(r.lastName) like :pattern or r.email like :pattern
-				or lower(concat(r.firstName, ' ', r.lastName)) like :pattern
-			""")
+	@Query(value = "select r, c from Registration r"
+			+ " left join CheckIn c on c.registrationId = r.id and c.eventId = :eventId where " + CHECK_IN_FILTER
+			+ " order by case when c.id is null then 0 else 1 end, lower(r.lastName), lower(r.firstName), r.id",
+			countQuery = "select count(r) from Registration r where " + CHECK_IN_FILTER)
 	Page<Object[]> searchForCheckIn(@Param("eventId") UUID eventId, @Param("pattern") String pattern,
 			Pageable pageable);
 

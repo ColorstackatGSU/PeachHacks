@@ -1,4 +1,5 @@
-import React, { Component, Suspense, lazy, memo, startTransition, useCallback, useEffect, useRef, useState } from 'react';
+import { Suspense, lazy, memo, startTransition, useCallback, useEffect, useRef, useState } from 'react';
+import LoadBoundary from './LoadBoundary.jsx';
 import { closeRegisterPanel, isRegisterPanelShown, registerPanelOpener } from './registerPanel.js';
 
 const loadRegisterPanel = () => import('../forms/RegisterPanel.jsx');
@@ -13,21 +14,6 @@ const TITLE_ID = 'register-panel-title';
 // Long enough for the tag to be back at rest and the panel off-screen.
 const RELEASE_DELAY_MS = 520;
 const FOCUSABLE = 'a[href], button, input, select, textarea, [tabindex]';
-
-class LoadBoundary extends Component {
-  constructor(props) {
-    super(props);
-    this.state = { failed: false };
-  }
-
-  static getDerivedStateFromError() {
-    return { failed: true };
-  }
-
-  render() {
-    return this.state.failed ? this.props.fallback : this.props.children;
-  }
-}
 
 const loading = (
   <div className="register-panel-state" role="status">
@@ -57,8 +43,9 @@ const PanelBody = memo(function PanelBody({ onDone }) {
 });
 
 // The sign-up dialog revealed when the hero tag tows itself aside. Once opened
-// it stays mounted, hidden, so closing it never throws away a half-filled form;
-// the draft lives only in this page's memory.
+// it stays mounted, hidden, so closing it never throws away a half-filled form
+// or a chosen resume; the forms also keep a draft of the typed answers in
+// sessionStorage (see src/forms/hooks.js).
 function RegisterLayer({ shown, tagCloseRef, returnFocusRef }) {
   const layerRef = useRef(null);
   const panelRef = useRef(null);

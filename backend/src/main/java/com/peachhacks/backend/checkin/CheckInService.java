@@ -23,6 +23,7 @@ import org.slf4j.LoggerFactory;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -87,10 +88,16 @@ public class CheckInService {
 				pageable.getPageSize(), checkIns.countByEventId(event.getId()), registrations.count());
 	}
 
+	/** Only an accepted registration can be checked in, to any event; there is no way around it here. */
 	@Transactional
 	public CheckInItem checkIn(UUID registrationId, UUID eventId, AdminPrincipal by) {
 		Event event = events.resolve(eventId);
 		Registration registration = registration(registrationId);
+		if (registration.getStatus() != RegistrationStatus.ACCEPTED) {
+			throw new ApiException(HttpStatus.CONFLICT, "NOT_ACCEPTED",
+					"This person has not been accepted, so they can't be checked in. An organizer has to accept"
+							+ " them first.");
+		}
 		record(registration, event, by);
 		return item(registration, event);
 	}
@@ -106,11 +113,11 @@ public class CheckInService {
 	}
 
 	/**
-	 * A ticket whose registration is not ACCEPTED is reported, not checked in, unless the
-	 * volunteer repeats the scan with the override after talking to an organizer.
+	 * A ticket whose registration is not ACCEPTED is reported and never checked in; an
+	 * organizer has to accept the person first.
 	 */
 	@Transactional
-	public ScanResult scan(String code, UUID eventId, boolean override, AdminPrincipal by) {
+	public ScanResult scan(String code, UUID eventId, AdminPrincipal by) {
 		Event event = events.resolve(eventId);
 		EventRef ref = EventRef.of(event);
 		Optional<Registration> found = Tickets.tokenFrom(code).flatMap(registrations::findByTicketToken);
@@ -121,7 +128,7 @@ public class CheckInService {
 		if (checkIns.existsByRegistrationIdAndEventId(registration.getId(), event.getId())) {
 			return new ScanResult(ScanOutcome.ALREADY_CHECKED_IN, ref, item(registration, event));
 		}
-		if (registration.getStatus() != RegistrationStatus.ACCEPTED && !override) {
+		if (registration.getStatus() != RegistrationStatus.ACCEPTED) {
 			return new ScanResult(ScanOutcome.NOT_ACCEPTED, ref, item(registration, event));
 		}
 		boolean recorded = record(registration, event, by);

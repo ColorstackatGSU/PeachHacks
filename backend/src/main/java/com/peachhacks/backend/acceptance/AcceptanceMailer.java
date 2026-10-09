@@ -14,12 +14,13 @@ import com.peachhacks.backend.email.MailService;
 import com.peachhacks.backend.registration.Registration;
 import com.peachhacks.backend.registration.RegistrationRepository;
 import com.peachhacks.backend.registration.RegistrationStatus;
-import com.peachhacks.backend.ticket.GoogleWallet;
 import com.peachhacks.backend.ticket.Tickets;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.context.event.ContextClosedEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -71,8 +72,6 @@ public class AcceptanceMailer {
 
 	private final Tickets tickets;
 
-	private final GoogleWallet googleWallet;
-
 	private final TaskExecutor campaignExecutor;
 
 	private final Duration delay;
@@ -85,20 +84,27 @@ public class AcceptanceMailer {
 
 	private volatile SendStatus status = SendStatus.NONE;
 
+	private volatile boolean stopping;
+
 	public AcceptanceMailer(RegistrationRepository registrations, JdbcClient jdbc, MailService mailService,
-			Tickets tickets, GoogleWallet googleWallet, @Qualifier("campaignExecutor") TaskExecutor campaignExecutor,
+			Tickets tickets, @Qualifier("campaignExecutor") TaskExecutor campaignExecutor,
 			EmailProperties properties) {
 		this.registrations = registrations;
 		this.jdbc = jdbc;
 		this.mailService = mailService;
 		this.tickets = tickets;
-		this.googleWallet = googleWallet;
 		this.campaignExecutor = campaignExecutor;
 		this.delay = properties.campaignDelay();
 	}
 
 	public SendStatus status() {
 		return status;
+	}
+
+	/** A run stops after the email in hand; the people it had not reached are still waiting. */
+	@EventListener(ContextClosedEvent.class)
+	void stop() {
+		stopping = true;
 	}
 
 	/**
@@ -113,11 +119,11 @@ public class AcceptanceMailer {
 		}
 		SendStatus previous = status;
 		try {
-			List<UUID> ids = jdbc.sql("""
-					select id from registrations
-					where status = 'ACCEPTED' and acceptance_notified_at is null
-					order by accepted_at asc nulls first, id
-					""").query(UUID.class).list();
+			List<UUID> ids = jdbc
+				.sql("select id from registrations where " + RegistrationRepository.WAITING
+						+ " order by accepted_at asc nulls first, id")
+				.query(UUID.class)
+				.list();
 			if (ids.isEmpty()) {
 				running.set(false);
 				return new Started(0, previous);
@@ -140,7 +146,7 @@ public class AcceptanceMailer {
 		int failed = 0;
 		int skipped = 0;
 		try {
-			for (int i = 0; i < ids.size(); i++) {
+			for (int i = 0; i < ids.size() && !stopping; i++) {
 				Outcome outcome = sendWaiting(ids.get(i));
 				switch (outcome) {
 					case SENT -> sent++;
@@ -152,7 +158,8 @@ public class AcceptanceMailer {
 					Thread.sleep(delay);
 				}
 			}
-			log.info("Acceptance emails finished: {} sent, {} failed, {} skipped", sent, failed, skipped);
+			log.info("Acceptance emails {}: {} sent, {} failed, {} skipped", stopping ? "stopped by shutdown"
+					: "finished", sent, failed, skipped);
 		}
 		catch (InterruptedException ex) {
 			Thread.currentThread().interrupt();
@@ -175,16 +182,18 @@ public class AcceptanceMailer {
 		if (!inFlight.add(id)) {
 			return Outcome.SKIPPED;
 		}
+		String email = null;
 		try {
 			Registration registration = registrations.findById(id).orElse(null);
 			if (registration == null || !isWaiting(registration)) {
 				return Outcome.SKIPPED;
 			}
+			email = registration.getEmail();
 			deliver(registration);
 			return Outcome.SENT;
 		}
 		catch (RuntimeException ex) {
-			log.warn("Could not send the acceptance email for registration {}: {}", id, ex.toString());
+			logFailure(id, email, ex);
 			return Outcome.FAILED;
 		}
 		finally {
@@ -198,16 +207,9 @@ public class AcceptanceMailer {
 	 * fails if the provider does not take the message.
 	 */
 	public void sendTicketEmail(UUID id) {
-		Registration registration = registrations.findById(id)
-			.orElseThrow(() -> ApiException.notFound("Registration not found."));
-		if (registration.getStatus() != RegistrationStatus.ACCEPTED) {
-			throw ApiException.validation("Only accepted registrations have a ticket to send.", null);
-		}
-		String ticketUrl = tickets.url(registration.getTicketToken());
+		Registration registration = accepted(id);
 		if (registration.getAcceptanceNotifiedAt() != null) {
-			mailService.sendTicket(registration.getEmail(), registration.getFirstName(), ticketUrl,
-					tickets.qrPng(registration.getTicketToken()),
-					googleWallet.saveUrl(registration, ticketUrl).orElse(null));
+			sendAgain(registration);
 			return;
 		}
 		if (!inFlight.add(id)) {
@@ -215,10 +217,20 @@ public class AcceptanceMailer {
 					"This person's acceptance email is being sent right now.");
 		}
 		try {
+			// Read again now that nobody else can be mailing this person: the run may have
+			// told them, or their status may have changed, since the first read.
+			registration = accepted(id);
+			if (registration.getAcceptanceNotifiedAt() != null) {
+				sendAgain(registration);
+				return;
+			}
 			deliver(registration);
 		}
+		catch (ApiException ex) {
+			throw ex;
+		}
 		catch (RuntimeException ex) {
-			log.warn("Could not send the acceptance email for registration {}: {}", id, ex.toString());
+			logFailure(id, registration.getEmail(), ex);
 			throw new ApiException(HttpStatus.BAD_GATEWAY, "EMAIL_FAILED",
 					"The email provider did not take the acceptance email, so this person is still waiting to be told.");
 		}
@@ -227,20 +239,49 @@ public class AcceptanceMailer {
 		}
 	}
 
+	private Registration accepted(UUID id) {
+		Registration registration = registrations.findById(id)
+			.orElseThrow(() -> ApiException.notFound("Registration not found."));
+		if (registration.getStatus() != RegistrationStatus.ACCEPTED) {
+			throw ApiException.validation("Only accepted registrations have a ticket to send.", null);
+		}
+		return registration;
+	}
+
+	/** The same condition as RegistrationRepository.WAITING, for a row already loaded. */
 	private static boolean isWaiting(Registration registration) {
 		return registration.getStatus() == RegistrationStatus.ACCEPTED
 				&& registration.getAcceptanceNotifiedAt() == null;
 	}
 
+	/** A copy an admin asked for, so it carries no idempotency key and always goes out. */
+	private void sendAgain(Registration registration) {
+		Tickets.Links links = tickets.links(registration);
+		mailService.sendTicket(registration.getEmail(), registration.getFirstName(), links.url(),
+				tickets.qrPng(registration.getTicketToken()), links.googleWalletUrl());
+	}
+
+	/**
+	 * The key names this acceptance (accepting someone again after moving them out gives a
+	 * new acceptedAt), so if the email went out but could not be recorded, the next
+	 * attempt is not a second email.
+	 */
 	private void deliver(Registration registration) {
-		String token = registration.getTicketToken();
-		String ticketUrl = tickets.url(token);
-		mailService.sendTicketNow(registration.getEmail(), registration.getFirstName(), ticketUrl,
-				tickets.qrPng(token), googleWallet.saveUrl(registration, ticketUrl).orElse(null));
+		Tickets.Links links = tickets.links(registration);
+		Instant acceptedAt = registration.getAcceptedAt();
+		String idempotencyKey = "acceptance-" + registration.getId() + "-"
+				+ ((acceptedAt != null) ? acceptedAt.getEpochSecond() : 0);
+		mailService.sendTicketNow(registration.getEmail(), registration.getFirstName(), links.url(),
+				tickets.qrPng(registration.getTicketToken()), links.googleWalletUrl(), idempotencyKey);
 		if (registrations.markAcceptanceNotified(registration.getId(), Instant.now()) == 0) {
 			log.warn("Registration {} stopped waiting while its acceptance email was being sent",
 					registration.getId());
 		}
+	}
+
+	private static void logFailure(UUID id, String email, RuntimeException ex) {
+		log.warn("Could not send the acceptance email (\"You're in!\") for registration {} to {}: {}", id, email,
+				ex.toString());
 	}
 
 }

@@ -20,37 +20,43 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.peachhacks.backend.common.Patterns;
 import com.peachhacks.backend.email.MailService;
 
 @RestController
 @RequestMapping("/admin/admins")
 public class AdminAccountController {
 
-	public record AdminItem(UUID id, String email, String name, AdminRole role, Instant createdAt) {
+	/**
+	 * setPasswordUrl is only present in the answer to creating or re-inviting an account, so
+	 * the admin can pass the link on if the email does not arrive.
+	 */
+	public record AdminItem(UUID id, String email, String name, AdminRole role, Instant createdAt, boolean pending,
+			String setPasswordUrl) {
 
 		static AdminItem from(Admin admin) {
+			return from(admin, null);
+		}
+
+		static AdminItem from(Admin admin, String setPasswordUrl) {
 			return new AdminItem(admin.getId(), admin.getEmail(), admin.getName(), admin.getRole(),
-					admin.getCreatedAt());
+					admin.getCreatedAt(), admin.isPending(), setPasswordUrl);
+		}
+
+		@Override
+		public String toString() {
+			return "AdminItem[email=" + email + ", role=" + role + ", pending=" + pending + "]";
 		}
 
 	}
 
 	public record CreateAdminRequest(
-			@NotBlank(message = "Email is required") @Email(regexp = ".+@.+\\..+",
+			@NotBlank(message = "Email is required") @Email(regexp = Patterns.EMAIL,
 					message = "Must be a valid email") @Size(max = 255,
 							message = "Email must be at most 255 characters") String email,
 			@NotBlank(message = "Name is required") @Size(max = 100,
 					message = "Name must be at most 100 characters") String name,
-			@NotBlank(message = "Password is required") @Size(min = AuthService.MIN_PASSWORD_LENGTH,
-					max = AuthService.MAX_PASSWORD_LENGTH,
-					message = "Password must be 10 to 72 characters") String password,
-			String role) {
-
-		@Override
-		public String toString() {
-			return "CreateAdminRequest[email=" + email + ", name=" + name + ", role=" + role + "]";
-		}
-
+			@NotBlank(message = "Choose a role") String role) {
 	}
 
 	private final AuthService authService;
@@ -70,15 +76,21 @@ public class AdminAccountController {
 	@PostMapping
 	ResponseEntity<AdminItem> create(@Valid @RequestBody CreateAdminRequest request,
 			@AuthenticationPrincipal AdminPrincipal current) {
-		AdminRole role = AdminRole.parseOrDefault(request.role());
-		Admin admin = authService.create(request.email(), request.name(), request.password(), role);
-		if (role == AdminRole.VOLUNTEER) {
-			mailService.sendVolunteerWelcome(admin.getEmail(), admin.getName(), current.name());
-		}
-		else {
-			mailService.sendAdminWelcome(admin.getEmail(), admin.getName(), current.name());
-		}
-		return ResponseEntity.status(HttpStatus.CREATED).body(AdminItem.from(admin));
+		AdminRole role = AdminRole.parse(request.role());
+		return ResponseEntity.status(HttpStatus.CREATED)
+			.body(sendInvite(authService.invite(request.email(), request.name(), role), current));
+	}
+
+	@PostMapping("/{id}/invite")
+	AdminItem reinvite(@PathVariable UUID id, @AuthenticationPrincipal AdminPrincipal current) {
+		return sendInvite(authService.reinvite(id), current);
+	}
+
+	private AdminItem sendInvite(AuthService.PasswordLink link, AdminPrincipal current) {
+		Admin admin = link.admin();
+		mailService.sendInvite(admin.getEmail(), admin.getName(), admin.getRole(), current.name(), link.token(),
+				link.validFor());
+		return AdminItem.from(admin, mailService.adminPasswordUrl(link.token()));
 	}
 
 	@DeleteMapping("/{id}")

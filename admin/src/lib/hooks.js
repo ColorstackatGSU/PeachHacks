@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, onAcceptanceChange } from "../api/client.js";
+import { useToast } from "../components/ui.jsx";
+import { errorText } from "./format.js";
 
 // Refetches when `fn` changes identity, so wrap it in useCallback. Stale data stays
 // visible during a refresh; aborted or superseded requests never touch state.
@@ -39,6 +41,23 @@ export function useDebounced(value, delay = 300) {
     return () => window.clearTimeout(timer);
   }, [value, delay]);
   return debounced;
+}
+
+// `exporting` is the `key` of the download in flight, or null.
+export function useExport() {
+  const notify = useToast();
+  const [exporting, setExporting] = useState(null);
+  const run = async (download, key = true) => {
+    setExporting(key);
+    try {
+      await download();
+    } catch (error) {
+      notify(`Export failed: ${errorText(error)}`, "error");
+    } finally {
+      setExporting(null);
+    }
+  };
+  return [exporting, run];
 }
 
 const loadEvents = (signal) => api.events(signal);

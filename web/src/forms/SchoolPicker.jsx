@@ -1,4 +1,3 @@
-/* eslint-disable react/prop-types -- the project has no prop-types dependency and React 19 ignores propTypes */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { FieldLabel, FieldMessage, fieldId } from './fields.jsx';
 import { findExact, loadSchools, searchSchools } from './schools.js';
@@ -170,7 +169,7 @@ export default function SchoolPicker({ name = 'school', label = 'School', value,
       };
 
   return (
-    <div className="pf-field pf-field-wide pf-school">
+    <div className="pf-field pf-field-wide">
       <FieldLabel htmlFor={id}>{label}</FieldLabel>
       <div className="pf-combo">
         <input

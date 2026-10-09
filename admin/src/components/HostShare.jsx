@@ -2,7 +2,7 @@ import { formatShare, formatTarget, gapText } from "../lib/acceptance.js";
 import { formatNumber } from "../lib/format.js";
 import { href } from "../lib/router.js";
 
-const tone = (share) => (!share || share.total === 0 ? "is-empty" : share.met ? "is-met" : "is-short");
+const tone = (share) => (!share || share.total === 0 ? "" : share.met ? " is-met" : " is-short");
 
 // A bar filled to the share with the target marked on it: green at or above the target,
 // amber below, plain while the group is empty.
@@ -11,7 +11,7 @@ export function ShareBar({ share, target }) {
   const mark = Math.min(100, Number(target) * 100);
   return (
     <span
-      className={`share-track ${tone(share)}`}
+      className={`share-track${tone(share)}`}
       role="img"
       aria-label={
         share?.total > 0
@@ -28,7 +28,7 @@ export function ShareBar({ share, target }) {
 export function ShareHeadline({ share, hostSchool }) {
   const empty = share.total === 0;
   return (
-    <div className={`share-headline ${tone(share)}`}>
+    <div className={`share-headline${tone(share)}`}>
       <div className="share-figure">
         <strong>{formatShare(share.share)}</strong>
         <span>
@@ -68,7 +68,7 @@ export function ShareStrip({ summary, projected = null, projectedLabel = "" }) {
   const share = summary.shares.accepted;
   const hostSchool = summary.hostSchool;
   return (
-    <section className={`share-strip ${tone(projected || share)}`} aria-label="Host-school share of accepted hackers">
+    <section className={`share-strip${tone(projected || share)}`} aria-label="Host-school share of accepted hackers">
       <div className="share-strip-text">
         <strong>
           {hostSchool.name} share of accepted: {formatShare(share.share)}

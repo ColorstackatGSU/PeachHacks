@@ -2,8 +2,8 @@ package com.peachhacks.backend.config;
 
 import java.util.List;
 
+import com.peachhacks.backend.admin.AdminAuthController;
 import com.peachhacks.backend.common.RateLimitInterceptor;
-import com.peachhacks.backend.registration.RegistrationBodyLimitInterceptor;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -18,12 +18,8 @@ public class WebConfig implements WebMvcConfigurer {
 
 	private final RateLimitInterceptor rateLimitInterceptor;
 
-	private final RegistrationBodyLimitInterceptor registrationBodyLimit;
-
-	public WebConfig(RateLimitInterceptor rateLimitInterceptor,
-			RegistrationBodyLimitInterceptor registrationBodyLimit) {
+	public WebConfig(RateLimitInterceptor rateLimitInterceptor) {
 		this.rateLimitInterceptor = rateLimitInterceptor;
-		this.registrationBodyLimit = registrationBodyLimit;
 	}
 
 	/** Picked up by Spring Security's CORS filter, so preflight requests are answered before authentication. */
@@ -43,8 +39,9 @@ public class WebConfig implements WebMvcConfigurer {
 
 	@Override
 	public void addInterceptors(InterceptorRegistry registry) {
-		registry.addInterceptor(rateLimitInterceptor).addPathPatterns("/public/**", "/admin/auth/login");
-		registry.addInterceptor(registrationBodyLimit).addPathPatterns("/public/registrations");
+		registry.addInterceptor(rateLimitInterceptor)
+			.addPathPatterns("/public/**", "/platform/**", "/admin/auth/change-password")
+			.addPathPatterns(AdminAuthController.UNAUTHENTICATED_PATHS);
 	}
 
 }

@@ -2,10 +2,14 @@ package com.peachhacks.backend.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 @Configuration(proxyBeanMethods = false)
+@EnableScheduling
 public class ExecutorConfig {
+
+	private static final int SHUTDOWN_WAIT_SECONDS = 20;
 
 	@Bean
 	ThreadPoolTaskExecutor mailExecutor() {
@@ -14,6 +18,7 @@ public class ExecutorConfig {
 		executor.setCorePoolSize(2);
 		executor.setMaxPoolSize(2);
 		executor.setQueueCapacity(2000);
+		finishQueuedWorkOnShutdown(executor);
 		return executor;
 	}
 
@@ -24,7 +29,30 @@ public class ExecutorConfig {
 		executor.setThreadNamePrefix("campaign-");
 		executor.setCorePoolSize(1);
 		executor.setMaxPoolSize(1);
+		finishQueuedWorkOnShutdown(executor);
 		return executor;
+	}
+
+	/** Single threaded so role changes reach Discord in the order they were decided. */
+	@Bean
+	ThreadPoolTaskExecutor discordExecutor() {
+		ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+		executor.setThreadNamePrefix("discord-");
+		executor.setCorePoolSize(1);
+		executor.setMaxPoolSize(1);
+		executor.setQueueCapacity(2000);
+		finishQueuedWorkOnShutdown(executor);
+		return executor;
+	}
+
+	/**
+	 * A redeploy must not drop a confirmation that is already queued. The long runs on the
+	 * campaign executor stop themselves after the email in hand when the context closes,
+	 * so the wait only has to cover one send.
+	 */
+	private static void finishQueuedWorkOnShutdown(ThreadPoolTaskExecutor executor) {
+		executor.setWaitForTasksToCompleteOnShutdown(true);
+		executor.setAwaitTerminationSeconds(SHUTDOWN_WAIT_SECONDS);
 	}
 
 }
