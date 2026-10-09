@@ -178,6 +178,24 @@ class EmailDeliveryTests {
 	}
 
 	@Test
+	void sponsorInquiryGoesToTheInboxWithReplyToTheSender() {
+		mail.sendSponsorInquiryNow("official@colorstackatgsu.com", "Acme\r\nBcc: x@evil.test", "Grace Hopper",
+				"grace@acme.com", "We'd like to fund <b>prizes</b>.");
+
+		EmailMessage message = sent.get(0);
+		assertThat(message.to()).isEqualTo("official@colorstackatgsu.com");
+		assertThat(message.replyTo()).isEqualTo("grace@acme.com");
+		assertThat(message.subject()).isEqualTo("Sponsor inquiry: Acme Bcc: x@evil.test");
+		assertThat(message.text()).contains("Contact: Grace Hopper")
+			.contains("Email: grace@acme.com")
+			.contains("We'd like to fund <b>prizes</b>.");
+		assertThat(message.html()).contains("&lt;b&gt;prizes&lt;/b&gt;").doesNotContain("<b>prizes</b>");
+
+		mail.sendSponsorInquiryNow("official@colorstackatgsu.com", "Acme", "Grace Hopper", "grace@acme.com", null);
+		assertThat(sent.get(1).text()).contains("They did not leave a message.");
+	}
+
+	@Test
 	void resendSenderSendsReplyToOnlyWhenSet() {
 		ResendEmailSender sender = new ResendEmailSender("re_test_key", "PeachHacks <hello@peachhacks.com>",
 				"http://127.0.0.1:" + server.getAddress().getPort());
