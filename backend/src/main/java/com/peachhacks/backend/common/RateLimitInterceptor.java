@@ -15,7 +15,8 @@ import org.springframework.web.servlet.HandlerMapping;
 @Component
 public class RateLimitInterceptor implements HandlerInterceptor {
 
-	private static final Set<String> SIGN_UPS = Set.of("/public/registrations", "/public/pre-registrations");
+	private static final Set<String> SIGN_UPS = Set.of("/public/registrations", "/public/pre-registrations",
+			"/public/sponsor-inquiries");
 
 	private static final String ALL_SIGN_UPS = "sign-up-all";
 

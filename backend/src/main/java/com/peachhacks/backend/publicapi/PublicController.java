@@ -9,6 +9,8 @@ import com.peachhacks.backend.prereg.PreRegistrationService;
 import com.peachhacks.backend.registration.RegistrationRequest;
 import com.peachhacks.backend.registration.RegistrationService;
 import com.peachhacks.backend.schoolemail.SchoolEmailService;
+import com.peachhacks.backend.sponsor.SponsorInquiryRequest;
+import com.peachhacks.backend.sponsor.SponsorInquiryService;
 import com.peachhacks.backend.stats.SettingsService;
 
 import org.springframework.http.HttpStatus;
@@ -50,13 +52,17 @@ public class PublicController {
 
 	private final SchoolEmailService schoolEmails;
 
+	private final SponsorInquiryService sponsorInquiries;
+
 	public PublicController(SettingsService settings, PreRegistrationService preRegistrations,
-			RegistrationService registrations, AudienceService audiences, SchoolEmailService schoolEmails) {
+			RegistrationService registrations, AudienceService audiences, SchoolEmailService schoolEmails,
+			SponsorInquiryService sponsorInquiries) {
 		this.settings = settings;
 		this.preRegistrations = preRegistrations;
 		this.registrations = registrations;
 		this.audiences = audiences;
 		this.schoolEmails = schoolEmails;
+		this.sponsorInquiries = sponsorInquiries;
 	}
 
 	static final String PREVIEW_HEADER = "X-Registration-Preview";
@@ -79,6 +85,13 @@ public class PublicController {
 			@RequestHeader(name = PREVIEW_HEADER, required = false) String previewKey) {
 		return ResponseEntity.status(HttpStatus.CREATED)
 			.body(Map.of("id", registrations.submit(request, previewKey)));
+	}
+
+	/** 204 once the inquiry has been emailed to the sponsor inbox; 503 if it could not be. */
+	@PostMapping("/sponsor-inquiries")
+	ResponseEntity<Void> sponsorInquiry(@RequestBody SponsorInquiryRequest request) {
+		sponsorInquiries.submit(request);
+		return ResponseEntity.noContent().build();
 	}
 
 	@PostMapping("/unsubscribe")

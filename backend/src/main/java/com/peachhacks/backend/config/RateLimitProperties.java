@@ -6,7 +6,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
  * signUpPerWindow is per client address and signUpGlobalPerHour across all of them, both
- * for the two sign-up POSTs only. loginFailuresPerAccount is per email, whatever the
+ * for the sign-up and sponsor form POSTs only. loginFailuresPerAccount is per email, whatever the
  * client address.
  */
 @ConfigurationProperties(prefix = "app.rate-limit")

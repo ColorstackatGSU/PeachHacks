@@ -123,6 +123,7 @@ Codes: `VALIDATION_ERROR` (400), `INVALID_CREDENTIALS` and `UNAUTHORIZED` (401),
 | `GET /public/status` | `{ "registrationOpen": false }` |
 | `POST /public/pre-registrations` | Pre-register. `schoolEmail` is required. 201 `{ "id" }`. The first submission for an `email` (case-insensitive) is the one that is kept; see [Repeated sign-ups](#repeated-sign-ups) |
 | `POST /public/registrations` | Full MLH registration. `schoolEmail`, `graduationYear` (2026 to 2035) and `graduationMonth` (1 to 12) are required. Optional `resume`, see [Resumes](#resumes). 201 `{ "id" }`, 403 while the gate is closed. An `email` that is already registered is also answered 201; see [Repeated sign-ups](#repeated-sign-ups) |
+| `POST /public/sponsor-inquiries` | The sponsor form: `organization`, `name` and `email` required, `message` optional (up to 4000 characters). Not stored: it is emailed to `SPONSOR_INBOX` (default `official@colorstackatgsu.com`) with Reply-To set to `email`, before the response. 204 once sent, 503 `EMAIL_FAILED` if the provider did not take it |
 | `POST /public/unsubscribe` | `{ "token": "..." }` from the link in an announcement; 204, or 404 for an unknown token. It stops announcements only, see [Email](#email) |
 | `POST /public/school-email/confirm` | `{ "token": "..." }` from the link mailed to the school address; 200 `{ "schoolEmail": "ada@school.edu" }`, also when that link was already used; 404 `NOT_FOUND` for an unknown or expired token. See [School email confirmation](#school-email-confirmation) |
 | `POST /public/school-email/resend` | `{ "email": "<personal email>" }`; always 204, whether or not the email is known. Mails a new link to the school address if there is an unconfirmed one and none was sent in the last 10 minutes |
@@ -160,7 +161,7 @@ Rate limits are in memory, per instance, and counted per client address (see `ap
 
 | What | Default |
 | --- | --- |
-| The two sign-up POSTs (`/public/pre-registrations`, `/public/registrations`), together | 30 per 10 minutes per address (`SIGN_UP_LIMIT_PER_ADDRESS`), and 1000 per hour across all addresses (`SIGN_UP_LIMIT_PER_HOUR`), which answers "please try again shortly" |
+| The sign-up and sponsor form POSTs (`/public/pre-registrations`, `/public/registrations`, `/public/sponsor-inquiries`), together | 30 per 10 minutes per address (`SIGN_UP_LIMIT_PER_ADDRESS`), and 1000 per hour across all addresses (`SIGN_UP_LIMIT_PER_HOUR`), which answers "please try again shortly" |
 | Every other public POST | 60 per minute |
 | `POST /admin/auth/login`, `forgot-password`, `set-password`, `set-password/check` and `change-password`, together | 10 per minute |
 | Failed sign-ins for one email, from any address | 10 in 15 minutes (`app.rate-limit.login-failures-per-account`, `login-failure-window`); further attempts for that email are 429 until the window ends, a successful sign-in or a password set from an emailed link clears it. It counts for emails that have no account too, so it does not reveal which emails have one |
