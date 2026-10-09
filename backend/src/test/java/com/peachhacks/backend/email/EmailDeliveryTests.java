@@ -178,6 +178,18 @@ class EmailDeliveryTests {
 	}
 
 	@Test
+	void resendSenderSendsReplyToOnlyWhenSet() {
+		ResendEmailSender sender = new ResendEmailSender("re_test_key", "PeachHacks <hello@peachhacks.com>",
+				"http://127.0.0.1:" + server.getAddress().getPort());
+
+		sender.send(plain());
+		sender.send(plain().withReplyTo("grace@acme.com"));
+
+		assertThat(requestBodies.get(0)).doesNotContain("\"reply_to\"");
+		assertThat((String) JsonPath.read(requestBodies.get(1), "$.reply_to")).isEqualTo("grace@acme.com");
+	}
+
+	@Test
 	void resendSenderFailsWhenTheProviderRejectsTheMessage() {
 		responseStatus.set(422);
 		ResendEmailSender sender = new ResendEmailSender("re_test_key", "PeachHacks <hello@peachhacks.com>",
