@@ -7,7 +7,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public record SponsorProperties(String inbox) {
 
 	public SponsorProperties {
-		inbox = (inbox != null && !inbox.isBlank()) ? inbox.strip() : "official@colorstackatgsu.com";
+		inbox = (inbox != null && !inbox.isBlank()) ? inbox.strip() : "sponsors@peachhacks.com";
 	}
 
 }

@@ -125,7 +125,7 @@ function SponsorForm() {
                     {submitting ? 'Sending…' : 'Send message'}
                   </button>
                   <p className="sponsor-hint" role="status">
-                    {submitting ? 'Sending your message…' : 'Goes straight to the PeachHacks team.'}
+                    {submitting ? 'Sending your message…' : `Goes straight to ${SPONSOR_EMAIL}.`}
                   </p>
                 </div>
               </form>
