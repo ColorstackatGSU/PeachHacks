@@ -81,6 +81,11 @@ export function submitRegistration(payload) {
   return submit('/public/registrations', payload, REGISTRATION_TIMEOUT_MS, previewHeaders());
 }
 
+// Emailed to the organizers' inbox; resolves once it has been sent.
+export function submitSponsorInquiry(payload) {
+  return submit('/public/sponsor-inquiries', payload);
+}
+
 export function unsubscribe(token) {
   return submit('/public/unsubscribe', { token });
 }
