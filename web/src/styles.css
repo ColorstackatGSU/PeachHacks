@@ -358,6 +358,7 @@ textarea.sponsor-input { min-height: 132px; resize: vertical; }
 .sponsor-submit:disabled { background: #d9b879; color: #3b566d; cursor: not-allowed; transform: none; }
 .sponsor-submit.is-busy { cursor: progress; }
 .sponsor-spinner { width: 16px; height: 16px; margin-right: 10px; border: 2.5px solid rgba(0, 31, 58, .3); border-top-color: var(--navy); border-radius: 50%; animation: sponsor-spin .8s linear infinite; }
+.sponsor-trap { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
 .sponsor-hint { margin: 0; color: #2b455c; font-size: 13px; line-height: 1.5; }
 .sponsor-notice { display: grid; gap: 4px; margin: 0 0 22px; padding: 14px 16px; border-left: 5px solid var(--navy); border-radius: 3px; background: rgba(244, 246, 237, .72); color: var(--navy); font-size: 15px; line-height: 1.55; }
 .sponsor-notice strong { font-weight: 800; }

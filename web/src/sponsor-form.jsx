@@ -3,19 +3,19 @@ import SiteHeader from './home/SiteHeader.jsx';
 import SiteFooter from './home/SiteFooter.jsx';
 import { EVENT_DATES, EVENT_PLACE, SPONSOR_EMAIL } from './home/site.js';
 import { partnerStars, renderStarField } from './home/stars.jsx';
+import { submitSponsorInquiry } from './forms/api.js';
 
-const SPONSOR_FORM_ENDPOINT = import.meta.env.VITE_SPONSOR_FORM_ENDPOINT;
 const WAYS_TO_PARTNER = ['Mentorship', 'Workshops', 'Prizes', 'Food'];
 
 const emailLink = <a className="sponsor-card-link" href={`mailto:${SPONSOR_EMAIL}`}>{SPONSOR_EMAIL}</a>;
 
 function SponsorForm() {
-  // idle | submitting | success | error. A missing endpoint is not a status:
-  // it is known up front, so the form is disabled before anyone fills it in.
+  // idle | submitting | success | error
   const [status, setStatus] = useState('idle');
   const [sentTo, setSentTo] = useState('');
+  // The API's own wording when it rejected the input (a field rule, a rate limit).
+  const [errorDetail, setErrorDetail] = useState(null);
   const successRef = useRef(null);
-  const configured = Boolean(SPONSOR_FORM_ENDPOINT);
   const submitting = status === 'submitting';
 
   useEffect(() => {
@@ -24,25 +24,27 @@ function SponsorForm() {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    if (!configured || submitting) return;
+    if (submitting) return;
 
-    const form = event.target;
-    const payload = Object.fromEntries(new FormData(form).entries());
+    const data = new FormData(event.target);
+    const payload = {
+      organization: data.get('organization'),
+      name: data.get('name'),
+      email: data.get('email'),
+      message: data.get('message'),
+      website: data.get('leave-blank'),
+    };
     setStatus('submitting');
+    setErrorDetail(null);
 
     try {
-      const response = await fetch(SPONSOR_FORM_ENDPOINT, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) throw new Error(`Request failed with status ${response.status}`);
-
+      await submitSponsorInquiry(payload);
       setSentTo(payload.email);
       setStatus('success');
-    } catch {
+    } catch (error) {
       // What was typed stays in the form so it can be retried or copied.
+      const fieldMessage = Object.values(error.fieldErrors ?? {})[0];
+      setErrorDetail(error.status >= 400 && error.status < 500 ? fieldMessage ?? error.serverMessage : null);
       setStatus('error');
     }
   };
@@ -82,23 +84,22 @@ function SponsorForm() {
                 <h2 id="sponsor-card-title">Start the conversation</h2>
                 <p className="sponsor-card-copy">Tell us a little about your organization and we’ll follow up with next steps.</p>
 
-                {!configured && (
-                  <p className="sponsor-notice" role="status">
-                    <strong>The online form is unavailable right now.</strong>
-                    <span>Please email {emailLink} and we’ll get right back to you.</span>
-                  </p>
-                )}
                 {status === 'error' && (
                   <p className="sponsor-notice sponsor-notice-error" role="alert">
-                    <strong>We couldn’t send your message.</strong>
+                    <strong>{errorDetail ?? 'We couldn’t send your message.'}</strong>
                     <span>Nothing you typed was lost. Try again, or email {emailLink} directly.</span>
                   </p>
                 )}
 
-                <fieldset className="sponsor-fields" disabled={!configured || submitting}>
+                <fieldset className="sponsor-fields" disabled={submitting}>
                   <div className="sponsor-field">
-                    <label htmlFor="name">Organization name</label>
-                    <input className="sponsor-input" type="text" id="name" name="name" autoComplete="organization" maxLength={200} required />
+                    <label htmlFor="organization">Organization name</label>
+                    <input className="sponsor-input" type="text" id="organization" name="organization" autoComplete="organization" maxLength={200} required />
+                  </div>
+
+                  <div className="sponsor-field">
+                    <label htmlFor="name">Your name</label>
+                    <input className="sponsor-input" type="text" id="name" name="name" autoComplete="name" maxLength={100} required />
                   </div>
 
                   <div className="sponsor-field">
@@ -110,18 +111,22 @@ function SponsorForm() {
                     <label htmlFor="message">About your organization, and any questions <span className="sponsor-optional">(optional)</span></label>
                     <textarea className="sponsor-input" id="message" name="message" rows={5} maxLength={4000} />
                   </div>
+
+                  {/* Honeypot: hidden from people, sent as `website`; the API drops any submission that fills it. */}
+                  <div className="sponsor-trap" aria-hidden="true">
+                    <label htmlFor="sponsor-leave-blank">Leave this field empty</label>
+                    <input type="text" id="sponsor-leave-blank" name="leave-blank" tabIndex={-1} autoComplete="off" />
+                  </div>
                 </fieldset>
 
                 <div className="sponsor-actions">
-                  <button type="submit" className={submitting ? 'sponsor-submit is-busy' : 'sponsor-submit'} disabled={!configured || submitting}>
+                  <button type="submit" className={submitting ? 'sponsor-submit is-busy' : 'sponsor-submit'} disabled={submitting}>
                     {submitting && <span className="sponsor-spinner" aria-hidden="true" />}
                     {submitting ? 'Sending…' : 'Send message'}
                   </button>
-                  {configured && (
-                    <p className="sponsor-hint" role="status">
-                      {submitting ? 'Sending your message…' : `Goes straight to ${SPONSOR_EMAIL}.`}
-                    </p>
-                  )}
+                  <p className="sponsor-hint" role="status">
+                    {submitting ? 'Sending your message…' : `Goes straight to ${SPONSOR_EMAIL}.`}
+                  </p>
                 </div>
               </form>
             )}
