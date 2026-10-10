@@ -4,13 +4,12 @@ import { ActivityIndicator, Alert, FlatList, Platform, Pressable, ScrollView, St
 import { api } from "../api/client";
 import { NfcUnavailable, useNfcStatus } from "../components/NfcState";
 import { TicketScanner } from "../components/TicketScanner";
-import { Button, Muted, Notice, ResultCard, Segmented, styles as ui } from "../components/ui";
+import { Button, ConnectionBanner, Muted, Notice, ResultCard, Segmented, styles as ui } from "../components/ui";
 import { signal } from "../lib/feedback";
 import { errorText, formatWhen, fullName, statusLabel, whenAndWho } from "../lib/format";
 import { cleanTicketCode } from "../lib/ticket";
 import { looksLikeUid } from "../lib/uid";
 import { cancelRead, nfcProblemText, readUid } from "../nfc";
-import { useOnline } from "../state/Queue";
 import { colors } from "../theme";
 
 const DevEntry = __DEV__ ? require("../dev/DevEntry") : null;
@@ -109,7 +108,6 @@ function SearchByName({ onPick }) {
 }
 
 export default function CheckInDesk() {
-  const online = useOnline();
   const [nfc] = useNfcStatus();
   const [mode, setMode] = useState("scan");
   const [step, setStep] = useState({ name: "find" });
@@ -270,9 +268,7 @@ export default function CheckInDesk() {
     );
   };
 
-  const offline = !online ? (
-    <Notice tone="warn">No connection. The check-in desk needs a connection to find people and give out badges.</Notice>
-  ) : null;
+  const offline = <ConnectionBanner />;
 
   if (step.name === "busy") {
     return (

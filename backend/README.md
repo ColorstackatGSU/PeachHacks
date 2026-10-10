@@ -164,11 +164,11 @@ Rate limits are in memory, per instance, and counted per client address (see `ap
 | --- | --- |
 | The two sign-up POSTs (`/public/pre-registrations`, `/public/registrations`), together | 30 per 10 minutes per address (`SIGN_UP_LIMIT_PER_ADDRESS`), and 1000 per hour across all addresses (`SIGN_UP_LIMIT_PER_HOUR`), which answers "please try again shortly" |
 | Every other public POST | 60 per minute |
-| `POST /admin/auth/login`, `forgot-password`, `set-password`, `set-password/check` and `change-password`, together | 10 per minute |
+| Sign-in and password routes (`/admin/auth/*`, `/platform/auth/*`) | No limit per address: at the event every organizer, volunteer and hacker signs in from the venue's one network address. Guessing a password is held back per email, in the next row |
 | Failed sign-ins for one email, from any address | 10 in 15 minutes (`app.rate-limit.login-failures-per-account`, `login-failure-window`); further attempts for that email are 429 until the window ends, a successful sign-in or a password set from an emailed link clears it. It counts for emails that have no account too, so it does not reveal which emails have one |
 | The ticket endpoints | 300 per minute (a whole door queue can share one venue address) |
 
-The bucket is chosen from the route the request matched, not from the URL as sent, so `/admin/%61uth/login` counts as a login. Every failed sign-in is logged at WARN with the email attempted and the client address, never the password. There is no CAPTCHA. Many people signing up from one campus network share one address: raise `SIGN_UP_LIMIT_PER_ADDRESS` for a sign-up drive.
+The bucket is chosen from the route the request matched, not from the URL as sent. Every failed sign-in is logged at WARN with the email attempted and the client address, never the password. There is no CAPTCHA. Many people signing up from one campus network share one address: raise `SIGN_UP_LIMIT_PER_ADDRESS` for a sign-up drive.
 
 With `app.rate-limit.trust-forwarded-for` on (the `prod` profile) the client address is the last entry of `X-Forwarded-For`, the one the hosting proxy appended. The first rate-limited request after startup logs one INFO line with how many entries the header carried and which address was used, so the proxy setup can be checked on the live service.
 
@@ -176,7 +176,7 @@ Request bodies are capped by the bytes actually read (`BodyLimitFilter`), so a c
 
 ### Admin
 
-Everything under `/admin` except login and the password-link routes needs `Authorization: Bearer <token>`. Tokens are random, opaque, valid for 12 hours and stored only as a SHA-256 hash; passwords are stored as BCrypt hashes. There are no cookies or server sessions.
+Everything under `/admin` except login and the password-link routes needs `Authorization: Bearer <token>`. Tokens are random, opaque, valid for 30 days (`app.admin.session-ttl`) and stored only as a SHA-256 hash; passwords are stored as BCrypt hashes. There are no cookies or server sessions.
 
 #### Roles
 
@@ -197,7 +197,7 @@ A refusal is 403 `FORBIDDEN`. The rule lives in `SecurityConfig`, so a route add
 | `POST /admin/auth/login`, `POST /admin/auth/logout`, `GET /admin/auth/me` | Sign in, invalidate the token, current account (`{ id, email, name, role }`). After 10 failed sign-ins for one email in 15 minutes, login answers 429 `RATE_LIMITED` for that email, see [Limits](#limits) |
 | `POST /admin/auth/forgot-password` | Public. `{ email }`; always 204. If the account exists it is emailed a one-time link, valid for 1 hour |
 | `POST /admin/auth/set-password/check`, `POST /admin/auth/set-password` | Public. `{ token }` answers `{ email, name, invite }`; `{ token, password }` saves the password, uses up the link and ends every session of that account. A bad, used or expired link is 400 `INVALID_PASSWORD_LINK`. A password is 10 to 72 characters and at most 72 bytes of UTF-8 (accented letters and emoji take more than one); longer is a 400 with `fieldErrors.password` |
-| `POST /admin/auth/change-password` | `{ currentPassword, newPassword }` for the signed-in account; its other sessions are ended. Same length rule (`fieldErrors.newPassword`); rate limited with login |
+| `POST /admin/auth/change-password` | `{ currentPassword, newPassword }` for the signed-in account; its other sessions are ended. Same length rule (`fieldErrors.newPassword`) |
 | `GET /admin/stats` | Totals, per school, per day, per level of study and per status; `preRegistrations.schoolEmailConfirmed` and `registrations.schoolEmailConfirmed` (how many have a confirmed school email); `registrations.checkedIn` (general check-in), `registrations.withResume` (resumes uploaded) and `events`, a list of `{ eventId, name, checkedIn }` |
 | `GET /admin/pre-registrations?page=&size=&q=&school=&schoolEmailConfirmed=` | Paged list, newest first (`size` is capped at 200). Items carry `schoolEmailConfirmed` and `schoolEmailConfirmedAt` (null until confirmed); `schoolEmailConfirmed=true` or `false` filters on it |
 | `GET /admin/pre-registrations/export.csv` | CSV export with the same filters, `school_email_confirmed` appended last. Logged, see [CSV exports](#csv-exports). Pre-registrations cannot be deleted through the API |
@@ -284,7 +284,7 @@ A badge is an NFC card (NTAG215) handed to a hacker at the check-in desk. Only t
 
 It refuses with 404 `NOT_FOUND` (unknown registration), 400 (bad `uid`), 409 `NOT_ACCEPTED` (not `ACCEPTED`, as for check-in), 409 `BADGE_IN_USE` (the card is someone else's active badge; `replace` never overrides this, an organizer revokes it first) and 409 `HAS_BADGE` (the registration has a different active badge and `replace` is not true). A refusal records nothing, the check-in included.
 
-`POST /admin/badges/tap` takes `{ "uid", "eventId", "tappedAt" }` (`eventId` optional, the general event without it; an unknown one is 404) and answers 200 `{ "result", "event", "item" }`. It is safe to replay:
+`POST /admin/badges/tap` takes `{ "uid", "eventId" }` (`eventId` optional, the general event without it; an unknown one is 404) and answers 200 `{ "result", "event", "item" }`. A repeat changes nothing:
 
 | `result` | Meaning |
 | --- | --- |
@@ -294,7 +294,7 @@ It refuses with 404 `NOT_FOUND` (unknown registration), 400 (bad `uid`), 409 `NO
 | `REVOKED_BADGE` | The card was revoked or replaced and is nobody's badge now; `item` is null |
 | `UNKNOWN_BADGE` | The card was never bound; `item` is null |
 
-`tappedAt` (ISO-8601 UTC, optional) is when the phone read the card, for taps the staff app queued while it was offline. It becomes `checkedInAt` only when it is no more than 1 minute ahead of the server's clock and no more than 72 hours old; otherwise the server's time is used. The check-in itself is the same insert on `(registration, event)` every other check-in uses, so a tap and a manual check-in for the same person and event cannot both be recorded.
+The check-in itself is the same insert on `(registration, event)` every other check-in uses, so a tap and a manual check-in for the same person and event cannot both be recorded.
 
 `POST /admin/badges/lookup` takes `{ "uid" }` and answers `{ "result", "holder" }` with `result` `FOUND`, `REVOKED_BADGE` or `UNKNOWN_BADGE`. `holder` is null unless `FOUND`, and then it is `{ "firstName", "lastName", "school", "accepted", "checkedIn" }` and nothing else: no id, no email. `checkedIn` is the general check-in. This is the whole of what a `LOOKUP` account can read.
 

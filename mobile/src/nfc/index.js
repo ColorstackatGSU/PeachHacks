@@ -15,6 +15,10 @@ const IOS_BUSY_PAUSE_MS = 3000;
 // After an iOS session times out it is reopened on its own only while badges are
 // still arriving; an idle phone is left alone until someone presses Resume.
 const IOS_AUTO_RESTART_WITHIN_MS = 5 * 60 * 1000;
+// iOS finds a card again for as long as it rests on the phone, so after a failed tap
+// the same card is taken again only once it has been away this long. Android reports
+// a card once per touch, so there it is taken again straight away.
+const RETRY_WINDOW_MS = Platform.OS === "ios" ? 1000 : 0;
 
 const isIos = Platform.OS === "ios";
 
@@ -221,7 +225,8 @@ export const cancelRead = () => endCurrent();
 // `onState` hears "reading", then "paused" (iOS closed the session: call start
 // again), "off", "unsupported" or "failed" when reading has ended.
 // `setMessage(text)` puts text on the iOS scan sheet, which covers the lower half of
-// the screen while a session is open.
+// the screen while a session is open. `allowRetry()` lets the card just read be read
+// again without waiting out the two seconds, for when its tap was not recorded.
 export function startContinuous({ message = "Hold a badge to the top of the phone.", onUid, onState = () => {} }) {
   let running = true;
   let lastUidAt = Date.now();
@@ -315,6 +320,7 @@ export function startContinuous({ message = "Hold a badge to the top of the phon
       await session.end();
       if (current === session) current = null;
     },
+    allowRetry: () => isRepeat.relax(RETRY_WINDOW_MS),
     setMessage: (text) => {
       if (isIos && running && nfc) nfc.default.setAlertMessageIOS(text).catch(() => {});
     },

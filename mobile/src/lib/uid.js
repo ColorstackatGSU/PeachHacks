@@ -12,15 +12,23 @@ export function looksLikeUid(value) {
 
 // A card resting on the phone is read again and again; the same UID inside the
 // window is ignored, and each ignored read keeps the window open.
+// `relax(ms)` shortens the window for the card just read, for when its tap failed
+// and the person has to tap again; the next card accepted restores the full window.
 export function createRepeatGuard(windowMs = 2000, now = Date.now) {
   let lastKey = null;
   let lastAt = 0;
-  return (uid) => {
+  let currentWindow = windowMs;
+  const isRepeat = (uid) => {
     const key = uidKey(uid);
     const at = now();
-    const repeat = key === lastKey && at - lastAt < windowMs;
+    const repeat = key === lastKey && at - lastAt < currentWindow;
+    if (!repeat) currentWindow = windowMs;
     lastKey = key;
     lastAt = at;
     return repeat;
   };
+  isRepeat.relax = (ms = 0) => {
+    currentWindow = Math.min(currentWindow, ms);
+  };
+  return isRepeat;
 }

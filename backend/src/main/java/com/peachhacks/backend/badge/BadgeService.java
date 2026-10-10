@@ -1,6 +1,5 @@
 package com.peachhacks.backend.badge;
 
-import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
@@ -82,10 +81,6 @@ public class BadgeService {
 
 	public record LookupResult(LookupOutcome result, Holder holder) {
 	}
-
-	static final Duration TAP_MAX_AGE = Duration.ofHours(72);
-
-	static final Duration TAP_CLOCK_SKEW = Duration.ofMinutes(1);
 
 	private static final int BIND_ATTEMPTS = 3;
 
@@ -175,7 +170,7 @@ public class BadgeService {
 	}
 
 	@Transactional
-	public TapResult tap(String rawUid, UUID eventId, Instant tappedAt, AdminPrincipal by) {
+	public TapResult tap(String rawUid, UUID eventId, AdminPrincipal by) {
 		String uid = BadgeUid.normalise(rawUid);
 		Event event = events.resolve(eventId);
 		EventRef ref = EventRef.of(event);
@@ -188,7 +183,7 @@ public class BadgeService {
 		if (registration.getStatus() != RegistrationStatus.ACCEPTED) {
 			return new TapResult(TapOutcome.NOT_ACCEPTED, ref, checkIns.item(registration, event));
 		}
-		boolean recorded = checkIns.record(registration, event, by, tapTime(tappedAt, Instant.now()));
+		boolean recorded = checkIns.record(registration, event, by);
 		return new TapResult(recorded ? TapOutcome.CHECKED_IN : TapOutcome.ALREADY_CHECKED_IN, ref,
 				checkIns.item(registration, event));
 	}
@@ -223,22 +218,9 @@ public class BadgeService {
 		return badges.findByRegistrationIdAndRevokedAtIsNull(registrationId).map(BadgeView::of).orElse(null);
 	}
 
-	/**
-	 * A phone that was offline sends its taps later with the time it read the card. That time
-	 * is believed only inside a window, so a wrong phone clock cannot write a check-in far in
-	 * the past or in the future.
-	 */
-	static Instant tapTime(Instant tappedAt, Instant now) {
-		if (tappedAt == null || tappedAt.isAfter(now.plus(TAP_CLOCK_SKEW))
-				|| tappedAt.isBefore(now.minus(TAP_MAX_AGE))) {
-			return now;
-		}
-		return tappedAt;
-	}
-
 	private BindResult bound(BindOutcome outcome, Registration registration, Lanyard lanyard, AdminPrincipal by) {
 		Event general = events.general();
-		checkIns.record(registration, general, by, Instant.now());
+		checkIns.record(registration, general, by);
 		return new BindResult(outcome, checkIns.item(registration, general), active(registration.getId()), lanyard);
 	}
 

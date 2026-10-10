@@ -1,8 +1,5 @@
 package com.peachhacks.backend;
 
-import java.time.Duration;
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -52,7 +49,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest(properties = { "app.admin.bootstrap-email=badges@test.local",
 		"app.admin.bootstrap-password=correct-horse-battery", "app.admin.bootstrap-name=Test Organizer",
-		"app.rate-limit.public-per-minute=100000", "app.rate-limit.login-per-minute=100000",
+		"app.rate-limit.public-per-minute=100000",
 		"app.rate-limit.sign-up-per-window=100000", "app.rate-limit.sign-up-global-per-hour=100000",
 		"app.badges.lanyard-host-color=Peach" })
 @AutoConfigureMockMvc
@@ -159,7 +156,7 @@ class BadgeApiTests {
 
 		assertThat(badgeRows(pending)).isZero();
 		assertThat(checkIns(pending)).isZero();
-		tap(admin, card, null, null).andExpect(jsonPath("$.result").value("UNKNOWN_BADGE"));
+		tap(admin, card, null).andExpect(jsonPath("$.result").value("UNKNOWN_BADGE"));
 	}
 
 	@Test
@@ -178,7 +175,7 @@ class BadgeApiTests {
 				.andExpect(jsonPath("$.result").value("ALREADY_BOUND"))
 				.andExpect(jsonPath("$.badge.uid").value(card));
 			lookup(admin, spelling).andExpect(status().isOk()).andExpect(jsonPath("$.result").value("FOUND"));
-			tap(admin, spelling, null, null).andExpect(status().isOk())
+			tap(admin, spelling, null).andExpect(status().isOk())
 				.andExpect(jsonPath("$.result").value("ALREADY_CHECKED_IN"));
 		}
 		assertThat(badgeRows(hacker)).isEqualTo(1);
@@ -195,7 +192,7 @@ class BadgeApiTests {
 		String other = acceptedHacker(admin, uniqueSchool());
 		for (String bad : List.of("", "   ", "04A1", "04A1B2C3D4E5F", "04A1B2C3D4E5F6A", "04A1B2C3D4E5F6A7B8C9D0E1",
 				"ZZA1B2C3D4E5F6", "04_A1_B2_C3_D4_E5_F6", "04A1B2C3D4E5F6".repeat(10))) {
-			for (ResultActions answer : List.of(bind(admin, other, bad, null), tap(admin, bad, null, null),
+			for (ResultActions answer : List.of(bind(admin, other, bad, null), tap(admin, bad, null),
 					lookup(admin, bad))) {
 				answer.andExpect(status().isBadRequest())
 					.andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
@@ -275,18 +272,18 @@ class BadgeApiTests {
 			.query(String.class)
 			.single()).isEqualTo("Desk Volunteer");
 
-		tap(volunteer.token(), first, null, null).andExpect(status().isOk())
+		tap(volunteer.token(), first, null).andExpect(status().isOk())
 			.andExpect(jsonPath("$.result").value("REVOKED_BADGE"))
 			.andExpect(jsonPath("$.event.general").value(true))
 			.andExpect(jsonPath("$.item").value(nullValue()));
 		lookup(volunteer.token(), first).andExpect(jsonPath("$.result").value("REVOKED_BADGE"))
 			.andExpect(jsonPath("$.holder").value(nullValue()));
-		tap(volunteer.token(), second, null, null).andExpect(jsonPath("$.result").value("ALREADY_CHECKED_IN"))
+		tap(volunteer.token(), second, null).andExpect(jsonPath("$.result").value("ALREADY_CHECKED_IN"))
 			.andExpect(jsonPath("$.item.id").value(ada));
 
 		bind(volunteer.token(), grace, first, null).andExpect(status().isOk())
 			.andExpect(jsonPath("$.result").value("BOUND"));
-		tap(volunteer.token(), first, null, null).andExpect(jsonPath("$.result").value("ALREADY_CHECKED_IN"))
+		tap(volunteer.token(), first, null).andExpect(jsonPath("$.result").value("ALREADY_CHECKED_IN"))
 			.andExpect(jsonPath("$.item.id").value(grace));
 	}
 
@@ -314,7 +311,7 @@ class BadgeApiTests {
 		mockMvc.perform(get("/admin/registrations/" + hacker).header("Authorization", admin))
 			.andExpect(jsonPath("$.badge").value(nullValue()))
 			.andExpect(jsonPath("$.checkedInAt").isNotEmpty());
-		tap(volunteer.token(), card, null, null).andExpect(jsonPath("$.result").value("REVOKED_BADGE"));
+		tap(volunteer.token(), card, null).andExpect(jsonPath("$.result").value("REVOKED_BADGE"));
 
 		mockMvc.perform(delete("/admin/registrations/" + hacker + "/badge").header("Authorization", admin))
 			.andExpect(status().isNotFound())
@@ -335,14 +332,14 @@ class BadgeApiTests {
 		String workshop = createEvent(admin, "Workshop " + unique());
 
 		String bound = bind(desk.token(), hacker, card, null).andReturn().getResponse().getContentAsString();
-		tap(meals.token(), card, null, null).andExpect(status().isOk())
+		tap(meals.token(), card, null).andExpect(status().isOk())
 			.andExpect(jsonPath("$.result").value("ALREADY_CHECKED_IN"))
 			.andExpect(jsonPath("$.event.general").value(true))
 			.andExpect(jsonPath("$.event.name").value("General check-in"))
 			.andExpect(jsonPath("$.item.checkedInAt").value((String) JsonPath.read(bound, "$.item.checkedInAt")))
 			.andExpect(jsonPath("$.item.checkedInBy").value("Desk Volunteer"));
 
-		String first = tap(meals.token(), card, lunch, null).andExpect(status().isOk())
+		String first = tap(meals.token(), card, lunch).andExpect(status().isOk())
 			.andExpect(jsonPath("$.result").value("CHECKED_IN"))
 			.andExpect(jsonPath("$.event.id").value(lunch))
 			.andExpect(jsonPath("$.event.general").value(false))
@@ -354,7 +351,7 @@ class BadgeApiTests {
 			.getResponse()
 			.getContentAsString();
 		for (String caller : List.of(admin, desk.token(), meals.token())) {
-			tap(caller, card, lunch, Instant.now().minus(Duration.ofMinutes(5)).toString())
+			tap(caller, card, lunch)
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.result").value("ALREADY_CHECKED_IN"))
 				.andExpect(jsonPath("$.item.checkedInAt").value((String) JsonPath.read(first, "$.item.checkedInAt")))
@@ -362,57 +359,31 @@ class BadgeApiTests {
 		}
 		assertThat(eventCheckIns(hacker, lunch)).isEqualTo(1);
 
-		tap(desk.token(), card, workshop, null).andExpect(jsonPath("$.result").value("CHECKED_IN"))
+		tap(desk.token(), card, workshop).andExpect(jsonPath("$.result").value("CHECKED_IN"))
 			.andExpect(jsonPath("$.event.id").value(workshop))
 			.andExpect(jsonPath("$.item.checkedInBy").value("Desk Volunteer"));
 		assertThat(checkIns(hacker)).isEqualTo(3);
 
-		tap(desk.token(), uid(), lunch, null).andExpect(status().isOk())
+		tap(desk.token(), uid(), lunch).andExpect(status().isOk())
 			.andExpect(jsonPath("$.result").value("UNKNOWN_BADGE"))
 			.andExpect(jsonPath("$.event.id").value(lunch))
 			.andExpect(jsonPath("$.item").value(nullValue()));
-		tap(desk.token(), card, UUID.randomUUID().toString(), null).andExpect(status().isNotFound())
+		tap(desk.token(), card, UUID.randomUUID().toString()).andExpect(status().isNotFound())
 			.andExpect(jsonPath("$.code").value("NOT_FOUND"));
 
 		String later = createEvent(admin, "Dinner " + unique());
 		setStatus(admin, hacker, "WAITLISTED");
-		tap(meals.token(), card, later, null).andExpect(status().isOk())
+		tap(meals.token(), card, later).andExpect(status().isOk())
 			.andExpect(jsonPath("$.result").value("NOT_ACCEPTED"))
 			.andExpect(jsonPath("$.item.id").value(hacker))
 			.andExpect(jsonPath("$.item.status").value("WAITLISTED"))
 			.andExpect(jsonPath("$.item.checkedInAt").value(nullValue()));
-		tap(meals.token(), card, lunch, null).andExpect(jsonPath("$.result").value("NOT_ACCEPTED"));
+		tap(meals.token(), card, lunch).andExpect(jsonPath("$.result").value("NOT_ACCEPTED"));
 		assertThat(eventCheckIns(hacker, later)).isZero();
 		assertThat(checkIns(hacker)).isEqualTo(3);
 		lookup(meals.token(), card).andExpect(jsonPath("$.result").value("FOUND"))
 			.andExpect(jsonPath("$.holder.accepted").value(false))
 			.andExpect(jsonPath("$.holder.checkedIn").value(true));
-	}
-
-	@Test
-	void theTimeAPhoneReadTheCardIsUsedOnlyInsideTheWindow() throws Exception {
-		String admin = bearer();
-		String hacker = acceptedHacker(admin, uniqueSchool());
-		String card = uid();
-		bind(admin, hacker, card, null).andExpect(jsonPath("$.result").value("BOUND"));
-
-		Instant twoHoursAgo = Instant.now().minus(Duration.ofHours(2)).truncatedTo(ChronoUnit.SECONDS);
-		assertThat(tappedAt(admin, card, twoHoursAgo)).isEqualTo(twoHoursAgo);
-		Instant almostThreeDays = Instant.now().minus(Duration.ofHours(71)).truncatedTo(ChronoUnit.SECONDS);
-		assertThat(tappedAt(admin, card, almostThreeDays)).isEqualTo(almostThreeDays);
-		Instant slightlyAhead = Instant.now().plus(Duration.ofSeconds(20)).truncatedTo(ChronoUnit.SECONDS);
-		assertThat(tappedAt(admin, card, slightlyAhead)).isEqualTo(slightlyAhead);
-
-		for (Instant ignored : List.of(Instant.now().plus(Duration.ofMinutes(10)),
-				Instant.now().plus(Duration.ofDays(400)), Instant.now().minus(Duration.ofHours(73)),
-				Instant.now().minus(Duration.ofDays(400)))) {
-			Instant before = Instant.now().minusSeconds(1);
-			assertThat(tappedAt(admin, card, ignored)).isBetween(before, Instant.now().plusSeconds(1));
-		}
-
-		json(post("/admin/badges/tap"), admin, "{\"uid\":\"%s\",\"tappedAt\":\"yesterday\"}".formatted(card))
-			.andExpect(status().isBadRequest())
-			.andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
 	}
 
 	@Test
@@ -490,7 +461,7 @@ class BadgeApiTests {
 		json(post("/admin/badges/resolve"), volunteer.token(), "{\"registrationId\":\"%s\"}".formatted(hacker))
 			.andExpect(status().isOk());
 		bind(volunteer.token(), hacker, card, null).andExpect(status().isOk());
-		tap(volunteer.token(), card, null, null).andExpect(status().isOk());
+		tap(volunteer.token(), card, null).andExpect(status().isOk());
 		lookup(volunteer.token(), card).andExpect(status().isOk()).andExpect(jsonPath("$.result").value("FOUND"));
 
 		MockHttpServletRequestBuilder[] adminOnly = { delete("/admin/registrations/" + hacker + "/badge"),
@@ -653,7 +624,7 @@ class BadgeApiTests {
 		String workshop = createEvent(admin, "Workshop " + unique());
 		String generalId = jdbc.sql("select id from events where general").query(UUID.class).single().toString();
 		bind(admin, hacker, card, null).andExpect(jsonPath("$.result").value("BOUND"));
-		tap(volunteer.token(), card, workshop, null).andExpect(jsonPath("$.result").value("CHECKED_IN"));
+		tap(volunteer.token(), card, workshop).andExpect(jsonPath("$.result").value("CHECKED_IN"));
 
 		mockMvc
 			.perform(delete("/admin/check-in/" + hacker).param("eventId", workshop)
@@ -663,7 +634,7 @@ class BadgeApiTests {
 			.andExpect(jsonPath("$.generalCheckedIn").value(true));
 		assertThat(activeUid(hacker)).isEqualTo(card);
 		lookup(volunteer.token(), card).andExpect(jsonPath("$.result").value("FOUND"));
-		tap(volunteer.token(), card, workshop, null).andExpect(jsonPath("$.result").value("CHECKED_IN"));
+		tap(volunteer.token(), card, workshop).andExpect(jsonPath("$.result").value("CHECKED_IN"));
 
 		mockMvc.perform(delete("/admin/check-in/" + hacker).header("Authorization", volunteer.token()))
 			.andExpect(status().isOk())
@@ -674,7 +645,7 @@ class BadgeApiTests {
 			.query(String.class)
 			.single()).isEqualTo("Desk Volunteer");
 		lookup(volunteer.token(), card).andExpect(jsonPath("$.result").value("REVOKED_BADGE"));
-		tap(volunteer.token(), card, workshop, null).andExpect(jsonPath("$.result").value("REVOKED_BADGE"));
+		tap(volunteer.token(), card, workshop).andExpect(jsonPath("$.result").value("REVOKED_BADGE"));
 		assertThat(eventCheckIns(hacker, workshop)).as("the workshop check-in is left alone").isEqualTo(1);
 
 		String wrongPerson = acceptedHacker(admin, uniqueSchool());
@@ -751,7 +722,7 @@ class BadgeApiTests {
 			json(post("/admin/badges/resolve"), volunteer.token(), "{\"registrationId\":\"%s\"}".formatted(hacker))
 				.andExpect(status().isOk());
 			bind(volunteer.token(), hacker, card, null).andExpect(status().isOk());
-			tap(volunteer.token(), card, null, null).andExpect(status().isOk());
+			tap(volunteer.token(), card, null).andExpect(status().isOk());
 			lookup(volunteer.token(), card).andExpect(status().isOk());
 			mockMvc.perform(get("/admin/events").header("Authorization", volunteer.token()))
 				.andExpect(status().isOk());
@@ -833,7 +804,7 @@ class BadgeApiTests {
 
 				List<MockHttpServletResponse> sameBind = together(pool,
 						() -> bind(one.token(), hopper, activeUid(hopper), null).andReturn().getResponse(),
-						() -> tap(two.token(), activeUid(hopper), null, null).andReturn().getResponse());
+						() -> tap(two.token(), activeUid(hopper), null).andReturn().getResponse());
 				assertThat(sameBind).extracting(MockHttpServletResponse::getStatus).containsExactly(200, 200);
 			}
 		}
@@ -859,30 +830,16 @@ class BadgeApiTests {
 		return responses;
 	}
 
-	/** Each call uses its own new workshop, so the time written is the time this tap carried. */
-	private Instant tappedAt(String token, String card, Instant tappedAt) throws Exception {
-		String event = createEvent(token, "Timed " + unique());
-		String body = tap(token, card, event, tappedAt.toString()).andExpect(status().isOk())
-			.andExpect(jsonPath("$.result").value("CHECKED_IN"))
-			.andReturn()
-			.getResponse()
-			.getContentAsString();
-		return Instant.parse(JsonPath.read(body, "$.item.checkedInAt"));
-	}
-
 	private ResultActions bind(String token, String registrationId, String uid, Boolean replace) throws Exception {
 		String replaceField = (replace != null) ? ",\"replace\":" + replace : "";
 		return json(post("/admin/badges/bind"), token,
 				"{\"registrationId\":\"%s\",\"uid\":\"%s\"%s}".formatted(registrationId, uid, replaceField));
 	}
 
-	private ResultActions tap(String token, String uid, String eventId, String tappedAt) throws Exception {
+	private ResultActions tap(String token, String uid, String eventId) throws Exception {
 		StringBuilder body = new StringBuilder("{\"uid\":\"").append(uid).append('"');
 		if (eventId != null) {
 			body.append(",\"eventId\":\"").append(eventId).append('"');
-		}
-		if (tappedAt != null) {
-			body.append(",\"tappedAt\":\"").append(tappedAt).append('"');
 		}
 		return json(post("/admin/badges/tap"), token, body.append('}').toString());
 	}

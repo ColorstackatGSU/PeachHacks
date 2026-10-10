@@ -11,7 +11,7 @@ export const API_BASE = pickApiBase({
 export const ADMIN_SITE = "https://admin.peachhacks.com";
 
 const DEFAULT_TIMEOUT_MS = 15000;
-// A tap that hangs holds up the line; past this it is saved and synced later.
+// A tap that hangs holds up the line; past this it counts as not recorded.
 const TAP_TIMEOUT_MS = 8000;
 
 export class ApiError extends Error {
@@ -25,6 +25,29 @@ export class ApiError extends Error {
 }
 
 export const isNetworkError = (error) => error?.code === "NETWORK";
+
+// True when the request may simply be sent again: the server was not reached, or it
+// was too busy or broken to answer.
+export const isTemporaryFailure = (error) =>
+  isNetworkError(error) || [408, 429].includes(error?.status) || error?.status >= 500;
+
+// Screens show a "No connection" banner from the moment a request fails to reach the
+// server until one gets an answer again.
+let reachable = true;
+const connectionListeners = new Set();
+
+export const isReachable = () => reachable;
+
+export function onConnectionChange(listener) {
+  connectionListeners.add(listener);
+  return () => connectionListeners.delete(listener);
+}
+
+function setReachable(next) {
+  if (reachable === next) return;
+  reachable = next;
+  connectionListeners.forEach((listener) => listener(next));
+}
 
 let memoryToken = null;
 let unauthorizedHandler = null;
@@ -92,6 +115,7 @@ async function send(method, path, { query, body, signal, auth = true, timeoutMs 
     });
   } catch (cause) {
     if (signal?.aborted) throw cause;
+    setReachable(false);
     throw new ApiError({
       code: "NETWORK",
       message: "Could not reach the PeachHacks API. Check your connection and try again.",
@@ -101,6 +125,7 @@ async function send(method, path, { query, body, signal, auth = true, timeoutMs 
     signal?.removeEventListener?.("abort", abort);
   }
 
+  setReachable(true);
   if (!response.ok) {
     const error = await toApiError(response);
     if (auth && error.status === 401 && error.code === "UNAUTHORIZED") {
@@ -139,7 +164,7 @@ export const api = {
   resolveBadge: (body) => json("POST", "/admin/badges/resolve", { body }),
   bindBadge: ({ registrationId, uid, replace = false }) =>
     json("POST", "/admin/badges/bind", { body: { registrationId, uid, replace } }),
-  tapBadge: ({ uid, eventId, tappedAt }) =>
-    json("POST", "/admin/badges/tap", { body: { uid, eventId, tappedAt }, timeoutMs: TAP_TIMEOUT_MS }),
+  tapBadge: ({ uid, eventId }) =>
+    json("POST", "/admin/badges/tap", { body: { uid, eventId }, timeoutMs: TAP_TIMEOUT_MS }),
   lookupBadge: (uid) => json("POST", "/admin/badges/lookup", { body: { uid } }),
 };

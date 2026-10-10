@@ -1,6 +1,5 @@
 package com.peachhacks.backend.badge;
 
-import java.time.Instant;
 import java.util.UUID;
 
 import com.peachhacks.backend.admin.AdminPrincipal;
@@ -29,7 +28,7 @@ public class BadgeController {
 			Boolean replace) {
 	}
 
-	public record TapRequest(String uid, UUID eventId, Instant tappedAt) {
+	public record TapRequest(String uid, UUID eventId) {
 	}
 
 	public record LookupRequest(String uid) {
@@ -58,7 +57,7 @@ public class BadgeController {
 
 	@PostMapping("/admin/badges/tap")
 	BadgeService.TapResult tap(@RequestBody TapRequest request, @AuthenticationPrincipal AdminPrincipal current) {
-		return service.tap(request.uid(), request.eventId(), request.tappedAt(), current);
+		return service.tap(request.uid(), request.eventId(), current);
 	}
 
 	@PostMapping("/admin/badges/lookup")

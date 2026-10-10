@@ -1,7 +1,5 @@
 package com.peachhacks.backend.badge;
 
-import java.time.Duration;
-import java.time.Instant;
 import java.util.Arrays;
 
 import com.peachhacks.backend.common.ApiException;
@@ -40,20 +38,6 @@ class BadgeUidTests {
 					assertThat(ex.getFieldErrors()).containsOnlyKeys("uid");
 				});
 		}
-	}
-
-	@Test
-	void aTapTimeIsBelievedOnlyInsideTheWindow() {
-		Instant now = Instant.parse("2027-02-06T15:00:00Z");
-		assertThat(BadgeService.tapTime(null, now)).isEqualTo(now);
-		assertThat(BadgeService.tapTime(now, now)).isEqualTo(now);
-		Instant earlier = now.minus(Duration.ofHours(5));
-		assertThat(BadgeService.tapTime(earlier, now)).isEqualTo(earlier);
-		assertThat(BadgeService.tapTime(now.minus(Duration.ofHours(72)), now)).isEqualTo(now.minus(Duration.ofHours(72)));
-		assertThat(BadgeService.tapTime(now.minus(Duration.ofHours(72)).minusSeconds(1), now)).isEqualTo(now);
-		assertThat(BadgeService.tapTime(now.plusSeconds(60), now)).isEqualTo(now.plusSeconds(60));
-		assertThat(BadgeService.tapTime(now.plusSeconds(61), now)).isEqualTo(now);
-		assertThat(BadgeService.tapTime(now.plus(Duration.ofDays(1)), now)).isEqualTo(now);
 	}
 
 }

@@ -8,6 +8,9 @@ with Expo, for iOS and Android, and talks to the Spring Boot API in `../backend`
 The app is the main check-in tool. The Check-in screen on the admin site
 (`../admin`) still works and is the fallback when a phone or its NFC reader fails.
 
+The app needs a connection for everything it does. Nothing is saved on the phone
+to be sent later; see [When the connection drops](#when-the-connection-drops).
+
 A badge is an NFC card (NTAG215). The app only ever reads the card's UID. It never
 writes to a card and never reads what is stored on it.
 
@@ -30,18 +33,17 @@ the same accounts as on the admin site.
   which lanyard to hand over and goes back to scanning. Someone who is not
   accepted cannot be checked in until an organizer accepts them, and there is no
   override. "Check in without a badge" records the check-in alone, for when
-  badges cannot be read. This area needs a connection.
+  badges cannot be read.
 - **Event taps.** Pick an event, press "Start tapping", and tap badges one after
   another. Each tap shows a result: checked in (with the name), already checked
   in (with when and by whom, which is how a second trip through the meal line
-  shows up), not accepted, a revoked badge or an unknown badge. Without a
-  connection taps are saved on the phone and synced later; see
-  [Offline taps](#offline-taps).
+  shows up), not accepted, a revoked badge or an unknown badge. A tap that
+  does not reach the server shows "NOT RECORDED" and has to be tapped again.
 - **Lookup.** Tap a badge to see the holder's name and school, whether they are
   accepted and whether they are checked in. A Lookup account sees only this
-  screen. It needs a connection.
+  screen.
 
-Sign-ins last 12 hours, so staff sign in once a day. The app remembers the email
+Sign-ins last 30 days, so staff sign in once for the event. The app remembers the email
 address, never the password. "Forgot password?" opens `admin.peachhacks.com`,
 because password links open on the admin site.
 
@@ -98,7 +100,7 @@ Other scripts:
 
 ```sh
 npm run lint          # ESLint
-npm test              # Jest: the offline queue and the UID and ticket helpers
+npm test              # Jest: the UID, ticket and API address helpers
 npm run build:check   # bundles the JavaScript for Android and iOS into dist/
 npm run doctor        # expo-doctor
 ```
@@ -285,75 +287,60 @@ A TestFlight build expires 90 days after upload.
   (or `eas submit --platform android` once a service account is set up) and add
   testers by email. This needs a Google Play developer account.
 
-## Offline taps
+## When the connection drops
 
-Event taps keep working without a connection. This is how:
+The app is online only. Every scan, tap and lookup is a request to the API, and
+nothing is kept on the phone to be sent later.
 
-- When a tap cannot reach the server (no connection, a timeout after 8 seconds,
-  or a server error), the app saves the badge UID, the event and the time the
-  card was read, and shows "Saved, will sync". It cannot show the name, because
-  only the server knows whose badge it is.
-- Saved taps are sent oldest first, one at a time: when the connection returns,
-  when the app comes back to the front, after signing in, and on a timer that
-  backs off from 2 seconds to a minute while the server stays unreachable.
-  "Sync now" on the Event taps screen sends them immediately.
-- Sending a tap twice is harmless. The server records one check-in per person
-  per event and uses the saved time, as long as it is less than 72 hours old.
-- The number waiting is shown on the Event taps tab, in a bar on the other
-  screens, on the sign-in screen and in the sign-out confirmation.
-- After a sync, "Saved taps" on the Event taps screen says what the taps turned
-  out to be, for example "2 queued taps were unknown badges", and lists the ones
-  that were not plain check-ins.
-- A session that has ended (401) stops the sync and keeps every tap; they are
-  sent after the next sign-in. An account that may not record taps (403) also
-  stops it and keeps them.
-- A tap the server will never accept (the event was deleted, or the UID is not
-  valid) moves to a "Could not sync" list with the reason. It is not retried on
-  its own. It can be retried by hand or removed.
-- Signing out, closing the app and restarting the phone do not lose saved taps.
-  The event list is saved on the phone too, so an event can be picked offline
-  once the list has loaded at least once.
+What staff see:
 
-Limits to know about:
+- **Event taps.** A tap that does not get an answer (no connection, no answer
+  within 8 seconds, or a server error) shows a red "NOT RECORDED" card with an
+  error vibration, clearly unlike the green "Checked in". The tap was not saved.
+  Check the connection and tap the same badge again; it is read again straight
+  away, without the usual two-second wait for a repeated card. On an iPhone the
+  badge has to be lifted off the phone for a second first.
+- **Check-in desk.** Finding a person and saving a badge show the error with
+  "Try again". After a badge tap, "Try again" sends the same badge again, so the
+  card does not have to be tapped a second time. A failed "Check in without a
+  badge" shows the error and can be pressed again.
+- **Lookup.** The card says the badge could not be looked up. Tap it again.
+- **All three** show a red "No connection" banner from the moment a request
+  fails to reach the server until a request gets through again. The app does not
+  watch the network itself, so the banner appears after the first failed request
+  and clears on the next one that works.
+- **Opening the app.** If the server cannot be reached to confirm the sign-in,
+  the app shows "No connection" with "Try again". The sign-in is kept, so no
+  password is needed once the connection is back.
 
-- **Double taps across phones.** Offline, the app warns when the same badge is
-  tapped twice for the same event on the same phone ("Already tapped on this
-  phone"). A second phone that is also offline cannot know. Those cases only
-  show up after both phones sync, as "already checked in" in the sync summary.
-- **Not accepted, revoked and unknown badges** are only found out at sync time,
-  after the person has gone through.
-- **The app has to be open to sync.** There is no background sync. Keep the app
-  open until the waiting count reaches zero.
-- **The saved taps live in the app's storage.** Uninstalling the app or clearing
-  its data deletes any that have not synced.
-- A tap that timed out may have reached the server anyway. It is saved and sent
-  again, and then shows up in the summary as already checked in.
-- The check-in desk and Lookup do not work offline. Use the admin site's
-  check-in or wait for the connection.
+Things to know:
 
-The queue and its rules are in `src/lib/tapQueue.js`, which has no React Native
-imports, and are covered by `src/lib/__tests__/tapQueue.test.js`.
+- A tap that timed out may have reached the server after all. Tapping the badge
+  again then shows "ALREADY CHECKED IN" with your own name and the time a moment
+  ago. That person is checked in.
+- The admin site's Check-in screen needs a connection too, so it is not a
+  fallback for a network failure, only for a phone or reader that fails.
 
 ## How it is put together
 
 - `App.js`: sign-in gate and the tab bar, filtered by role.
 - `src/api/client.js`: every API call, in the same shape as the admin site's
   client. A `401 UNAUTHORIZED` clears the session and returns to the sign-in
-  screen; it does not touch saved taps.
+  screen. It also tracks whether the last request reached the server, which is
+  what the "No connection" banner shows.
 - `src/nfc/index.js`: the only file that talks to `react-native-nfc-manager`.
   `readUid()` reads one badge; `startContinuous()` keeps reading.
-- `src/lib/`: plain modules (queue, UID and ticket helpers, formatting).
-- `src/state/`: the session (`Auth.js`) and the queue with its sync triggers
-  (`Queue.js`).
+- `src/lib/`: plain modules (UID and ticket helpers, formatting, the stored
+  session).
+- `src/state/Auth.js`: who is signed in.
 - `src/screens/`: sign-in and the three areas.
 - `src/dev/DevEntry.js`: development stand-ins. In a development build on a
   device without NFC (a simulator or emulator) a text field takes a typed UID,
   and the scan screen has a text field for a ticket code. The file is loaded
   behind `__DEV__`, so it is left out of release bundles.
 
-The session token is kept in the device keychain or keystore through
-`expo-secure-store`. Saved taps, the event list and the remembered email are in
-AsyncStorage.
+The session token and the remembered email are kept in the device keychain or
+keystore through `expo-secure-store`. Nothing else is stored on the phone.
 
 ## Testing NFC on real devices
 
@@ -383,12 +370,14 @@ On-device checklist, to run on at least one iPhone and one Android phone:
 10. Leave a card resting on the phone for ten seconds: it is counted once.
 11. iPhone: leave the scan sheet open for over a minute, then tap a badge. Note
     whether the sheet reopened by itself and whether "Resume tapping" works.
-12. Switch on airplane mode and tap three badges, one of them twice: "Saved,
-    will sync" three times and "Already tapped on this phone" once. Close and
-    reopen the app: the waiting count is still there. Switch airplane mode off:
-    the count drops to zero and the summary appears.
-13. With taps waiting, sign out and sign in again: they are still there and
-    sync.
+12. Switch on airplane mode and tap a badge: the red "NOT RECORDED" card shows
+    with an error vibration, the "No connection" banner appears, and nothing is
+    saved. Switch airplane mode off and tap the same card: it checks in and the
+    banner goes.
+13. In airplane mode, scan a ticket on the Check-in desk and tap a badge on
+    Lookup: both show an error and the banner. Close the app and open it again
+    while still in airplane mode: "No connection" with "Try again" shows, and
+    "Try again" works once the connection is back.
 14. Android: switch NFC off. The app says so and the button opens settings.
 15. Tap a card that is not a badge (a transit card, a bank card): it is either
     ignored or refused as an unknown badge, and reading carries on.
@@ -413,8 +402,9 @@ Not tested:
   one iOS session open across taps, the automatic reopen after a timeout, Android
   reader mode, and the two-second repeat guard on a real reader.
 - The camera and QR scanning on a device.
-- Haptics, the keychain and keystore, and connection change detection on a
-  device.
+- Haptics and the keychain and keystore on a device.
+- How a failed request behaves on a real network: the 8-second tap timeout, the
+  "No connection" banner, and tapping the same card again after a failure.
 - The app against the real API. The calls follow the agreed contract, but the
   badge endpoints were written at the same time as the app and the two have not
   been run together.

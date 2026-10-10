@@ -3,12 +3,11 @@ import { Platform, ScrollView, Text, View } from "react-native";
 
 import { api } from "../api/client";
 import { NfcUnavailable, useNfcStatus } from "../components/NfcState";
-import { Button, Muted, Notice, ResultCard, styles as ui } from "../components/ui";
+import { Button, ConnectionBanner, Muted, ResultCard, styles as ui } from "../components/ui";
 import { signal } from "../lib/feedback";
 import { errorText, fullName } from "../lib/format";
 import { looksLikeUid } from "../lib/uid";
 import { cancelRead, nfcProblemText, readUid } from "../nfc";
-import { useOnline } from "../state/Queue";
 import { colors } from "../theme";
 
 const NOT_A_BADGE = {
@@ -47,7 +46,6 @@ function viewOf(response) {
 }
 
 export default function Lookup() {
-  const online = useOnline();
   const [nfc] = useNfcStatus();
   const [phase, setPhase] = useState("idle");
   const [view, setView] = useState(null);
@@ -105,7 +103,7 @@ export default function Lookup() {
 
   return (
     <ScrollView contentContainerStyle={ui.screen}>
-      {!online ? <Notice tone="warn">No connection. Looking up a badge needs a connection.</Notice> : null}
+      <ConnectionBanner />
 
       {view ? <ResultCard tone={view.tone} title={view.title} name={view.name} lines={view.lines} /> : null}
 

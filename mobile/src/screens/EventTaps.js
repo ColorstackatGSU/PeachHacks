@@ -1,23 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
-import { api } from "../api/client";
+import { api, isTemporaryFailure } from "../api/client";
 import { NfcUnavailable, useNfcStatus } from "../components/NfcState";
-import { QueuePanel } from "../components/QueuePanel";
-import { Button, Muted, Notice, ResultCard, styles as ui } from "../components/ui";
+import { Button, ConnectionBanner, Muted, Notice, ResultCard, styles as ui } from "../components/ui";
 import { signal } from "../lib/feedback";
 import { errorText, formatWhen, fullName, whenAndWho } from "../lib/format";
-import { readJson, writeJson } from "../lib/storage";
-import { classifyError } from "../lib/tapQueue";
 import { looksLikeUid } from "../lib/uid";
 import { startContinuous } from "../nfc";
-import { useOnline, useQueue } from "../state/Queue";
 import { colors, tones } from "../theme";
 
-const EVENTS_KEY = "peachhacks.staff.events";
 const RECENT_KEPT = 8;
 
 const NOT_A_BADGE = { tone: "bad", title: "Not a PeachHacks badge", lines: ["That card is not a PeachHacks badge."] };
+
+const NOT_RECORDED = {
+  tone: "bad",
+  title: "NOT RECORDED",
+  lines: ["This tap did not reach the server and was not saved.", "Check the connection, then tap the badge again."],
+};
 
 function viewOf(response, event) {
   const { result, item } = response || {};
@@ -68,18 +69,14 @@ function viewOf(response, event) {
 }
 
 function useEvents() {
-  const [state, setState] = useState({ events: null, error: null, fromCache: false });
+  const [state, setState] = useState({ events: null, error: null });
 
   const load = useCallback(async () => {
-    const cached = await readJson(EVENTS_KEY);
-    if (Array.isArray(cached)) setState((prev) => (prev.events ? prev : { events: cached, error: null, fromCache: true }));
     try {
       const events = await api.events();
-      if (!Array.isArray(events)) return;
-      writeJson(EVENTS_KEY, events).catch(() => {});
-      setState({ events, error: null, fromCache: false });
+      setState({ events: Array.isArray(events) ? events : [], error: null });
     } catch (error) {
-      setState((prev) => ({ ...prev, error, fromCache: Boolean(prev.events) }));
+      setState((prev) => ({ ...prev, error }));
     }
   }, []);
 
@@ -91,15 +88,13 @@ function useEvents() {
 }
 
 export default function EventTaps() {
-  const online = useOnline();
-  const { queue, pending } = useQueue();
   const [nfc, recheckNfc] = useNfcStatus();
-  const { events, error: eventsError, fromCache, reload } = useEvents();
+  const { events, error: eventsError, reload } = useEvents();
   const [chosen, setChosen] = useState(null);
   const [reading, setReading] = useState("stopped");
   const [view, setView] = useState(null);
   const [recent, setRecent] = useState([]);
-  const [counts, setCounts] = useState({ checkedIn: 0, saved: 0 });
+  const [count, setCount] = useState(0);
 
   const reader = useRef(null);
   const chain = useRef(Promise.resolve());
@@ -134,54 +129,24 @@ export default function EventTaps() {
     setRecent((list) =>
       [{ key: `${Date.now()}-${Math.random()}`, at: new Date().toISOString(), ...next }, ...list].slice(0, RECENT_KEPT),
     );
-    if (next.counts) setCounts((prev) => ({ ...prev, checkedIn: prev.checkedIn + 1 }));
-    if (next.saved) setCounts((prev) => ({ ...prev, saved: prev.saved + 1 }));
+    if (next.counts) setCount((prev) => prev + 1);
   }, []);
 
   const handle = useCallback(
     async (uid) => {
       const current = eventRef.current;
       if (!current) return;
-      const tappedAt = new Date().toISOString();
       if (!looksLikeUid(uid)) {
         show(NOT_A_BADGE);
         return;
       }
       try {
-        const response = await api.tapBadge({ uid, eventId: current.id, tappedAt });
-        if (response?.result === "CHECKED_IN" || response?.result === "ALREADY_CHECKED_IN") {
-          queue.noteTap({ uid, eventId: current.id, tappedAt });
-        }
-        show(viewOf(response, current));
+        show(viewOf(await api.tapBadge({ uid, eventId: current.id }), current));
       } catch (error) {
-        const kind = classifyError(error);
-        if (kind === "retry") {
-          const { queued, earlierTapAt } = await queue.enqueue({
-            uid,
-            eventId: current.id,
-            eventName: current.name,
-            tappedAt,
-          });
-          if (earlierTapAt) {
-            show({
-              tone: "warn",
-              feedback: "warning",
-              title: "ALREADY TAPPED ON THIS PHONE",
-              lines: [
-                `This badge was tapped for ${current.name} at ${formatWhen(earlierTapAt)}.`,
-                "No connection, so the name cannot be shown and other phones cannot be checked.",
-              ],
-            });
-          } else {
-            show({
-              tone: "saved",
-              feedback: "success",
-              saved: queued,
-              title: "Saved, will sync",
-              lines: ["No connection, so the name cannot be shown. The tap is saved on this phone."],
-            });
-          }
-        } else if (kind === "signed-out") {
+        if (isTemporaryFailure(error)) {
+          reader.current?.allowRetry();
+          show(NOT_RECORDED);
+        } else if (error?.status === 401) {
           stop();
         } else if (error?.status === 404) {
           stop();
@@ -191,11 +156,12 @@ export default function EventTaps() {
         } else if (error?.status === 400) {
           show(NOT_A_BADGE);
         } else {
-          show({ tone: "bad", title: "Tap not recorded", lines: [errorText(error)] });
+          reader.current?.allowRetry();
+          show({ tone: "bad", title: "NOT RECORDED", lines: [errorText(error)] });
         }
       }
     },
-    [queue, reload, show, stop],
+    [reload, show, stop],
   );
 
   // Cards are handled one after another, in the order they were read.
@@ -227,21 +193,15 @@ export default function EventTaps() {
   if (!event) {
     return (
       <ScrollView contentContainerStyle={ui.screen}>
-        {!online ? (
-          <Notice tone="warn">No connection. Taps are saved on this phone and synced when it is back.</Notice>
-        ) : null}
+        <ConnectionBanner />
         <Text style={styles.heading}>Which event are you tapping for?</Text>
         {!events && !eventsError ? <ActivityIndicator color={colors.peach} /> : null}
-        {eventsError && !events ? (
+        {eventsError ? (
           <>
-            <Notice tone="bad">
-              Could not load the event list: {errorText(eventsError)} The list is saved on this phone after it loads
-              once.
-            </Notice>
+            <Notice tone="bad">Could not load the event list: {errorText(eventsError)}</Notice>
             <Button title="Try again" onPress={reload} />
           </>
         ) : null}
-        {events && fromCache ? <Muted>Showing the event list saved on this phone.</Muted> : null}
         {events && events.length === 0 ? <Muted>There are no events yet. An organizer adds them on the admin site.</Muted> : null}
         {(events || []).map((item) => (
           <Pressable
@@ -251,7 +211,7 @@ export default function EventTaps() {
               setChosen(item.id);
               setView(null);
               setRecent([]);
-              setCounts({ checkedIn: 0, saved: 0 });
+              setCount(0);
             }}
             style={({ pressed }) => [styles.event, pressed && { opacity: 0.8 }]}
           >
@@ -259,7 +219,6 @@ export default function EventTaps() {
             {item.general ? <Muted>General check-in</Muted> : null}
           </Pressable>
         ))}
-        <QueuePanel />
       </ScrollView>
     );
   }
@@ -276,14 +235,12 @@ export default function EventTaps() {
         </View>
       )}
 
+      <ConnectionBanner />
+
       <View style={styles.bar}>
         <View style={{ flex: 1 }}>
           <Text style={styles.eventName}>{event.name}</Text>
-          <Muted>
-            {counts.checkedIn} checked in here
-            {counts.saved ? ` · ${counts.saved} saved to sync` : ""}
-            {pending.length ? ` · ${pending.length} waiting` : ""}
-          </Muted>
+          <Muted>{count} checked in on this phone</Muted>
         </View>
         <Button
           title="Change"
@@ -293,13 +250,6 @@ export default function EventTaps() {
           }}
         />
       </View>
-
-      {!online ? (
-        <Notice tone="warn">
-          No connection. Taps are saved and synced later. Names cannot be shown, and a badge already used on another
-          phone cannot be caught until then.
-        </Notice>
-      ) : null}
 
       {nfc === "off" || nfc === "unsupported" ? (
         <NfcUnavailable status={nfc} onDevUid={onUid} />
@@ -336,8 +286,7 @@ export default function EventTaps() {
         </View>
       ) : null}
 
-      <QueuePanel />
-      {view ? null : <Muted>Each tap is checked with the server. Without a connection it is saved on this phone.</Muted>}
+      {view ? null : <Muted>Every tap is checked with the server, so this needs a connection.</Muted>}
     </ScrollView>
   );
 }

@@ -43,6 +43,30 @@ describe("createRepeatGuard", () => {
     expect(isRepeat("04A1B2C3D4E5F6")).toBe(false);
   });
 
+  test("after a failed tap the same card is read again at once", () => {
+    let clock = 0;
+    const isRepeat = createRepeatGuard(2000, () => clock);
+    expect(isRepeat("04A1B2C3D4E5F6")).toBe(false);
+    isRepeat.relax(0);
+    clock = 50;
+    expect(isRepeat("04A1B2C3D4E5F6")).toBe(false);
+    clock = 500;
+    expect(isRepeat("04A1B2C3D4E5F6")).toBe(true);
+  });
+
+  test("a shortened window still ignores a card that never left the phone", () => {
+    let clock = 0;
+    const isRepeat = createRepeatGuard(2000, () => clock);
+    expect(isRepeat("04A1B2C3D4E5F6")).toBe(false);
+    isRepeat.relax(1000);
+    clock = 800;
+    expect(isRepeat("04A1B2C3D4E5F6")).toBe(true);
+    clock = 1600;
+    expect(isRepeat("04A1B2C3D4E5F6")).toBe(true);
+    clock = 2700;
+    expect(isRepeat("04A1B2C3D4E5F6")).toBe(false);
+  });
+
   test("a different card is never a repeat", () => {
     let clock = 0;
     const isRepeat = createRepeatGuard(2000, () => clock);

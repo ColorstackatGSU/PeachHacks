@@ -80,10 +80,9 @@ app:
     bootstrap-email: ${ADMIN_BOOTSTRAP_EMAIL:}
     bootstrap-password: ${ADMIN_BOOTSTRAP_PASSWORD:}
     bootstrap-name: ${ADMIN_BOOTSTRAP_NAME:}
-    session-ttl: 12h
+    session-ttl: 30d
   rate-limit:
     public-per-minute: 60
-    login-per-minute: 10
     ticket-per-minute: 300
     # The two sign-up POSTs: per client address, and across all addresses together.
     sign-up-per-window: ${SIGN_UP_LIMIT_PER_ADDRESS:30}

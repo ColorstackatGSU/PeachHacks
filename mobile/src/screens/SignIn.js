@@ -3,15 +3,13 @@ import { KeyboardAvoidingView, Linking, Platform, ScrollView, Text, TextInput, V
 
 import { ADMIN_SITE, API_BASE } from "../api/client";
 import { Button, Muted, Notice, styles as ui } from "../components/ui";
-import { errorText, plural } from "../lib/format";
+import { errorText } from "../lib/format";
 import { loadRememberedEmail } from "../lib/session";
 import { useAuth } from "../state/Auth";
-import { useQueue } from "../state/Queue";
 import { colors } from "../theme";
 
 export default function SignIn() {
   const { signIn, notice } = useAuth();
-  const { pending } = useQueue();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -45,15 +43,9 @@ export default function SignIn() {
       <ScrollView contentContainerStyle={[ui.screen, { justifyContent: "center" }]} keyboardShouldPersistTaps="handled">
         <Text style={{ color: colors.peach, fontSize: 13, fontWeight: "800", letterSpacing: 2 }}>PEACHHACKS STAFF</Text>
         <Text style={{ color: colors.cream, fontSize: 28, fontWeight: "800" }}>Sign in</Text>
-        <Muted>Use your PeachHacks organizer or volunteer account. Sign-ins last 12 hours.</Muted>
+        <Muted>Use your PeachHacks organizer or volunteer account.</Muted>
 
         {notice ? <Notice tone="warn">{notice}</Notice> : null}
-        {pending.length > 0 ? (
-          <Notice>
-            {plural(pending.length, "tap")} saved on this phone {pending.length === 1 ? "is" : "are"} waiting to sync.
-            Nothing is lost; they sync after you sign in.
-          </Notice>
-        ) : null}
         {error ? <Notice tone="bad">{errorText(error)}</Notice> : null}
 
         <View>

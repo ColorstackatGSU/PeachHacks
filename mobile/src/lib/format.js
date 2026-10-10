@@ -20,8 +20,6 @@ export function formatWhen(value) {
 
 export const fullName = (person) => [person?.firstName, person?.lastName].filter(Boolean).join(" ") || "(no name)";
 
-export const plural = (count, one, many = `${one}s`) => `${count} ${count === 1 ? one : many}`;
-
 export const errorText = (error) => error?.message || "Something went wrong.";
 
 export const statusLabel = (value) => (value ? value.charAt(0) + value.slice(1).toLowerCase() : "");

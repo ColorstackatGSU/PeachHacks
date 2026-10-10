@@ -1,5 +1,7 @@
+import { useSyncExternalStore } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 
+import { isReachable, onConnectionChange } from "../api/client";
 import { colors, tones } from "../theme";
 
 export function Button({ title, onPress, variant = "default", big = false, disabled = false, busy = false }) {
@@ -57,6 +59,20 @@ export function Notice({ tone = "quiet", children }) {
   return (
     <View style={[styles.notice, tone === "bad" && styles.noticeBad, tone === "warn" && styles.noticeWarn]}>
       <Text style={styles.noticeText}>{children}</Text>
+    </View>
+  );
+}
+
+// Stays up from a request that could not reach the server until one gets through.
+export function ConnectionBanner() {
+  const reachable = useSyncExternalStore(onConnectionChange, isReachable);
+  if (reachable) return null;
+  return (
+    <View style={styles.offline} accessibilityRole="alert">
+      <Text style={styles.offlineTitle}>No connection</Text>
+      <Text style={styles.offlineText}>
+        The last request did not reach the server. Nothing is recorded without a connection.
+      </Text>
     </View>
   );
 }
@@ -123,6 +139,9 @@ export const styles = StyleSheet.create({
   noticeBad: { borderColor: colors.bad },
   noticeWarn: { borderColor: colors.peach },
   noticeText: { color: colors.cream, fontSize: 15, lineHeight: 21 },
+  offline: { padding: 12, borderRadius: 4, backgroundColor: colors.badStrong },
+  offlineTitle: { color: "#ffffff", fontSize: 18, fontWeight: "800" },
+  offlineText: { color: "#ffffff", fontSize: 15, lineHeight: 21 },
   segmented: {
     flexDirection: "row",
     borderWidth: 1,

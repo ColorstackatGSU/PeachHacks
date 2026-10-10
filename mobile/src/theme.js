@@ -18,6 +18,5 @@ export const tones = {
   good: { background: colors.good, text: colors.navy },
   warn: { background: colors.peach, text: colors.navy },
   bad: { background: colors.badStrong, text: "#ffffff" },
-  saved: { background: colors.mist, text: colors.navy },
   quiet: { background: colors.panelRaised, text: colors.cream },
 };

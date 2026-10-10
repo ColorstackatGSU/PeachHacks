@@ -1,33 +1,20 @@
 import * as SecureStore from "expo-secure-store";
 
-import { readJson, writeJson } from "./storage";
-
 const TOKEN_KEY = "peachhacks.staff.token";
-const PROFILE_KEY = "peachhacks.staff.profile";
 const EMAIL_KEY = "peachhacks.staff.email";
 
-export async function loadSession() {
-  let token = null;
+async function read(key) {
   try {
-    token = await SecureStore.getItemAsync(TOKEN_KEY);
+    return await SecureStore.getItemAsync(key);
   } catch {
-    token = null;
+    return null;
   }
-  return { token, admin: token ? await readJson(PROFILE_KEY) : null };
 }
 
-export async function saveSession(token, admin) {
-  await SecureStore.setItemAsync(TOKEN_KEY, token);
-  await writeJson(PROFILE_KEY, admin).catch(() => {});
-}
-
-export const saveProfile = (admin) => writeJson(PROFILE_KEY, admin).catch(() => {});
-
-export async function clearSession() {
-  await SecureStore.deleteItemAsync(TOKEN_KEY).catch(() => {});
-  await writeJson(PROFILE_KEY, null).catch(() => {});
-}
+export const loadToken = () => read(TOKEN_KEY);
+export const saveToken = (token) => SecureStore.setItemAsync(TOKEN_KEY, token);
+export const clearToken = () => SecureStore.deleteItemAsync(TOKEN_KEY).catch(() => {});
 
 // Only the email is remembered between days, never the password.
-export const loadRememberedEmail = async () => (await readJson(EMAIL_KEY)) || "";
-export const rememberEmail = (email) => writeJson(EMAIL_KEY, email).catch(() => {});
+export const loadRememberedEmail = async () => (await read(EMAIL_KEY)) || "";
+export const rememberEmail = (email) => SecureStore.setItemAsync(EMAIL_KEY, email).catch(() => {});

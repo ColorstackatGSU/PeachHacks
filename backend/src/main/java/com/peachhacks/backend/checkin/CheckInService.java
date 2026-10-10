@@ -187,15 +187,11 @@ public class CheckInService {
 			.toList();
 	}
 
-	private boolean record(Registration registration, Event event, AdminPrincipal by) {
-		return record(registration, event, by, Instant.now());
-	}
-
-	/** For a caller that has already decided the registration may be checked in, at a time it supplies. */
+	/** For a caller that has already decided the registration may be checked in. */
 	@Transactional
-	public boolean record(Registration registration, Event event, AdminPrincipal by, Instant at) {
-		boolean inserted = checkIns.insertIfAbsent(UUID.randomUUID(), registration.getId(), event.getId(), at,
-				by.name()) == 1;
+	public boolean record(Registration registration, Event event, AdminPrincipal by) {
+		boolean inserted = checkIns.insertIfAbsent(UUID.randomUUID(), registration.getId(), event.getId(),
+				Instant.now(), by.name()) == 1;
 		if (inserted) {
 			log.info("Registration {} checked in for \"{}\" by {}", registration.getId(), event.getName(), by.email());
 		}
