@@ -204,29 +204,48 @@ public class MailService {
 		return properties.adminBaseUrl() + "/#/set-password?token=" + token;
 	}
 
-	/** The email says which kind of account it is; a volunteer is also told what the account is for. */
+	/**
+	 * The email says which kind of account it is; a volunteer and a lookup account are also
+	 * told what the account is for.
+	 */
 	public void sendInvite(String email, String name, AdminRole role, String addedBy, String token,
 			Duration validFor) {
-		boolean volunteer = role == AdminRole.VOLUNTEER;
-		String account = volunteer ? "a check-in volunteer" : "an admin";
+		String account = switch (role) {
+			case ADMIN -> "an admin";
+			case VOLUNTEER -> "a check-in volunteer";
+			case LOOKUP -> "badge lookup staff";
+		};
+		String heading = switch (role) {
+			case ADMIN -> "You're a PeachHacks admin";
+			case VOLUNTEER -> "You're a check-in volunteer";
+			case LOOKUP -> "You have a badge lookup account";
+		};
+		String subject = switch (role) {
+			case ADMIN -> "You've been added as a PeachHacks admin";
+			case VOLUNTEER -> "You've been added as a PeachHacks check-in volunteer";
+			case LOOKUP -> "You've been added as PeachHacks badge lookup staff";
+		};
 		List<String> paragraphs = new ArrayList<>();
 		paragraphs.add(greeting(name));
 		paragraphs.add(addedBy + " added you as " + account + " for PeachHacks.");
-		if (volunteer) {
+		if (role == AdminRole.VOLUNTEER) {
 			paragraphs.add("On the day, you can look hackers up by name or email and check them in as they"
 					+ " arrive. Your account only opens the check-in screen; if someone is not on"
 					+ " the list or something looks wrong, ask an organizer.");
 		}
+		else if (role == AdminRole.LOOKUP) {
+			paragraphs.add("During the event, you can tap a hacker's badge in the PeachHacks staff app to see"
+					+ " who it belongs to. That is all your account does: it cannot check anyone in and it"
+					+ " does not open the admin site. If something looks wrong, ask an organizer.");
+		}
 		paragraphs.add("Choose a password to finish setting up your account. You will sign in with this"
 				+ " email address.");
 		Content content = Content
-			.of(addedBy + " added you as " + account + " for PeachHacks. Choose a password to finish.",
-					volunteer ? "You're a check-in volunteer" : "You're a PeachHacks admin", paragraphs)
+			.of(addedBy + " added you as " + account + " for PeachHacks. Choose a password to finish.", heading,
+					paragraphs)
 			.withPrimary("Set your password", adminPasswordUrl(token))
 			.withClosing(inviteClosing(validFor, addedBy));
-		sendInBackground(composer.compose(email,
-				"You've been added as a PeachHacks " + (volunteer ? "check-in volunteer" : "admin"), content,
-				Footer.ADMIN_ACCOUNT));
+		sendInBackground(composer.compose(email, subject, content, Footer.ADMIN_ACCOUNT));
 	}
 
 	public void sendPasswordReset(String email, String name, String token, Duration validFor) {

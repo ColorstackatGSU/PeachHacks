@@ -10,6 +10,7 @@ import java.util.UUID;
 import com.peachhacks.backend.acceptance.AcceptanceMailer;
 import com.peachhacks.backend.acceptance.AgeReview;
 import com.peachhacks.backend.admin.AdminPrincipal;
+import com.peachhacks.backend.badge.BadgeService;
 import com.peachhacks.backend.checkin.CheckIn;
 import com.peachhacks.backend.checkin.CheckInService;
 import com.peachhacks.backend.common.Csv;
@@ -72,9 +73,12 @@ public class AdminRegistrationController {
 
 	private final AgeReview ageReview;
 
+	private final BadgeService badges;
+
 	public AdminRegistrationController(RegistrationService service, CheckInService checkIns, Tickets tickets,
-			ResumeService resumes, AcceptanceMailer acceptanceMailer, AgeReview ageReview) {
+			ResumeService resumes, AcceptanceMailer acceptanceMailer, AgeReview ageReview, BadgeService badges) {
 		this.ageReview = ageReview;
+		this.badges = badges;
 		this.service = service;
 		this.checkIns = checkIns;
 		this.tickets = tickets;
@@ -172,7 +176,7 @@ public class AdminRegistrationController {
 				(general != null) ? general.checkedInBy() : null, all, hasTicket ? r.getTicketToken() : null,
 				links.url(), links.googleWalletUrl(),
 				(resume != null) ? ResumeInfo.from(resume) : null,
-				ageReview.needed(r.getId()));
+				ageReview.needed(r.getId()), badges.active(r.getId()));
 	}
 
 	private static Instant checkedInAt(Map<UUID, CheckIn> general, Registration r) {

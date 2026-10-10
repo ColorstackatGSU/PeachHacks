@@ -12,6 +12,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 import com.peachhacks.backend.admin.AdminPrincipal;
+import com.peachhacks.backend.badge.BadgeRepository;
 import com.peachhacks.backend.common.ApiException;
 import com.peachhacks.backend.common.Texts;
 import com.peachhacks.backend.registration.Registration;
@@ -32,7 +33,7 @@ public class CheckInService {
 
 	public record EventRef(UUID id, String name, boolean general) {
 
-		static EventRef of(Event event) {
+		public static EventRef of(Event event) {
 			return new EventRef(event.getId(), event.getName(), event.isGeneral());
 		}
 
@@ -54,6 +55,9 @@ public class CheckInService {
 	public record EventCheckIn(UUID eventId, String name, boolean general, Instant checkedInAt, String checkedInBy) {
 	}
 
+	public static final String NOT_ACCEPTED_MESSAGE = "This person has not been accepted, so they can't be checked in."
+			+ " An organizer has to accept them first.";
+
 	private static final Logger log = LoggerFactory.getLogger(CheckInService.class);
 
 	private final RegistrationRepository registrations;
@@ -64,12 +68,15 @@ public class CheckInService {
 
 	private final EventService events;
 
+	private final BadgeRepository badges;
+
 	public CheckInService(RegistrationRepository registrations, CheckInRepository checkIns,
-			EventRepository eventRepository, EventService events) {
+			EventRepository eventRepository, EventService events, BadgeRepository badges) {
 		this.registrations = registrations;
 		this.checkIns = checkIns;
 		this.eventRepository = eventRepository;
 		this.events = events;
+		this.badges = badges;
 	}
 
 	@Transactional(readOnly = true)
@@ -94,20 +101,25 @@ public class CheckInService {
 		Event event = events.resolve(eventId);
 		Registration registration = registration(registrationId);
 		if (registration.getStatus() != RegistrationStatus.ACCEPTED) {
-			throw new ApiException(HttpStatus.CONFLICT, "NOT_ACCEPTED",
-					"This person has not been accepted, so they can't be checked in. An organizer has to accept"
-							+ " them first.");
+			throw new ApiException(HttpStatus.CONFLICT, "NOT_ACCEPTED", NOT_ACCEPTED_MESSAGE);
 		}
 		record(registration, event, by);
 		return item(registration, event);
 	}
 
+	/**
+	 * Binding a badge is the general check-in, so undoing the general check-in takes the badge
+	 * away as well; that is how a card bound to the wrong person is put right.
+	 */
 	@Transactional
 	public CheckInItem undo(UUID registrationId, UUID eventId, AdminPrincipal by) {
 		Event event = events.resolve(eventId);
 		Registration registration = registration(registrationId);
 		if (checkIns.deleteFor(registrationId, event.getId()) > 0) {
 			log.info("Check-in of registration {} for \"{}\" undone by {}", registrationId, event.getName(), by.email());
+		}
+		if (event.isGeneral() && badges.revokeActive(registrationId, Instant.now(), by.name()) > 0) {
+			log.info("Badge of registration {} revoked with its general check-in by {}", registrationId, by.email());
 		}
 		return item(registration, event);
 	}
@@ -176,15 +188,21 @@ public class CheckInService {
 	}
 
 	private boolean record(Registration registration, Event event, AdminPrincipal by) {
-		boolean inserted = checkIns.insertIfAbsent(UUID.randomUUID(), registration.getId(), event.getId(),
-				Instant.now(), by.name()) == 1;
+		return record(registration, event, by, Instant.now());
+	}
+
+	/** For a caller that has already decided the registration may be checked in, at a time it supplies. */
+	@Transactional
+	public boolean record(Registration registration, Event event, AdminPrincipal by, Instant at) {
+		boolean inserted = checkIns.insertIfAbsent(UUID.randomUUID(), registration.getId(), event.getId(), at,
+				by.name()) == 1;
 		if (inserted) {
 			log.info("Registration {} checked in for \"{}\" by {}", registration.getId(), event.getName(), by.email());
 		}
 		return inserted;
 	}
 
-	private CheckInItem item(Registration registration, Event event) {
+	public CheckInItem item(Registration registration, Event event) {
 		CheckIn checkIn = checkIns.findByRegistrationIdAndEventId(registration.getId(), event.getId()).orElse(null);
 		boolean general = event.isGeneral() ? checkIn != null : generalCheckedIn(registration.getId());
 		return CheckInItem.of(registration, checkIn, general);

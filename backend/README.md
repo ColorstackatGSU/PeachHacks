@@ -1,6 +1,6 @@
 # PeachHacks Backend
 
-Spring Boot 4 (Java 21, Maven) service for PeachHacks, served at `api.peachhacks.com`. It stores pre-registrations and registrations, gates registration behind an admin switch, issues tickets (QR codes) to accepted hackers, holds acceptances in a bucket until organizers send the acceptance emails together, tracks the host-school share of accepted hackers, records check-ins per event, serves the organizer admin API and sends email through Resend. The public site (`web/`) and the admin site (`admin/`) call it.
+Spring Boot 4 (Java 21, Maven) service for PeachHacks, served at `api.peachhacks.com`. It stores pre-registrations and registrations, gates registration behind an admin switch, issues tickets (QR codes) to accepted hackers, holds acceptances in a bucket until organizers send the acceptance emails together, tracks the host-school share of accepted hackers, records check-ins per event, binds NFC badges to accepted hackers at the check-in desk and checks them in to events by badge tap, serves the organizer admin API and sends email through Resend. The public site (`web/`), the admin site (`admin/`), the hacker platform (`platform/`) and the staff app (`mobile/`) call it.
 
 The schema is managed by Flyway (`src/main/resources/db/migration`) and applied automatically at startup. Hibernate only validates it (`ddl-auto: validate`); change the schema by adding a new `V<n>__*.sql` migration, never by editing an applied one.
 
@@ -49,7 +49,7 @@ Without `RESEND_API_KEY` no email leaves the machine: every message (confirmatio
 ./mvnw test
 ```
 
-The integration tests run the real application against Testcontainers (`postgres:16-alpine`) and are skipped automatically when Docker is not available. They cover pre-registration, the registration gate, validation (including the phone, LinkedIn and name rules), duplicate sign-ups, admin authentication and roles, events and check-in (accepted registrations only), tickets and scanning, the acceptance bucket (accepting sends nothing, the send-all run, a provider failure, the host-school share, the age review flag, bulk status changes, and the V6 migration on rows accepted before it), the acceptance email and its idempotency key, Google Wallet links, CSV export and its log line, campaign kinds and audiences (who an event update and an announcement reach, their footers, and the V7 migration), campaign recipients (the per-person record, resuming after a restart, refusing an identical campaign), provider retries, request body limits, rate limits (`RateLimitApiTests`, which has its own context with low limits), resume upload, download, removal and the sponsor resume book, school email confirmation (the link, its expiry, the resend limit, carry-over from pre-registration to registration, and the admin filters and resend), PeachBot (`DiscordApiTests`: signatures, what the Verify button answers, role changes on a status change, writing and editing the Verify message) and the hacker platform (`PlatformApiTests`: both sign-ins, the profile and directory, teams, Connect Discord), the last two against a local stub standing in for Discord and Google.
+The integration tests run the real application against Testcontainers (`postgres:16-alpine`) and are skipped automatically when Docker is not available. They cover pre-registration, the registration gate, validation (including the phone, LinkedIn and name rules), duplicate sign-ups, admin authentication and roles, events and check-in (accepted registrations only), tickets and scanning, NFC badges (`BadgeApiTests`, which has its own context with one lanyard colour set: binding and the general check-in it records, the lanyard group, UID spellings, a card or a person bound twice, replacing and revoking, taps per event and the time a tap carries, resolving a ticket, what each of the three roles may call, the lookup answer, a UID sent to the ticket scanner, undoing the general check-in, the web check-in setting, and two binds at the same moment; `BadgeUidTests` covers the UID rule on its own), the acceptance bucket (accepting sends nothing, the send-all run, a provider failure, the host-school share, the age review flag, bulk status changes, and the V6 migration on rows accepted before it), the acceptance email and its idempotency key, Google Wallet links, CSV export and its log line, campaign kinds and audiences (who an event update and an announcement reach, their footers, and the V7 migration), campaign recipients (the per-person record, resuming after a restart, refusing an identical campaign), provider retries, request body limits, rate limits (`RateLimitApiTests`, which has its own context with low limits), resume upload, download, removal and the sponsor resume book, school email confirmation (the link, its expiry, the resend limit, carry-over from pre-registration to registration, and the admin filters and resend), PeachBot (`DiscordApiTests`: signatures, what the Verify button answers, role changes on a status change, writing and editing the Verify message) and the hacker platform (`PlatformApiTests`: both sign-ins, the profile and directory, teams, Connect Discord), the last two against a local stub standing in for Discord and Google.
 
 ## Container image
 
@@ -76,7 +76,7 @@ Standard Spring Boot environment variables; see `.env.example`.
 | `RESEND_API_KEY` | Resend API key. Required with the `prod` profile: without it the application stops at startup. Elsewhere, blank means emails are logged, not sent |
 | `EMAIL_FROM` | Sender (default `PeachHacks <hello@peachhacks.com>`); the domain must be verified in Resend |
 | `WEB_BASE_URL` | Public site URL used for links in emails (unsubscribe, ticket, school email confirmation) and for the ticket URL inside every QR code (default `http://localhost:5173`, `https://www.peachhacks.com` in `prod`). Changing it changes what newly rendered QR codes contain; codes already sent keep working because the scanner only reads the token |
-| `ADMIN_BASE_URL` | Admin site URL used for the set-password links emailed to admins and volunteers (default `http://localhost:5174`, `https://admin.peachhacks.com` in `prod`) |
+| `ADMIN_BASE_URL` | Admin site URL used for the set-password links emailed to admins, volunteers and lookup accounts (default `http://localhost:5174`, `https://admin.peachhacks.com` in `prod`) |
 | `CORS_ALLOWED_ORIGINS` | Comma-separated origins (default `http://localhost:5173`, `http://localhost:5174`, `http://localhost:5176`, `https://www.peachhacks.com`, `https://peachhacks.com`, `https://admin.peachhacks.com`, `https://platform.peachhacks.com`) |
 | `SPRING_DATASOURCE_HIKARI_MAXIMUMPOOLSIZE` | Connection pool size (5 in `prod`) |
 | `GOOGLE_WALLET_ISSUER_ID` | Google Wallet issuer ID. Optional; see [Google Wallet](#google-wallet) |
@@ -99,6 +99,8 @@ Standard Spring Boot environment variables; see `.env.example`.
 | `MAX_TEAM_SIZE` | Most hackers on one team (default `4`) |
 | `HOST_SCHOOL_NAME` | The host school (default `Georgia State University`). A registration counts towards the host-school share when its school name equals or starts with this, case-insensitive, so `Georgia State University Perimeter College` counts too |
 | `HOST_SCHOOL_TARGET` | The share of accepted hackers that must come from the host school, as a fraction from 0 to 1 (default `0.70`). A value outside that range stops the application at startup |
+| `LANYARD_HOST_COLOR` | The lanyard colour for host-school hackers, as free text (`Peach`), shown to the volunteer who binds a badge. Optional and without a default: unset, the answer carries the lanyard group and a null colour. See [Badges](#badges) |
+| `LANYARD_OTHER_COLOR` | The same for hackers from every other school |
 | `NON_HOST_MINIMUM_AGE` | The minimum age for students of other schools (default `18`); host-school students are eligible at any age. A registration under it from a school that is not the host school is flagged `ageReview` for organizers and is never refused. See [Age review](#age-review) |
 | `SIGN_UP_LIMIT_PER_ADDRESS` | How many sign-up POSTs (pre-registration and registration together) one client address may make in 10 minutes (default `30`). Raise it for an event where many people sign up from one network |
 | `SIGN_UP_LIMIT_PER_HOUR` | How many sign-up POSTs are accepted per hour from all addresses together (default `1000`) |
@@ -114,7 +116,7 @@ JSON everywhere, timestamps in ISO-8601 UTC. Errors always look like this (`fiel
 { "code": "VALIDATION_ERROR", "message": "Please check the highlighted fields.", "fieldErrors": { "email": "Must be a valid email" } }
 ```
 
-Codes: `VALIDATION_ERROR` (400), `INVALID_CREDENTIALS` and `UNAUTHORIZED` (401), `REGISTRATION_CLOSED` and `FORBIDDEN` (403), `NOT_FOUND` (404), `ACCEPTANCE_SEND_RUNNING`, `CAMPAIGN_ALREADY_SENDING`, `NOT_ACCEPTED` and `EVENT_HAS_CHECK_INS` (409), `PAYLOAD_TOO_LARGE` (413), `RATE_LIMITED` (429), `EMAIL_FAILED` (502, the test email and the one-person acceptance email), `INTERNAL_ERROR` (500).
+Codes: `VALIDATION_ERROR` (400), `INVALID_CREDENTIALS` and `UNAUTHORIZED` (401), `REGISTRATION_CLOSED`, `FORBIDDEN` and `WEB_CHECK_IN_ADMIN_ONLY` (403), `NOT_FOUND` (404), `ACCEPTANCE_SEND_RUNNING`, `CAMPAIGN_ALREADY_SENDING`, `NOT_ACCEPTED`, `EVENT_HAS_CHECK_INS`, `BADGE_IN_USE` and `HAS_BADGE` (409), `PAYLOAD_TOO_LARGE` (413), `RATE_LIMITED` (429), `EMAIL_FAILED` (502, the test email and the one-person acceptance email), `INTERNAL_ERROR` (500).
 
 ### Public
 
@@ -178,7 +180,17 @@ Everything under `/admin` except login and the password-link routes needs `Autho
 
 #### Roles
 
-Every account is an `ADMIN` (full access) or a `VOLUNTEER` (check-in only); the role is returned with the account by login, `/admin/auth/me` and the accounts list. A volunteer may call `/admin/auth/*`, `/admin/check-in` and everything under it, and `GET /admin/events`. Every other `/admin/**` route answers 403 `FORBIDDEN` for a volunteer. The rule lives in `SecurityConfig`, so a route added later is admin-only unless it is listed there.
+Every account is an `ADMIN` (full access), a `VOLUNTEER` (check-in and badges) or a `LOOKUP` account (venue staff: tap a badge to see who it belongs to, nothing else); the role is returned with the account by login, `/admin/auth/me` and the accounts list.
+
+| Route | `ADMIN` | `VOLUNTEER` | `LOOKUP` |
+| --- | --- | --- | --- |
+| `/admin/auth/**` | yes | yes | yes |
+| `POST /admin/badges/lookup` | yes | yes | yes |
+| `POST /admin/badges/resolve`, `/bind`, `/tap` | yes | yes | 403 |
+| `/admin/check-in` and everything under it, `GET /admin/events` | yes | yes | 403 |
+| Everything else under `/admin/**`, including `DELETE /admin/registrations/{id}/badge` | yes | 403 | 403 |
+
+A refusal is 403 `FORBIDDEN`. The rule lives in `SecurityConfig`, so a route added later is admin-only unless it is listed there. A `LOOKUP` account signs in like any other and sets its password from the same emailed link, which opens the admin site; the admin site has nothing for it after that, the account is for the staff app.
 
 | Endpoint | Purpose |
 | --- | --- |
@@ -191,7 +203,7 @@ Every account is an `ADMIN` (full access) or a `VOLUNTEER` (check-in only); the 
 | `GET /admin/pre-registrations/export.csv` | CSV export with the same filters, `school_email_confirmed` appended last. Logged, see [CSV exports](#csv-exports). Pre-registrations cannot be deleted through the API |
 | `POST /admin/pre-registrations/{id}/school-email/resend` | Mail a new confirmation link to the school address, ignoring the 10-minute limit; 204, or 400 if it is already confirmed |
 | `GET /admin/registrations?page=&size=&q=&school=&status=&checkedIn=&resume=&schoolEmailConfirmed=&ageReview=` | Paged summaries with `schoolEmail`, `schoolEmailConfirmed`, `schoolEmailConfirmedAt`, `acceptedAt`, `acceptanceNotifiedAt`, `checkedInAt` (general check-in), `hasResume` and `ageReview`. `q` matches the name, `email` or `schoolEmail`. `checkedIn=true` or `false` filters on the check-in; `resume=any` (uploaded one) or `none` filters on the resume; `schoolEmailConfirmed=true` or `false` filters on the school email (`false` includes registrations that have none); `ageReview=true` or `false` filters on the [age review](#age-review) flag |
-| `GET`, `PATCH /admin/registrations/{id}` | Detail, set `status` (`PENDING`, `ACCEPTED`, `WAITLISTED`, `REJECTED`). Registrations cannot be deleted through the API (`DELETE` answers 405). The detail adds `checkedInAt`, `checkedInBy`, `checkIns` (every event: `{ eventId, name, general, checkedInAt, checkedInBy }`) and, only while `ACCEPTED`, `ticketToken`, `ticketUrl` and `googleWalletUrl`; also `resume` (`null` or `{ fileName, size, uploadedAt }`, never the file itself), and `schoolEmailConfirmed` with `schoolEmailConfirmedAt`, which the admin site turns into a warning on the status control, and `ageReview` (see [Age review](#age-review)). Neither an unconfirmed school email nor an age review blocks `ACCEPTED`. No status change sends an email; `acceptedAt` and `acceptanceNotifiedAt` say where an accepted registration stands, see [Acceptances](#acceptances) |
+| `GET`, `PATCH /admin/registrations/{id}` | Detail, set `status` (`PENDING`, `ACCEPTED`, `WAITLISTED`, `REJECTED`). Registrations cannot be deleted through the API (`DELETE` answers 405). The detail adds `checkedInAt`, `checkedInBy`, `checkIns` (every event: `{ eventId, name, general, checkedInAt, checkedInBy }`) and, only while `ACCEPTED`, `ticketToken`, `ticketUrl` and `googleWalletUrl`; also `resume` (`null` or `{ fileName, size, uploadedAt }`, never the file itself), and `schoolEmailConfirmed` with `schoolEmailConfirmedAt`, which the admin site turns into a warning on the status control, and `ageReview` (see [Age review](#age-review)), and `badge`, the NFC badge bound to the registration now (`{ uid, boundAt, boundBy }`, or null; see [Badges](#badges)). Neither an unconfirmed school email nor an age review blocks `ACCEPTED`. No status change sends an email; `acceptedAt` and `acceptanceNotifiedAt` say where an accepted registration stands, see [Acceptances](#acceptances) |
 | `POST /admin/registrations/status` | Bulk status change: `{ "ids": ["..."], "status": "ACCEPTED" }`, 1 to 500 ids, same rules as the single `PATCH`. Returns `{ "changed", "unchanged", "notFound", "acceptedAgeReview" }`: `unchanged` already had the status, `notFound` no longer exist (they do not fail the call); repeated ids count once. `acceptedAgeReview` is how many of the registrations this call moved to `ACCEPTED` need an [age review](#age-review) (0 for any other status) |
 | `POST /admin/registrations/{id}/ticket-email` | For someone already told, sends the ticket email again in the background. For someone accepted and still waiting, sends their acceptance email now and marks them told, so one person can be let in early; 502 `EMAIL_FAILED` if the provider does not take it (they stay waiting) and 409 `ACCEPTANCE_SEND_RUNNING` if the send-all run is mailing that person at that moment. 204 otherwise, 400 if the registration is not `ACCEPTED` |
 | `GET /admin/acceptances/summary` | Counts, host-school share, age review counts and the state of the last send, recomputed on every call. See [Acceptances](#acceptances) |
@@ -202,21 +214,26 @@ Every account is an `ADMIN` (full access) or a `VOLUNTEER` (check-in only); the 
 | `GET /admin/registrations/{id}/resume` | The uploaded PDF as an attachment. 404 if there is none |
 | `DELETE /admin/registrations/{id}/resume` | Deletes the file, for a removal request; 204, or 404 if there is none. The registration stays |
 | `GET /admin/resumes/export.zip?checkedIn=` | The sponsor resume book, see [Resumes](#resumes) |
-| `GET`, `PUT /admin/settings` | The registration gate, `{ "registrationOpen": true }`; the answer also carries `previewActive` |
+| `GET`, `PUT /admin/settings` | `{ "registrationOpen", "webCheckInAdminOnly" }`: the registration gate, and whether the web check-in screen is kept for admins (off by default, see [Badges](#badges)). `PUT` changes only the keys sent, so `{ "registrationOpen": true }` alone leaves the other setting as it was; a body with neither is 400. The answer also carries `previewActive` |
 | `POST`, `DELETE /admin/settings/registration-preview` | Make (or end) the preview link, `{ "url" }`. A request that sends its key in `X-Registration-Preview` gets `registrationOpen: true` (with `preview: true`) from `GET /public/status` and may `POST /public/registrations` while the gate is closed, so organizers can try the whole flow before opening. Only the hash of the key is stored, the link is shown once, and a new link replaces the old one |
 | `POST /admin/emails/recipient-count` | `{ kind, audience, school? }`: how many people a campaign of that kind would reach. `kind` is required; see [Email](#email) |
 | `POST /admin/emails/test` | `{ kind?, subject, body }`: send one copy to the signed-in admin, with the footer of that kind (`ANNOUNCEMENT` when omitted) |
 | `POST /admin/emails/preview` | `{ kind?, subject, body }`: the draft rendered as the test copy would be, `{ subject, html, text }`. Sends nothing; the admin site shows `html` in a sandboxed frame |
 | `POST /admin/emails`, `GET /admin/emails` | `{ kind, audience, school?, subject, body }` starts a campaign (202, sent in the background); 409 `CAMPAIGN_ALREADY_SENDING` if a campaign with the same kind, audience, school, subject and body is still queued or sending. `GET` lists campaigns, newest first, each with its `kind`, `status` (`QUEUED`, `SENDING`, `SENT`, `FAILED`), `recipientCount`, `sentCount` and `failedCount` |
 | `GET /admin/emails/{id}/recipients?status=&page=&size=` | Who the campaign went to and what happened: the same page envelope as the lists above, `{ items: [{ email, firstName, lastName, status, sentAt }], total, page, size }`, in sending order. `status` is `PENDING`, `SENT` or `FAILED` and filters when given. Empty for a campaign sent before recipients were recorded (migration V9); 404 for an unknown campaign |
-| `GET`, `POST /admin/admins`, `POST /admin/admins/{id}/invite`, `DELETE /admin/admins/{id}` | Accounts. Nobody sets a password for someone else: `POST` takes `name`, `email` and `role` (`ADMIN` or `VOLUNTEER`; required, there is no default) and emails the person a one-time link, valid for 7 days, to choose their own. Until they do, the account is `pending` and cannot sign in. `/invite` sends a pending account a new link, which replaces the old one. Both answer with `setPasswordUrl` so the link can be passed on by hand if the email does not arrive; it is never returned again. Links are `$ADMIN_BASE_URL/#/set-password?token=...`, stored only as a SHA-256 hash. You cannot delete yourself or the last `ADMIN`; volunteers do not count towards that |
-| `GET /admin/events` | Both roles. Every check-in event with its count: `[{ id, name, startsAt, general, checkedIn }]`, the built-in general event first |
+| `GET`, `POST /admin/admins`, `POST /admin/admins/{id}/invite`, `DELETE /admin/admins/{id}` | Accounts. Nobody sets a password for someone else: `POST` takes `name`, `email` and `role` (`ADMIN`, `VOLUNTEER` or `LOOKUP`; required, there is no default) and emails the person a one-time link, valid for 7 days, to choose their own. Until they do, the account is `pending` and cannot sign in. `/invite` sends a pending account a new link, which replaces the old one. Both answer with `setPasswordUrl` so the link can be passed on by hand if the email does not arrive; it is never returned again. Links are `$ADMIN_BASE_URL/#/set-password?token=...`, stored only as a SHA-256 hash. You cannot delete yourself or the last `ADMIN`; volunteers and lookup accounts do not count towards that |
+| `GET /admin/events` | Admins and volunteers. Every check-in event with its count: `[{ id, name, startsAt, general, checkedIn }]`, the built-in general event first |
 | `POST /admin/events`, `PATCH /admin/events/{id}` | `{ "name", "startsAt" }` (`startsAt` optional, ISO-8601 UTC). `PATCH` changes only the keys sent; `"startsAt": null` clears it. Names are unique |
 | `DELETE /admin/events/{id}` | Deletes a workshop that has no check-ins; 204. 409 `EVENT_HAS_CHECK_INS` when it has any (the message says how many; undo them first), 400 for the general event, which can never be deleted |
 | `GET /admin/events/{id}/export.csv` | That event's attendees: name, email, school, status, `checked_in_at`, `checked_in_by`. Logged, see [CSV exports](#csv-exports) |
-| `GET /admin/check-in?eventId=&q=&page=&size=` | Both roles. `{ event, items, total, page, size, checkedInTotal, registrationTotal }`; `q` matches first name, last name or email. Not-yet-checked-in people first, then by last name |
-| `POST`, `DELETE /admin/check-in/{registrationId}?eventId=` | Both roles. Check in (idempotent: a repeat keeps the first time and name) or undo; returns the item. `POST` answers 409 `NOT_ACCEPTED` unless the registration is `ACCEPTED` |
-| `POST /admin/check-in/scan` | Both roles. Check in by scanned ticket, see below |
+| `GET /admin/check-in?eventId=&q=&page=&size=` | Admins and volunteers. `{ event, items, total, page, size, checkedInTotal, registrationTotal }`; `q` matches first name, last name or email. Not-yet-checked-in people first, then by last name |
+| `POST`, `DELETE /admin/check-in/{registrationId}?eventId=` | Admins and volunteers. Check in (idempotent: a repeat keeps the first time and name) or undo; returns the item. `POST` answers 409 `NOT_ACCEPTED` unless the registration is `ACCEPTED`. Undoing the general check-in also revokes the person's badge |
+| `POST /admin/check-in/scan` | Admins and volunteers. Check in by scanned ticket, see below |
+| `POST /admin/badges/resolve` | Admins and volunteers. The desk's first step: who a scanned ticket or a registration picked from the list is, their badge and their lanyard. Records nothing. See [Badges](#badges) |
+| `POST /admin/badges/bind` | Admins and volunteers. Bind a card to a registration and record the general check-in |
+| `POST /admin/badges/tap` | Admins and volunteers. Check in to an event by badge |
+| `POST /admin/badges/lookup` | All three roles. Who a badge belongs to: first name, last name, school, accepted, checked in |
+| `DELETE /admin/registrations/{id}/badge` | Admins only. Revoke the registration's badge; 204, or 404 `NOT_FOUND` when the registration is unknown or has no badge |
 
 #### Check-in
 
@@ -226,6 +243,8 @@ Items returned by the check-in endpoints carry only what someone at the door nee
 
 Only an `ACCEPTED` registration can be checked in, to the general event or to a workshop, by an admin or a volunteer. There is no override: `POST /admin/check-in/{registrationId}` answers 409 `NOT_ACCEPTED` ("This person has not been accepted, so they can't be checked in. An organizer has to accept them first.") and a scan reports `NOT_ACCEPTED` without recording anything. An organizer accepts the person first. Undo works whatever the status.
 
+Undoing the general check-in also revokes the registration's active badge, because binding a badge is what records the general check-in at the desk and the undo reverses both; it is how a volunteer puts right a card bound to the wrong person. Undoing a workshop check-in leaves the badge alone.
+
 `POST /admin/check-in/scan` takes `{ "code", "eventId" }`, where `code` is whatever the scanner read: the bare ticket token or the whole ticket URL. It always answers 200 with `{ "result", "event", "item" }`:
 
 | `result` | Meaning |
@@ -234,6 +253,56 @@ Only an `ACCEPTED` registration can be checked in, to the general event or to a 
 | `ALREADY_CHECKED_IN` | Nothing changed; `item.checkedInAt` and `item.checkedInBy` say when and by whom |
 | `NOT_ACCEPTED` | The ticket belongs to someone whose status is not `ACCEPTED`. `item` is returned, nobody was checked in, and there is no way to force it |
 | `NOT_RECOGNISED` | No ticket matches; `item` is null |
+
+The scanner only ever reads ticket tokens. A badge UID sent to it is `NOT_RECOGNISED`, see [Badges](#badges).
+
+#### Badges
+
+A badge is an NFC card (NTAG215) handed to a hacker at the check-in desk. Only the card's UID is used: nothing is written to the card and nothing about the person is stored on it. The `badges` table ties a UID to a registration.
+
+- **The UID** may be sent as `04:A1:B2:C3:D4:E5:F6`, `04-a1-b2-c3-d4-e5-f6` or `04a1b2c3d4e5f6`, with spaces allowed. The server removes `:`, `-` and whitespace, upper-cases, and requires 8, 14 or 20 hexadecimal characters (a 4, 7 or 10 byte UID). Anything else is 400 `VALIDATION_ERROR` with `fieldErrors.uid`. It is stored and returned as `04A1B2C3D4E5F6` (`BadgeUid`).
+- **One active badge per registration and one active registration per card**, each held by a partial unique index, so two volunteers binding at the same moment end in one success and one 409. A revoked badge stays in the table as history (`revokedAt`, `revokedBy`) and its card may be bound again.
+- A badge follows the registration, not its status. If the holder leaves `ACCEPTED` the badge stays bound and a tap answers `NOT_ACCEPTED`.
+
+`POST /admin/badges/resolve` takes exactly one of `{ "code" }` (what the scanner read from a ticket: the bare token or the ticket URL, at most 2048 characters) or `{ "registrationId" }`; neither or both is 400. It always answers 200 with `{ "result", "item", "badge", "lanyard" }` and records nothing:
+
+| `result` | Meaning |
+| --- | --- |
+| `FOUND` | An accepted registration. `item` is the check-in item for the general event, `badge` the active badge (`{ uid, boundAt, boundBy }`) or null, `lanyard` is set |
+| `NOT_ACCEPTED` | The registration exists and is not `ACCEPTED`. `item` and `badge` as above, `lanyard` null |
+| `NOT_RECOGNISED` | No such ticket or registration (an unknown `registrationId` is this, not 404). All three null |
+
+`lanyard` is `{ "group", "label", "color" }`. `group` is `HOST` when the registration's school matches `HOST_SCHOOL_NAME` by the rule the host-school share uses, otherwise `OTHER`; `label` is "Georgia State University hacker" (the configured host school) or "Hacker from another school"; `color` is `LANYARD_HOST_COLOR` or `LANYARD_OTHER_COLOR`, null while that variable is unset. Staff and sponsor lanyards are handed out by hand and are not in the system.
+
+`POST /admin/badges/bind` takes `{ "registrationId", "uid", "replace" }` (`replace` optional, false by default). In one transaction it binds the card and records the general check-in, exactly as `POST /admin/check-in/{id}` would, and answers 200 `{ "result", "item", "badge", "lanyard" }`:
+
+| `result` | Meaning |
+| --- | --- |
+| `BOUND` | The card is now this registration's badge |
+| `ALREADY_BOUND` | It already was; nothing changed, except that a missing general check-in is recorded. Repeating a bind is safe |
+| `REPLACED` | The registration had a different badge and `replace` was true. The old one is revoked |
+
+It refuses with 404 `NOT_FOUND` (unknown registration), 400 (bad `uid`), 409 `NOT_ACCEPTED` (not `ACCEPTED`, as for check-in), 409 `BADGE_IN_USE` (the card is someone else's active badge; `replace` never overrides this, an organizer revokes it first) and 409 `HAS_BADGE` (the registration has a different active badge and `replace` is not true). A refusal records nothing, the check-in included.
+
+`POST /admin/badges/tap` takes `{ "uid", "eventId", "tappedAt" }` (`eventId` optional, the general event without it; an unknown one is 404) and answers 200 `{ "result", "event", "item" }`. It is safe to replay:
+
+| `result` | Meaning |
+| --- | --- |
+| `CHECKED_IN` | Checked in by this call |
+| `ALREADY_CHECKED_IN` | Nothing changed; `item.checkedInAt` and `item.checkedInBy` say when and by whom, which is how a second trip through a meal line shows up |
+| `NOT_ACCEPTED` | The holder is no longer `ACCEPTED`. `item` is returned and nothing is recorded, also for an event they were checked in to before |
+| `REVOKED_BADGE` | The card was revoked or replaced and is nobody's badge now; `item` is null |
+| `UNKNOWN_BADGE` | The card was never bound; `item` is null |
+
+`tappedAt` (ISO-8601 UTC, optional) is when the phone read the card, for taps the staff app queued while it was offline. It becomes `checkedInAt` only when it is no more than 1 minute ahead of the server's clock and no more than 72 hours old; otherwise the server's time is used. The check-in itself is the same insert on `(registration, event)` every other check-in uses, so a tap and a manual check-in for the same person and event cannot both be recorded.
+
+`POST /admin/badges/lookup` takes `{ "uid" }` and answers `{ "result", "holder" }` with `result` `FOUND`, `REVOKED_BADGE` or `UNKNOWN_BADGE`. `holder` is null unless `FOUND`, and then it is `{ "firstName", "lastName", "school", "accepted", "checkedIn" }` and nothing else: no id, no email. `checkedIn` is the general check-in. This is the whole of what a `LOOKUP` account can read.
+
+Why taps have their own endpoints: `POST /admin/check-in/scan` reads ticket tokens, and a ticket token is 20 to 64 characters of `A-Z a-z 0-9 _ -`. A 7-byte UID written with dashes (`04-a1-b2-c3-d4-e5-f6`) is 20 such characters, so a UID and a token cannot be told apart by their shape. Keeping the two apart by endpoint means a card is only ever looked up among badges and a QR code only among tickets, and neither endpoint has to guess. The scanner is unchanged.
+
+A badge ends in one of three ways: an admin revokes it (`DELETE /admin/registrations/{id}/badge`), a volunteer replaces it (`bind` with `replace: true`, for a lost card), or the general check-in is undone (see [Check-in](#check-in)). Bind, replace and revoke are logged with the UID, the registration id and the account's email.
+
+**Web check-in for admins only.** `webCheckInAdminOnly` in `/admin/settings` (off by default) sends volunteers to the staff app. The app sends `X-PeachHacks-Client: staff-app` on every request. While the setting is on, every route under `/admin/check-in` (the list, manual check-in, undo and scan) answers a volunteer 403 `WEB_CHECK_IN_ADMIN_ONLY` ("Check-in is done in the PeachHacks staff app. Ask an organizer if you need it here.") unless that header is present. Admins are never affected, and neither is `/admin/badges/**`. The header is not a security boundary: anyone can send it. What a volunteer is able to do is decided by their role; the setting only decides which screen they are steered to.
 
 #### Acceptances
 
@@ -313,7 +382,7 @@ CSV cells that a spreadsheet would treat as a formula (starting with `=`, `+`, `
 
 ### Email
 
-Confirmation emails go out to the personal address after a new pre-registration and after a registration; while the school email is unconfirmed they include a sentence pointing to the school inbox, where the separate confirmation link is sent (see [School email confirmation](#school-email-confirmation)). A newly added admin or volunteer gets an email that says which kind of account it is, with a link to choose their own password; "Forgot password?" sends a reset link.
+Confirmation emails go out to the personal address after a new pre-registration and after a registration; while the school email is unconfirmed they include a sentence pointing to the school inbox, where the separate confirmation link is sent (see [School email confirmation](#school-email-confirmation)). A newly added admin, volunteer or lookup account gets an email that says which kind of account it is and, for the last two, what it is for, with a link to choose their own password; "Forgot password?" sends a reset link.
 
 The acceptance email is a "You're in" message that sends the hacker to the hacker platform first (its main button), then shows the QR code itself with a link to the ticket page, embedded in the message (`cid:` image) and listed as a PNG attachment, because many mail clients block images loaded from a server. It is not sent when a registration becomes `ACCEPTED`: it goes out when an admin sends the acceptance emails, or to one person through `POST /admin/registrations/{id}/ticket-email`, which also sends it again afterwards (see [Acceptances](#acceptances)). With Google Wallet configured it also carries an "Add to Google Wallet" link.
 
@@ -321,7 +390,7 @@ The acceptance email is a "You're in" message that sends the hacker to the hacke
 
 Unsubscribing means "no announcements". It never stops the emails a person needs.
 
-- **Essential emails** are always sent and carry no unsubscribe link and no `List-Unsubscribe` header: the pre-registration confirmation, the registration confirmation, the "You're already registered" notice (see [Repeated sign-ups](#repeated-sign-ups)), the school email confirmation link, the acceptance and ticket email (the send-all run, the one-person send and the resend) the invite to a new admin or volunteer and the password reset link. Each ends with one line saying why the person is receiving it.
+- **Essential emails** are always sent and carry no unsubscribe link and no `List-Unsubscribe` header: the pre-registration confirmation, the registration confirmation, the "You're already registered" notice (see [Repeated sign-ups](#repeated-sign-ups)), the school email confirmation link, the acceptance and ticket email (the send-all run, the one-person send and the resend) the invite to a new admin, volunteer or lookup account and the password reset link. Each ends with one line saying why the person is receiving it.
 - **Campaigns** written by organizers have a `kind`, required on `POST /admin/emails` and `POST /admin/emails/recipient-count`:
 
 | `kind` | For | Audiences | Unsubscribed people | Footer |
@@ -342,7 +411,7 @@ The body is plain text: blank lines separate paragraphs, `{{firstName}}` and `{{
 Every email is rendered by `EmailComposer` in one layout: a navy header with the logo, the message on a white card, and a navy footer with "PeachHacks · ColorStack at Georgia State University", the reason line, the unsubscribe link where it belongs and a link to the site. It is a table layout with inline styles, 600px wide, with a hidden preview line, a dark-mode variant for clients that honour `prefers-color-scheme`, and Open Sans loaded by a font link with Arial as the fallback. There are no tracking pixels and links are never rewritten.
 
 - The logo is `$WEB_BASE_URL/assets/email-logo.png` (served by `web/`). When `WEB_BASE_URL` is a local address the live site's copy is used instead, so the image loads in a real inbox during development. With images blocked the alt text "PeachHacks" shows on the navy band.
-- System emails are built from structured content (`EmailComposer.Content`): a heading, paragraphs, an optional primary and secondary action and, for the ticket, the inline QR image. An action is a button drawn for Outlook on Windows (VML) as well as for other clients, with the plain URL under it. The actions are "Confirm your school email", "View your ticket", "Add to Google Wallet" (secondary) "Set your password" in the two invite emails and "Choose a new password" in the reset email.
+- System emails are built from structured content (`EmailComposer.Content`): a heading, paragraphs, an optional primary and secondary action and, for the ticket, the inline QR image. An action is a button drawn for Outlook on Windows (VML) as well as for other clients, with the plain URL under it. The actions are "Confirm your school email", "View your ticket", "Add to Google Wallet" (secondary) "Set your password" in the invite emails and "Choose a new password" in the reset email.
 - Every message has a complete plain-text alternative carrying the same links.
 - The school email confirmation goes to an inbox that has never heard from PeachHacks, so it opens by saying who is writing and which sign-up it belongs to ("You, or someone using this address, signed up for PeachHacks, a student hackathon run by ColorStack at Georgia State University, with the personal email j***@gmail.com"), uses the person's first name, keeps the link on the site's own domain, shows the URL in full, avoids urgent wording and says it can be ignored. The personal address is always masked.
 
@@ -448,7 +517,7 @@ Google sign-in is the authorization-code flow run by this backend, so the consen
 
 1. Create a service from this repo and set **Root Directory** to `/backend`.
 2. Set the config-as-code path to `/backend/railway.toml` (Railway resolves it from the repo root). It builds with the `Dockerfile`, health-checks `/actuator/health` and only redeploys for commits that touch `backend/**` (`watchPatterns`), so a change to the web or admin site does not restart the API in the middle of a send.
-3. Set the datasource variables (below), `ADMIN_BOOTSTRAP_EMAIL` / `ADMIN_BOOTSTRAP_PASSWORD` / `ADMIN_BOOTSTRAP_NAME` for the first admin, `RESEND_API_KEY` (required: the service does not start without it), and optionally `EMAIL_FROM`, `WEB_BASE_URL`, `PLATFORM_BASE_URL`, `GOOGLE_CLIENT_ID`, the `DISCORD_*` variables, `CORS_ALLOWED_ORIGINS`, `HOST_SCHOOL_NAME`, `HOST_SCHOOL_TARGET`, `NON_HOST_MINIMUM_AGE` and the `GOOGLE_WALLET_*` variables. `PORT` is injected by Railway.
+3. Set the datasource variables (below), `ADMIN_BOOTSTRAP_EMAIL` / `ADMIN_BOOTSTRAP_PASSWORD` / `ADMIN_BOOTSTRAP_NAME` for the first admin, `RESEND_API_KEY` (required: the service does not start without it), and optionally `EMAIL_FROM`, `WEB_BASE_URL`, `PLATFORM_BASE_URL`, `GOOGLE_CLIENT_ID`, the `DISCORD_*` variables, `CORS_ALLOWED_ORIGINS`, `HOST_SCHOOL_NAME`, `HOST_SCHOOL_TARGET`, `NON_HOST_MINIMUM_AGE`, `LANYARD_HOST_COLOR`, `LANYARD_OTHER_COLOR` and the `GOOGLE_WALLET_*` variables. `PORT` is injected by Railway.
 4. Point `api.peachhacks.com` at the service under Settings > Networking > Custom Domain.
 
 Run a single instance: rate limiting, the sign-in throttle and the acceptance send (its progress and the guard against two runs at once) are kept in memory, and a campaign is resumed by whichever instance starts.

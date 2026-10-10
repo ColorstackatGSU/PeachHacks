@@ -72,6 +72,10 @@ app:
     host-school-name: ${HOST_SCHOOL_NAME:Georgia State University}
     host-school-target: ${HOST_SCHOOL_TARGET:0.70}
     non-host-minimum-age: ${NON_HOST_MINIMUM_AGE:18}
+  badges:
+    # Free text shown to whoever hands out lanyards. Not decided yet, so there is no default.
+    lanyard-host-color: ${LANYARD_HOST_COLOR:}
+    lanyard-other-color: ${LANYARD_OTHER_COLOR:}
   admin:
     bootstrap-email: ${ADMIN_BOOTSTRAP_EMAIL:}
     bootstrap-password: ${ADMIN_BOOTSTRAP_PASSWORD:}
