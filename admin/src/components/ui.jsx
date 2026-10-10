@@ -21,12 +21,27 @@ export function LoadingBlock({ label = "Loading…" }) {
   );
 }
 
+// 403s by API error code: a retry cannot fix them, so they get no "Try again".
+const REFUSALS = {
+  FORBIDDEN: {
+    title: "You don’t have access to this",
+    body: "Your account cannot open this part of the admin site. Ask an organizer if you think it should.",
+  },
+  WEB_CHECK_IN_ADMIN_ONLY: {
+    title: "Check-in is done in the PeachHacks staff app",
+    body: "Volunteers check people in with the staff app, so this screen is for admins only right now. Ask an organizer if you need it here.",
+  },
+};
+
+export const isStaffAppOnly = (error) => error?.code === "WEB_CHECK_IN_ADMIN_ONLY";
+
 export function ErrorBlock({ error, onRetry, title = "Could not load this" }) {
-  if (error?.code === "FORBIDDEN") {
+  const refusal = REFUSALS[error?.code];
+  if (refusal) {
     return (
       <div className="state-block state-error" role="alert">
-        <strong>You don’t have access to this</strong>
-        <p>Your account cannot open this part of the admin site. Ask an organizer if you think it should.</p>
+        <strong>{refusal.title}</strong>
+        <p>{refusal.body}</p>
       </div>
     );
   }
@@ -96,6 +111,8 @@ export function Tag({ tone = "neutral", children }) {
 }
 
 export const ToldTag = ({ told }) => (told ? <Tag tone="accepted">Told</Tag> : <Tag tone="waitlisted">Not told yet</Tag>);
+
+export const StaffTag = () => <Tag tone="neutral">Staff</Tag>;
 
 export const ConfirmedTag = ({ confirmed }) =>
   confirmed ? <Tag tone="accepted">Confirmed</Tag> : <Tag tone="waitlisted">Unconfirmed</Tag>;

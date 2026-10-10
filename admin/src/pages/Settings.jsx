@@ -13,7 +13,7 @@ import {
   errorProps,
   useToast,
 } from "../components/ui.jsx";
-import { ROLES, errorText, formatDate, formatDateTime, roleLabel } from "../lib/format.js";
+import { ROLES, errorText, formatDate, formatDateTime, formatUid, plural, roleLabel, roleNoun, roleTone, roleWithArticle } from "../lib/format.js";
 import { useAsync } from "../lib/hooks.js";
 import { href } from "../lib/router.js";
 import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from "./SetPassword.jsx";
@@ -113,7 +113,7 @@ function RegistrationGate() {
     setSaving(true);
     setSaveError(null);
     try {
-      const result = await api.saveSettings(target);
+      const result = await api.saveSettings({ registrationOpen: target });
       const now = Boolean(result?.registrationOpen ?? target);
       setSaved(now);
       setJustOpened(now);
@@ -220,6 +220,198 @@ function RegistrationGate() {
               <p>Registrations already submitted are not affected. You can reopen at any time.</p>
             </>
           )}
+        </ConfirmDialog>
+      )}
+    </section>
+  );
+}
+
+function WebCheckIn() {
+  const notify = useToast();
+  const ids = useId();
+  const settings = useAsync(loadSettings);
+  const [saved, setSaved] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState(null);
+
+  const known = saved !== null || settings.data !== null;
+  const restricted = saved !== null ? saved : Boolean(settings.data?.webCheckInAdminOnly);
+
+  const toggle = async () => {
+    const target = !restricted;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const result = await api.saveSettings({ webCheckInAdminOnly: target });
+      const now = Boolean(result?.webCheckInAdminOnly ?? target);
+      setSaved(now);
+      notify(now ? "Web check-in is now for admins only." : "Volunteers can use web check-in again.");
+    } catch (error) {
+      setSaveError(error);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <section className="card" aria-labelledby={`${ids}-title`}>
+      <div className="card-head">
+        <h2 id={`${ids}-title`}>Web check-in</h2>
+        <span className="muted">Who can use this site’s Check-in screen.</span>
+      </div>
+
+      {!known && settings.error && <ErrorBlock error={settings.error} onRetry={settings.reload} />}
+      {!known && !settings.error && <LoadingBlock label="Loading the current setting…" />}
+
+      {known && (
+        <div className={`gate${restricted ? " is-open" : ""}`}>
+          <div className="gate-text">
+            <strong>{restricted ? "Web check-in is for admins only" : "Volunteers can use web check-in"}</strong>
+            <p id={`${ids}-desc`}>
+              {restricted
+                ? "Volunteers check people in with the PeachHacks staff app. This site’s Check-in screen tells them so and works for admins only."
+                : "Volunteers can check people in on this site’s Check-in screen as well as in the PeachHacks staff app."}{" "}
+              This steers volunteers to the app; it is not a security control.
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            className="switch"
+            aria-checked={restricted}
+            aria-labelledby={`${ids}-switch-label`}
+            aria-describedby={`${ids}-desc`}
+            disabled={saving}
+            onClick={toggle}
+          >
+            <span className="switch-track" aria-hidden="true">
+              <span className="switch-thumb" />
+            </span>
+            <span id={`${ids}-switch-label`} className="switch-label">
+              Restrict web check-in to admins
+              <span className="switch-state">{saving ? "Saving…" : restricted ? "On" : "Off"}</span>
+            </span>
+          </button>
+        </div>
+      )}
+      <InlineError error={saveError} />
+    </section>
+  );
+}
+
+const loadSponsorBadges = (signal) => api.sponsorBadges(signal);
+
+function SponsorBadges() {
+  const notify = useToast();
+  const ids = useId();
+  const badges = useAsync(loadSponsorBadges);
+  const [pendingRevoke, setPendingRevoke] = useState(null);
+  const [revoking, setRevoking] = useState(false);
+  const [revokeError, setRevokeError] = useState(null);
+
+  const rows = Array.isArray(badges.data) ? badges.data : [];
+
+  const revoke = async () => {
+    setRevoking(true);
+    setRevokeError(null);
+    try {
+      await api.revokeSponsorBadge(pendingRevoke.uid);
+      notify(`Revoked sponsor badge ${formatUid(pendingRevoke.uid)}.`);
+      setPendingRevoke(null);
+      badges.reload();
+    } catch (error) {
+      setRevokeError(error);
+    } finally {
+      setRevoking(false);
+    }
+  };
+
+  return (
+    <section className="card" aria-labelledby={`${ids}-title`}>
+      <div className="card-head">
+        <h2 id={`${ids}-title`}>Sponsor badges</h2>
+        <span className="muted">Cards issued to sponsors. They carry no name; tapping one records nothing.</span>
+      </div>
+
+      {badges.error && (
+        <ErrorBlock
+          title={badges.data ? "Could not refresh the list" : "Could not load sponsor badges"}
+          error={badges.error}
+          onRetry={badges.reload}
+        />
+      )}
+      {!badges.data && !badges.error && <LoadingBlock label="Loading sponsor badges…" />}
+
+      {badges.data && (
+        <p className="tag-row">
+          <strong aria-live="polite">{plural(rows.length, "active sponsor badge")}</strong>
+          <button type="button" className="btn btn-small" disabled={badges.loading} onClick={badges.reload}>
+            {badges.loading ? "Refreshing…" : "Refresh"}
+          </button>
+        </p>
+      )}
+      {badges.data && rows.length === 0 && (
+        <EmptyBlock title="No active sponsor badges">Sponsor badges are issued by an admin in the staff app, at the check-in desk.</EmptyBlock>
+      )}
+
+      {rows.length > 0 && (
+        <div className={`table-wrap${badges.loading ? " is-loading" : ""}`} aria-busy={badges.loading}>
+          <table className="data-table">
+            <caption className="sr-only">Active sponsor badges, newest first</caption>
+            <thead>
+              <tr>
+                <th scope="col">Card</th>
+                <th scope="col">Issued by</th>
+                <th scope="col">Issued</th>
+                <th scope="col">
+                  <span className="sr-only">Actions</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.uid}>
+                  <th scope="row" data-label="Card">
+                    <code>{formatUid(row.uid)}</code>
+                  </th>
+                  <td data-label="Issued by">{row.boundBy}</td>
+                  <td data-label="Issued" className="cell-nowrap">
+                    {formatDateTime(row.boundAt)}
+                  </td>
+                  <td className="cell-actions">
+                    <button
+                      type="button"
+                      className="btn btn-small btn-danger-quiet"
+                      aria-label={`Revoke sponsor badge ${formatUid(row.uid)}`}
+                      onClick={() => {
+                        setRevokeError(null);
+                        setPendingRevoke(row);
+                      }}
+                    >
+                      Revoke
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {pendingRevoke && (
+        <ConfirmDialog
+          title="Revoke this sponsor badge?"
+          confirmLabel="Revoke badge"
+          danger
+          busy={revoking}
+          error={revokeError}
+          onConfirm={revoke}
+          onCancel={() => setPendingRevoke(null)}
+        >
+          <p>
+            The card <code>{formatUid(pendingRevoke.uid)}</code> will stop being recognised as a sponsor badge until it
+            is issued again in the staff app. Use this for a lost badge.
+          </p>
         </ConfirmDialog>
       )}
     </section>
@@ -436,7 +628,7 @@ function AdminAccounts({ admin }) {
     setAdding(true);
     try {
       const created = await api.createAdmin({ name: form.name.trim(), email: form.email.trim(), role: form.role });
-      notify(`Invited ${form.name.trim()} as ${form.role === "VOLUNTEER" ? "a volunteer" : "an admin"}.`);
+      notify(`Invited ${form.name.trim()} as ${roleWithArticle(form.role)}.`);
       setInvite({ name: form.name.trim(), email: form.email.trim(), url: created?.setPasswordUrl || null });
       setForm(EMPTY_FORM);
       admins.reload();
@@ -492,7 +684,10 @@ function AdminAccounts({ admin }) {
     <section className="card" aria-labelledby={`${ids}-title`}>
       <div className="card-head">
         <h2 id={`${ids}-title`}>Accounts</h2>
-        <span className="muted">Admins can do everything on this site. Volunteers can only check people in.</span>
+        <span className="muted">
+          Admins can do everything on this site. Volunteers can only check people in. Lookup accounts work in the staff
+          app only.
+        </span>
       </div>
 
       {admins.error && (
@@ -533,7 +728,7 @@ function AdminAccounts({ admin }) {
                       {row.email}
                     </td>
                     <td data-label="Type">
-                      <Tag tone={row.role === "VOLUNTEER" ? "waitlisted" : "accepted"}>{roleLabel(row.role)}</Tag>
+                      <Tag tone={roleTone(row.role)}>{roleLabel(row.role)}</Tag>
                     </td>
                     <td data-label="Added" className="cell-nowrap">
                       {formatDate(row.createdAt)}
@@ -557,7 +752,7 @@ function AdminAccounts({ admin }) {
                           <button
                             type="button"
                             className="btn btn-small btn-danger-quiet"
-                            aria-label={`Remove ${roleLabel(row.role).toLowerCase()} ${row.name || row.email}`}
+                            aria-label={`Remove ${roleNoun(row.role)} ${row.name || row.email}`}
                             onClick={() => {
                               setRemoveError(null);
                               setPendingRemove(row);
@@ -630,7 +825,7 @@ function AdminAccounts({ admin }) {
         </div>
         <InlineError error={formError} />
         <button type="submit" className="btn btn-primary" disabled={adding}>
-          {adding ? "Sending invite…" : form.role === "VOLUNTEER" ? "Invite volunteer" : "Invite admin"}
+          {adding ? "Sending invite…" : `Invite ${roleNoun(form.role)}`}
         </button>
       </form>
 
@@ -646,7 +841,7 @@ function AdminAccounts({ admin }) {
         >
           <p>
             <strong>{pendingRemove.name || pendingRemove.email}</strong> ({pendingRemove.email}) will no longer be able to sign in to
-            the admin site. This cannot be undone, but you can add them again later.
+            the admin site or the staff app. This cannot be undone, but you can add them again later.
           </p>
         </ConfirmDialog>
       )}
@@ -730,6 +925,8 @@ export default function Settings({ admin }) {
       <PageHeader title="Settings" description="Open or close registration, set up check-in events and manage who can sign in." />
       <RegistrationGate />
       <EventsCard />
+      <WebCheckIn />
+      <SponsorBadges />
       <DiscordVerification />
       <AdminAccounts admin={admin} />
       <ChangePassword />

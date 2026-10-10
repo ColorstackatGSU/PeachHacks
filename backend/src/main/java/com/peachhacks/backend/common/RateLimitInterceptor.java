@@ -48,7 +48,9 @@ public class RateLimitInterceptor implements HandlerInterceptor {
 			return true;
 		}
 		else if (route.startsWith("/admin/auth/") || route.startsWith("/platform/auth/")) {
-			acquire("login:" + client, properties.loginPerMinute());
+			// Everyone at the venue shares one network address, so a limit per address would lock
+			// the whole check-in queue out. Guessing a password is held back per email instead.
+			return true;
 		}
 		else if (SIGN_UPS.contains(route)) {
 			if (!rateLimiter.tryAcquire("sign-up:" + client, properties.signUpPerWindow(), properties.signUpWindow())) {

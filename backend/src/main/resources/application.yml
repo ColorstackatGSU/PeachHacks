@@ -72,14 +72,19 @@ app:
     host-school-name: ${HOST_SCHOOL_NAME:Georgia State University}
     host-school-target: ${HOST_SCHOOL_TARGET:0.70}
     non-host-minimum-age: ${NON_HOST_MINIMUM_AGE:18}
+  badges:
+    # Free text shown to whoever hands out lanyards. Not decided yet, so there is no default.
+    lanyard-host-color: ${LANYARD_HOST_COLOR:}
+    lanyard-other-color: ${LANYARD_OTHER_COLOR:}
+    lanyard-sponsor-color: ${LANYARD_SPONSOR_COLOR:}
+    lanyard-staff-color: ${LANYARD_STAFF_COLOR:}
   admin:
     bootstrap-email: ${ADMIN_BOOTSTRAP_EMAIL:}
     bootstrap-password: ${ADMIN_BOOTSTRAP_PASSWORD:}
     bootstrap-name: ${ADMIN_BOOTSTRAP_NAME:}
-    session-ttl: 12h
+    session-ttl: 30d
   rate-limit:
     public-per-minute: 60
-    login-per-minute: 10
     ticket-per-minute: 300
     # The two sign-up POSTs: per client address, and across all addresses together.
     sign-up-per-window: ${SIGN_UP_LIMIT_PER_ADDRESS:30}

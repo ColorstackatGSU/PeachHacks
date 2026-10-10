@@ -1,11 +1,10 @@
 package com.peachhacks.backend.stats;
 
-import jakarta.validation.Valid;
-import jakarta.validation.constraints.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.peachhacks.backend.admin.AdminPrincipal;
+import com.peachhacks.backend.common.ApiException;
 import com.peachhacks.backend.config.EmailProperties;
 
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -21,9 +20,11 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/admin")
 public class AdminStatsController {
 
-	/** previewActive is only ever an answer; it is ignored in a request. */
-	public record Settings(@NotNull(message = "registrationOpen is required") Boolean registrationOpen,
-			Boolean previewActive) {
+	/**
+	 * In a request only the keys that are sent change, so a client that knows one setting
+	 * leaves the others alone. previewActive is only ever an answer; it is ignored in a request.
+	 */
+	public record Settings(Boolean registrationOpen, Boolean previewActive, Boolean webCheckInAdminOnly) {
 	}
 
 	public record PreviewLink(String url) {
@@ -50,7 +51,8 @@ public class AdminStatsController {
 
 	@GetMapping("/settings")
 	Settings settings() {
-		return new Settings(settings.isRegistrationOpen(), settings.isPreviewActive());
+		return new Settings(settings.isRegistrationOpen(), settings.isPreviewActive(),
+				settings.isWebCheckInAdminOnly());
 	}
 
 	/** The link is shown once. Making another one stops the previous link working. */
@@ -69,9 +71,19 @@ public class AdminStatsController {
 	}
 
 	@PutMapping("/settings")
-	Settings updateSettings(@Valid @RequestBody Settings request, @AuthenticationPrincipal AdminPrincipal admin) {
-		settings.setRegistrationOpen(request.registrationOpen());
-		log.info("Registration {} by {}", request.registrationOpen() ? "opened" : "closed", admin.email());
+	Settings updateSettings(@RequestBody Settings request, @AuthenticationPrincipal AdminPrincipal admin) {
+		if (request.registrationOpen() == null && request.webCheckInAdminOnly() == null) {
+			throw ApiException.invalidField("registrationOpen", "Send registrationOpen or webCheckInAdminOnly");
+		}
+		if (request.registrationOpen() != null) {
+			settings.setRegistrationOpen(request.registrationOpen());
+			log.info("Registration {} by {}", request.registrationOpen() ? "opened" : "closed", admin.email());
+		}
+		if (request.webCheckInAdminOnly() != null) {
+			settings.setWebCheckInAdminOnly(request.webCheckInAdminOnly());
+			log.info("Web check-in {} by {}",
+					request.webCheckInAdminOnly() ? "restricted to admins" : "opened to volunteers", admin.email());
+		}
 		return settings();
 	}
 

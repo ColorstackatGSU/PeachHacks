@@ -10,8 +10,10 @@ import java.util.UUID;
 import com.peachhacks.backend.acceptance.AcceptanceMailer;
 import com.peachhacks.backend.acceptance.AgeReview;
 import com.peachhacks.backend.admin.AdminPrincipal;
+import com.peachhacks.backend.badge.BadgeService;
 import com.peachhacks.backend.checkin.CheckIn;
 import com.peachhacks.backend.checkin.CheckInService;
+import com.peachhacks.backend.common.ApiException;
 import com.peachhacks.backend.common.Csv;
 import com.peachhacks.backend.common.PageResponse;
 import com.peachhacks.backend.ticket.Tickets;
@@ -39,7 +41,8 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/admin/registrations")
 public class AdminRegistrationController {
 
-	public record StatusRequest(@NotNull(message = "Status is required") RegistrationStatus status) {
+	/** Only the keys sent change: status alone, staff alone, or both. */
+	public record UpdateRequest(RegistrationStatus status, Boolean staff) {
 	}
 
 	public record BulkStatusRequest(
@@ -72,9 +75,12 @@ public class AdminRegistrationController {
 
 	private final AgeReview ageReview;
 
+	private final BadgeService badges;
+
 	public AdminRegistrationController(RegistrationService service, CheckInService checkIns, Tickets tickets,
-			ResumeService resumes, AcceptanceMailer acceptanceMailer, AgeReview ageReview) {
+			ResumeService resumes, AcceptanceMailer acceptanceMailer, AgeReview ageReview, BadgeService badges) {
 		this.ageReview = ageReview;
+		this.badges = badges;
 		this.service = service;
 		this.checkIns = checkIns;
 		this.tickets = tickets;
@@ -138,8 +144,19 @@ public class AdminRegistrationController {
 	}
 
 	@PatchMapping("/{id}")
-	RegistrationDetail updateStatus(@PathVariable UUID id, @Valid @RequestBody StatusRequest request) {
-		return detail(service.updateStatus(id, request.status()));
+	RegistrationDetail update(@PathVariable UUID id, @RequestBody UpdateRequest request,
+			@AuthenticationPrincipal AdminPrincipal admin) {
+		if (request.status() == null && request.staff() == null) {
+			throw ApiException.invalidField("status", "Status is required");
+		}
+		Registration registration = service.get(id);
+		if (request.staff() != null) {
+			registration = service.setStaff(id, request.staff(), admin);
+		}
+		if (request.status() != null) {
+			registration = service.updateStatus(id, request.status());
+		}
+		return detail(registration);
 	}
 
 	@PostMapping("/status")
@@ -172,7 +189,7 @@ public class AdminRegistrationController {
 				(general != null) ? general.checkedInBy() : null, all, hasTicket ? r.getTicketToken() : null,
 				links.url(), links.googleWalletUrl(),
 				(resume != null) ? ResumeInfo.from(resume) : null,
-				ageReview.needed(r.getId()));
+				ageReview.needed(r.getId()), badges.active(r.getId()));
 	}
 
 	private static Instant checkedInAt(Map<UUID, CheckIn> general, Registration r) {

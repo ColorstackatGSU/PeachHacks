@@ -72,6 +72,17 @@ public class AcceptanceService {
 		this.ageReview = ageReview;
 	}
 
+	/** The one host-school rule, for a caller that needs it for a single registration. */
+	public boolean isHostSchool(UUID registrationId) {
+		return jdbc.sql("select " + IS_HOST + " from registrations r where r.id = :id")
+			.param("id", registrationId)
+			.param("host", ageReview.host())
+			.param("hostLength", ageReview.hostLength())
+			.query(Boolean.class)
+			.optional()
+			.orElse(false);
+	}
+
 	@Transactional(readOnly = true)
 	public Summary summary() {
 		BigDecimal target = properties.hostSchoolTarget();

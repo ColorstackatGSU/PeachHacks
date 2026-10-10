@@ -9,7 +9,7 @@ public record AdminProperties(String bootstrapEmail, String bootstrapPassword, S
 		Duration sessionTtl, Duration inviteTtl, Duration passwordResetTtl) {
 
 	public AdminProperties {
-		sessionTtl = (sessionTtl != null) ? sessionTtl : Duration.ofHours(12);
+		sessionTtl = (sessionTtl != null) ? sessionTtl : Duration.ofDays(30);
 		inviteTtl = (inviteTtl != null) ? inviteTtl : Duration.ofDays(7);
 		passwordResetTtl = (passwordResetTtl != null) ? passwordResetTtl : Duration.ofHours(1);
 	}

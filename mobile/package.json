@@ -1,0 +1,42 @@
+{
+  "name": "peachhacks-staff",
+  "version": "1.0.0",
+  "private": true,
+  "main": "index.js",
+  "scripts": {
+    "start": "expo start --dev-client",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "lint": "eslint .",
+    "test": "jest",
+    "doctor": "npx expo-doctor",
+    "build:check": "expo export --platform android --output-dir dist/android && expo export --platform ios --output-dir dist/ios"
+  },
+  "dependencies": {
+    "expo": "~57.0.27",
+    "expo-camera": "~57.0.6",
+    "expo-dev-client": "~57.0.19",
+    "expo-haptics": "~57.0.3",
+    "expo-secure-store": "~57.0.4",
+    "expo-status-bar": "~57.0.1",
+    "react": "19.2.3",
+    "react-native": "0.86.3",
+    "react-native-nfc-manager": "^4.0.0",
+    "react-native-safe-area-context": "~5.7.0"
+  },
+  "devDependencies": {
+    "eslint": "^9.39.5",
+    "eslint-config-expo": "~57.0.2",
+    "jest": "~29.7.0",
+    "jest-expo": "~57.0.5"
+  },
+  "jest": {
+    "preset": "jest-expo",
+    "testPathIgnorePatterns": [
+      "/node_modules/",
+      "/dist/",
+      "/android/",
+      "/ios/"
+    ]
+  }
+}
