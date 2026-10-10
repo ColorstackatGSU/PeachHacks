@@ -27,6 +27,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.mock.web.MockHttpServletResponse;
@@ -36,6 +37,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -45,13 +47,13 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** The host lanyard has a colour here and the other one has none, so both answers are seen. */
+/** The host and sponsor lanyards have a colour here and the other two have none, so both answers are seen. */
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest(properties = { "app.admin.bootstrap-email=badges@test.local",
 		"app.admin.bootstrap-password=correct-horse-battery", "app.admin.bootstrap-name=Test Organizer",
 		"app.rate-limit.public-per-minute=100000",
 		"app.rate-limit.sign-up-per-window=100000", "app.rate-limit.sign-up-global-per-hour=100000",
-		"app.badges.lanyard-host-color=Peach" })
+		"app.badges.lanyard-host-color=Peach", "app.badges.lanyard-sponsor-color=Gold" })
 @AutoConfigureMockMvc
 @Testcontainers(disabledWithoutDocker = true)
 class BadgeApiTests {
@@ -518,6 +520,7 @@ class BadgeApiTests {
 			.andExpect(jsonPath("$.holder.school").value(HOST_SCHOOL))
 			.andExpect(jsonPath("$.holder.accepted").value(true))
 			.andExpect(jsonPath("$.holder.checkedIn").value(true))
+			.andExpect(jsonPath("$.holder.staff").value(false))
 			.andReturn()
 			.getResponse()
 			.getContentAsString();
@@ -525,7 +528,7 @@ class BadgeApiTests {
 		Map<String, Object> holder = JsonPath.read(found, "$.holder");
 		assertThat(answer.keySet()).containsExactlyInAnyOrder("result", "holder");
 		assertThat(holder.keySet()).containsExactlyInAnyOrder("firstName", "lastName", "school", "accepted",
-				"checkedIn");
+				"checkedIn", "staff");
 		assertThat(found).doesNotContain(hacker)
 			.doesNotContain("@")
 			.doesNotContain("\"id\"")
@@ -813,6 +816,442 @@ class BadgeApiTests {
 		}
 	}
 
+	@Test
+	void aSponsorBadgeSaysSponsorAndRecordsNothing() throws Exception {
+		String admin = bearer();
+		Account volunteer = createAccount(admin, "Desk Volunteer", "VOLUNTEER");
+		Account lookup = createAccount(admin, "Venue Staff", "LOOKUP");
+		String card = uid();
+		String colons = String.join(":", card.split("(?<=\\G..)")).toLowerCase();
+		String workshop = createEvent(admin, "Workshop " + unique());
+
+		String bound = sponsor(admin, colons).andExpect(status().isOk())
+			.andExpect(jsonPath("$.result").value("BOUND"))
+			.andExpect(jsonPath("$.badge.uid").value(card))
+			.andExpect(jsonPath("$.badge.boundAt").isNotEmpty())
+			.andExpect(jsonPath("$.badge.boundBy").value("Test Organizer"))
+			.andExpect(jsonPath("$.lanyard.group").value("SPONSOR"))
+			.andExpect(jsonPath("$.lanyard.label").value("Sponsor"))
+			.andExpect(jsonPath("$.lanyard.color").value("Gold"))
+			.andReturn()
+			.getResponse()
+			.getContentAsString();
+		assertThat(((Map<String, Object>) JsonPath.read(bound, "$")).keySet()).containsExactlyInAnyOrder("result",
+				"badge", "lanyard");
+		for (String caller : List.of(admin)) {
+			sponsor(caller, card).andExpect(status().isOk())
+				.andExpect(jsonPath("$.result").value("ALREADY_BOUND"))
+				.andExpect(jsonPath("$.badge.boundAt").value((String) JsonPath.read(bound, "$.badge.boundAt")))
+				.andExpect(jsonPath("$.badge.boundBy").value("Test Organizer"))
+				.andExpect(jsonPath("$.lanyard.group").value("SPONSOR"));
+		}
+		assertThat(count("select count(*) from badges where uid = '" + card + "'")).isEqualTo(1);
+		assertThat(jdbc.sql("select kind || ':' || coalesce(registration_id::text, 'nobody') from badges where uid = :uid")
+			.param("uid", card)
+			.query(String.class)
+			.single()).isEqualTo("SPONSOR:nobody");
+
+		long checkInsBefore = count("select count(*) from check_ins");
+		for (String eventId : new String[] { null, workshop }) {
+			for (String caller : List.of(admin, volunteer.token())) {
+				tap(caller, card, eventId).andExpect(status().isOk())
+					.andExpect(jsonPath("$.result").value("SPONSOR"))
+					.andExpect(jsonPath("$.event.general").value(eventId == null))
+					.andExpect(jsonPath("$.event.name").isNotEmpty())
+					.andExpect(jsonPath("$.item").value(nullValue()));
+			}
+		}
+		tap(volunteer.token(), card, UUID.randomUUID().toString()).andExpect(status().isNotFound());
+		assertThat(count("select count(*) from check_ins")).as("a sponsor tap records nothing").isEqualTo(checkInsBefore);
+
+		for (String caller : List.of(admin, volunteer.token(), lookup.token())) {
+			String answer = lookup(caller, colons).andExpect(status().isOk())
+				.andExpect(jsonPath("$.result").value("SPONSOR"))
+				.andExpect(jsonPath("$.holder").value(nullValue()))
+				.andReturn()
+				.getResponse()
+				.getContentAsString();
+			assertThat(((Map<String, Object>) JsonPath.read(answer, "$")).keySet()).containsExactlyInAnyOrder("result",
+					"holder");
+			assertThat(answer).doesNotContain(card);
+		}
+
+		String hacker = acceptedHacker(admin, uniqueSchool());
+		for (Boolean replace : new Boolean[] { null, true }) {
+			bind(volunteer.token(), hacker, card, replace).andExpect(status().isConflict())
+				.andExpect(jsonPath("$.code").value("BADGE_IN_USE"))
+				.andExpect(jsonPath("$.message").value("This badge already belongs to someone else. Use a different"
+						+ " badge, or ask an organizer to revoke it."));
+		}
+		assertThat(badgeRows(hacker)).isZero();
+		assertThat(checkIns(hacker)).isZero();
+
+		String hackerCard = uid();
+		bind(volunteer.token(), hacker, hackerCard, null).andExpect(jsonPath("$.result").value("BOUND"));
+		sponsor(admin, hackerCard).andExpect(status().isConflict())
+			.andExpect(jsonPath("$.code").value("BADGE_IN_USE"))
+			.andExpect(jsonPath("$.message").value("This badge already belongs to someone else. Use a different"
+					+ " badge, or ask an organizer to revoke it."));
+		assertThat(activeUid(hacker)).isEqualTo(hackerCard);
+		tap(volunteer.token(), hackerCard, null).andExpect(jsonPath("$.result").value("ALREADY_CHECKED_IN"));
+		mockMvc.perform(get("/admin/registrations/" + hacker).header("Authorization", admin))
+			.andExpect(jsonPath("$.badge.uid").value(hackerCard));
+
+		for (String bad : List.of("", "04A1", "ZZA1B2C3D4E5F6")) {
+			sponsor(admin, bad).andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+				.andExpect(jsonPath("$.fieldErrors.uid").isNotEmpty());
+		}
+		json(post("/admin/badges/bind-sponsor"), admin, "{}").andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.fieldErrors.uid").isNotEmpty());
+		sponsor(volunteer.token(), uid()).andExpect(status().isForbidden())
+			.andExpect(jsonPath("$.code").value("FORBIDDEN"));
+		sponsor(lookup.token(), uid()).andExpect(status().isForbidden())
+			.andExpect(jsonPath("$.code").value("FORBIDDEN"));
+		mockMvc
+			.perform(post("/admin/badges/bind-sponsor").contentType(MediaType.APPLICATION_JSON)
+				.content("{\"uid\":\"%s\"}".formatted(uid())))
+			.andExpect(status().isUnauthorized());
+
+		mockMvc.perform(delete("/admin/check-in/" + hacker).header("Authorization", volunteer.token()))
+			.andExpect(status().isOk());
+		assertThat(activeUid(hacker)).isNull();
+		lookup(admin, card).andExpect(jsonPath("$.result").value("SPONSOR"));
+	}
+
+	@Test
+	void onlyAnAdminListsAndRevokesSponsorBadges() throws Exception {
+		String admin = bearer();
+		Account volunteer = createAccount(admin, "Desk Volunteer", "VOLUNTEER");
+		Account lookup = createAccount(admin, "Venue Staff", "LOOKUP");
+		String older = uid();
+		String newer = uid();
+		String hacker = acceptedHacker(admin, uniqueSchool());
+		String hackerCard = uid();
+		sponsor(admin, older).andExpect(jsonPath("$.result").value("BOUND"));
+		sponsor(admin, newer).andExpect(jsonPath("$.result").value("BOUND"));
+		bind(admin, hacker, hackerCard, null).andExpect(jsonPath("$.result").value("BOUND"));
+
+		String listed = mockMvc.perform(get("/admin/badges/sponsors").header("Authorization", admin))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$[?(@.uid == '%s')].boundBy".formatted(older)).value("Test Organizer"))
+			.andExpect(jsonPath("$[?(@.uid == '%s')].boundBy".formatted(newer)).value("Test Organizer"))
+			.andExpect(jsonPath("$[?(@.uid == '%s')]".formatted(hackerCard)).isEmpty())
+			.andReturn()
+			.getResponse()
+			.getContentAsString();
+		List<String> uids = JsonPath.read(listed, "$[*].uid");
+		assertThat(uids.indexOf(newer)).as("newest first").isLessThan(uids.indexOf(older));
+		assertThat(((Map<String, Object>) JsonPath.read(listed, "$[0]")).keySet()).containsExactlyInAnyOrder("uid",
+				"boundAt", "boundBy");
+
+		String dashes = String.join("-", older.split("(?<=\\G..)")).toLowerCase();
+		for (Account refused : List.of(volunteer, lookup)) {
+			for (MockHttpServletRequestBuilder request : List.of(get("/admin/badges/sponsors"),
+					delete("/admin/badges/sponsors/" + older), delete("/admin/badges/sponsors/" + dashes),
+					post("/admin/badges/sponsors"), get("/admin/badges/sponsors/" + older))) {
+				mockMvc
+					.perform(request.header("Authorization", refused.token())
+						.header("X-PeachHacks-Client", "staff-app"))
+					.andExpect(status().isForbidden())
+					.andExpect(jsonPath("$.code").value("FORBIDDEN"));
+			}
+		}
+		mockMvc.perform(get("/admin/badges/sponsors")).andExpect(status().isUnauthorized());
+		lookup(admin, older).andExpect(jsonPath("$.result").value("SPONSOR"));
+
+		mockMvc.perform(delete("/admin/badges/sponsors/nonsense").header("Authorization", admin))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.fieldErrors.uid").isNotEmpty());
+		for (String notASponsor : List.of(uid(), hackerCard)) {
+			mockMvc.perform(delete("/admin/badges/sponsors/" + notASponsor).header("Authorization", admin))
+				.andExpect(status().isNotFound())
+				.andExpect(jsonPath("$.code").value("NOT_FOUND"));
+		}
+		assertThat(activeUid(hacker)).as("a hacker's badge is not revoked through the sponsor route")
+			.isEqualTo(hackerCard);
+
+		mockMvc.perform(delete("/admin/badges/sponsors/" + dashes).header("Authorization", admin))
+			.andExpect(status().isNoContent());
+		mockMvc.perform(delete("/admin/badges/sponsors/" + older).header("Authorization", admin))
+			.andExpect(status().isNotFound())
+			.andExpect(jsonPath("$.code").value("NOT_FOUND"));
+		assertThat(jdbc.sql("select revoked_by from badges where uid = :uid")
+			.param("uid", older)
+			.query(String.class)
+			.single()).isEqualTo("Test Organizer");
+		tap(volunteer.token(), older, null).andExpect(jsonPath("$.result").value("REVOKED_BADGE"))
+			.andExpect(jsonPath("$.item").value(nullValue()));
+		lookup(lookup.token(), older).andExpect(jsonPath("$.result").value("REVOKED_BADGE"))
+			.andExpect(jsonPath("$.holder").value(nullValue()));
+		mockMvc.perform(get("/admin/badges/sponsors").header("Authorization", admin))
+			.andExpect(jsonPath("$[?(@.uid == '%s')]".formatted(older)).isEmpty())
+			.andExpect(jsonPath("$[?(@.uid == '%s')]".formatted(newer)).isNotEmpty());
+
+		sponsor(admin, older).andExpect(status().isOk()).andExpect(jsonPath("$.result").value("BOUND"));
+		lookup(lookup.token(), older).andExpect(jsonPath("$.result").value("SPONSOR"));
+		mockMvc.perform(delete("/admin/badges/sponsors/" + older).header("Authorization", admin))
+			.andExpect(status().isNoContent());
+
+		String another = acceptedHacker(admin, uniqueSchool());
+		bind(volunteer.token(), another, older, null).andExpect(status().isOk())
+			.andExpect(jsonPath("$.result").value("BOUND"))
+			.andExpect(jsonPath("$.lanyard.group").value("OTHER"));
+		lookup(lookup.token(), older).andExpect(jsonPath("$.result").value("FOUND"));
+		sponsor(admin, older).andExpect(status().isConflict())
+			.andExpect(jsonPath("$.code").value("BADGE_IN_USE"));
+		mockMvc.perform(delete("/admin/registrations/" + another + "/badge").header("Authorization", admin))
+			.andExpect(status().isNoContent());
+		sponsor(admin, older).andExpect(jsonPath("$.result").value("BOUND"));
+		assertThat(count("select count(*) from badges where uid = '" + older + "'")).isEqualTo(4);
+		assertThat(count("select count(*) from badges where uid = '" + older + "' and revoked_at is null")).isEqualTo(1);
+	}
+
+	@Test
+	void theDatabaseKeepsSponsorBadgesWithoutARegistrationAndHackerBadgesWithOne() throws Exception {
+		String admin = bearer();
+		UUID hacker = UUID.fromString(acceptedHacker(admin, uniqueSchool()));
+		String insert = """
+				insert into badges (id, uid, registration_id, kind, bound_at, bound_by)
+				values (gen_random_uuid(), :uid, :registrationId, :kind, now(), 'Test')
+				""";
+
+		assertThatThrownBy(() -> jdbc.sql(insert)
+			.param("uid", uid())
+			.param("registrationId", hacker)
+			.param("kind", "SPONSOR")
+			.update()).isInstanceOf(DataIntegrityViolationException.class)
+			.hasMessageContaining("ck_badges_registration_by_kind");
+		assertThatThrownBy(() -> jdbc.sql(insert.replace(":registrationId", "null"))
+			.param("uid", uid())
+			.param("kind", "HACKER")
+			.update()).isInstanceOf(DataIntegrityViolationException.class)
+			.hasMessageContaining("ck_badges_registration_by_kind");
+		assertThatThrownBy(() -> jdbc.sql("insert into badges (id, uid, bound_at, bound_by) values (gen_random_uuid(), :uid, now(), 'Test')")
+			.param("uid", uid())
+			.update()).as("kind defaults to HACKER, which needs a registration")
+			.isInstanceOf(DataIntegrityViolationException.class);
+		assertThatThrownBy(() -> jdbc.sql(insert.replace(":registrationId", "null"))
+			.param("uid", uid())
+			.param("kind", "STAFF")
+			.update()).isInstanceOf(DataIntegrityViolationException.class).hasMessageContaining("ck_badges_kind");
+
+		String card = uid();
+		assertThat(jdbc.sql(insert.replace(":registrationId", "null")).param("uid", card).param("kind", "SPONSOR").update())
+			.isEqualTo(1);
+		assertThat(jdbc.sql(insert.replace(":registrationId", "null")).param("uid", uid()).param("kind", "SPONSOR").update())
+			.as("two sponsor badges do not collide in the per-registration index")
+			.isEqualTo(1);
+		assertThatThrownBy(() -> jdbc.sql(insert.replace(":registrationId", "null"))
+			.param("uid", card)
+			.param("kind", "SPONSOR")
+			.update()).isInstanceOf(DataIntegrityViolationException.class).hasMessageContaining("uq_badges_active_uid");
+		lookup(admin, card).andExpect(jsonPath("$.result").value("SPONSOR"));
+	}
+
+	@Test
+	void twoVolunteersBindingTheSameSponsorCardOrRacingAHackerBindEndCleanly() throws Exception {
+		String admin = bearer();
+		Account one = createAccount(admin, "Desk One", "VOLUNTEER");
+		Account two = createAccount(admin, "Desk Two", "VOLUNTEER");
+		ExecutorService pool = Executors.newFixedThreadPool(2);
+		try {
+			for (int round = 0; round < 10; round++) {
+				String card = uid();
+				List<MockHttpServletResponse> same = together(pool,
+						() -> sponsor(admin, card).andReturn().getResponse(),
+						() -> sponsor(admin, card).andReturn().getResponse());
+				assertThat(same).extracting(MockHttpServletResponse::getStatus).containsExactly(200, 200);
+				List<String> results = new ArrayList<>();
+				for (MockHttpServletResponse response : same) {
+					results.add(JsonPath.read(response.getContentAsString(), "$.result"));
+				}
+				assertThat(results).containsExactlyInAnyOrder("BOUND", "ALREADY_BOUND");
+				assertThat(count("select count(*) from badges where uid = '" + card + "'")).isEqualTo(1);
+
+				String hacker = acceptedHacker(admin, uniqueSchool());
+				String contested = uid();
+				List<MockHttpServletResponse> mixed = together(pool,
+						() -> sponsor(admin, contested).andReturn().getResponse(),
+						() -> bind(two.token(), hacker, contested, null).andReturn().getResponse());
+				assertThat(mixed).extracting(MockHttpServletResponse::getStatus).containsExactlyInAnyOrder(200, 409);
+				for (MockHttpServletResponse response : mixed) {
+					if (response.getStatus() == 409) {
+						assertThat((String) JsonPath.read(response.getContentAsString(), "$.code"))
+							.isEqualTo("BADGE_IN_USE");
+					}
+				}
+				assertThat(count("select count(*) from badges where uid = '" + contested + "'")).isEqualTo(1);
+				assertThat(generalCheckIns(hacker)).isEqualTo((activeUid(hacker) != null) ? 1 : 0);
+			}
+		}
+		finally {
+			pool.shutdownNow();
+		}
+	}
+
+	@Test
+	void anAdminMarksARegistrationAsStaffAndNothingElseChanges() throws Exception {
+		String admin = bearer();
+		Account volunteer = createAccount(admin, "Desk Volunteer", "VOLUNTEER");
+		Account lookup = createAccount(admin, "Venue Staff", "LOOKUP");
+		String school = uniqueSchool();
+		String member = hacker(admin, school);
+		long emailsBefore = sentEmails.size();
+
+		mockMvc.perform(get("/admin/registrations/" + member).header("Authorization", admin))
+			.andExpect(jsonPath("$.staff").value(false))
+			.andExpect(jsonPath("$.status").value("PENDING"));
+		for (Account refused : List.of(volunteer, lookup)) {
+			json(patch("/admin/registrations/" + member), refused.token(), "{\"staff\":true}")
+				.andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.code").value("FORBIDDEN"));
+		}
+		mockMvc
+			.perform(patch("/admin/registrations/" + member).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"staff\":true}"))
+			.andExpect(status().isUnauthorized());
+		assertThat(staff(member)).isFalse();
+
+		json(patch("/admin/registrations/" + member), admin, "{\"staff\":true}").andExpect(status().isOk())
+			.andExpect(jsonPath("$.staff").value(true))
+			.andExpect(jsonPath("$.status").value("PENDING"))
+			.andExpect(jsonPath("$.acceptedAt").value(nullValue()))
+			.andExpect(jsonPath("$.acceptanceNotifiedAt").value(nullValue()));
+		assertThat(staff(member)).isTrue();
+		mockMvc.perform(get("/admin/registrations").param("school", school).header("Authorization", admin))
+			.andExpect(jsonPath("$.items[0].id").value(member))
+			.andExpect(jsonPath("$.items[0].staff").value(true));
+
+		bind(admin, member, uid(), null).andExpect(status().isConflict())
+			.andExpect(jsonPath("$.code").value("NOT_ACCEPTED"));
+		json(post("/admin/badges/resolve"), volunteer.token(), "{\"registrationId\":\"%s\"}".formatted(member))
+			.andExpect(jsonPath("$.result").value("NOT_ACCEPTED"))
+			.andExpect(jsonPath("$.item.staff").value(true))
+			.andExpect(jsonPath("$.lanyard").value(nullValue()));
+
+		json(patch("/admin/registrations/" + member), admin, "{\"status\":\"ACCEPTED\"}").andExpect(status().isOk())
+			.andExpect(jsonPath("$.status").value("ACCEPTED"))
+			.andExpect(jsonPath("$.acceptedAt").isNotEmpty())
+			.andExpect(jsonPath("$.staff").value(true));
+		String acceptedAt = jdbc.sql("select accepted_at::text from registrations where id = :id")
+			.param("id", UUID.fromString(member))
+			.query(String.class)
+			.single();
+		json(patch("/admin/registrations/" + member), admin, "{\"staff\":false}").andExpect(status().isOk())
+			.andExpect(jsonPath("$.staff").value(false))
+			.andExpect(jsonPath("$.status").value("ACCEPTED"));
+		json(patch("/admin/registrations/" + member), admin, "{\"staff\":true}").andExpect(status().isOk())
+			.andExpect(jsonPath("$.staff").value(true))
+			.andExpect(jsonPath("$.status").value("ACCEPTED"));
+		assertThat(jdbc.sql("select accepted_at::text from registrations where id = :id")
+			.param("id", UUID.fromString(member))
+			.query(String.class)
+			.single()).as("a staff-only change leaves the acceptance alone").isEqualTo(acceptedAt);
+		json(patch("/admin/registrations/" + member), admin, "{\"status\":\"WAITLISTED\",\"staff\":false}")
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.status").value("WAITLISTED"))
+			.andExpect(jsonPath("$.staff").value(false));
+		json(patch("/admin/registrations/" + member), admin, "{\"status\":\"ACCEPTED\",\"staff\":true}")
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.status").value("ACCEPTED"))
+			.andExpect(jsonPath("$.staff").value(true));
+		json(patch("/admin/registrations/" + member), admin, "{}").andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.fieldErrors.status").value("Status is required"));
+		json(patch("/admin/registrations/" + UUID.randomUUID()), admin, "{\"staff\":true}")
+			.andExpect(status().isNotFound());
+		Thread.sleep(300);
+		assertThat(sentEmails.size()).as("marking staff sends no email").isEqualTo(emailsBefore);
+
+		String card = uid();
+		json(post("/admin/badges/resolve"), volunteer.token(), "{\"registrationId\":\"%s\"}".formatted(member))
+			.andExpect(jsonPath("$.result").value("FOUND"))
+			.andExpect(jsonPath("$.item.staff").value(true))
+			.andExpect(jsonPath("$.lanyard.group").value("STAFF"))
+			.andExpect(jsonPath("$.lanyard.label").value("Staff"))
+			.andExpect(jsonPath("$.lanyard.color").value(nullValue()));
+		bind(volunteer.token(), member, card, null).andExpect(status().isOk())
+			.andExpect(jsonPath("$.result").value("BOUND"))
+			.andExpect(jsonPath("$.item.staff").value(true))
+			.andExpect(jsonPath("$.item.generalCheckedIn").value(true))
+			.andExpect(jsonPath("$.lanyard.group").value("STAFF"));
+		tap(volunteer.token(), card, createEvent(admin, "Dinner " + unique()))
+			.andExpect(jsonPath("$.result").value("CHECKED_IN"))
+			.andExpect(jsonPath("$.item.staff").value(true));
+		mockMvc.perform(get("/admin/check-in").param("q", emailOf(member)).header("Authorization", volunteer.token()))
+			.andExpect(jsonPath("$.items[0].id").value(member))
+			.andExpect(jsonPath("$.items[0].staff").value(true));
+		lookup(lookup.token(), card).andExpect(jsonPath("$.result").value("FOUND"))
+			.andExpect(jsonPath("$.holder.staff").value(true))
+			.andExpect(jsonPath("$.holder.accepted").value(true));
+
+		String hostStaff = acceptedHacker(admin, HOST_SCHOOL);
+		bind(admin, hostStaff, uid(), null).andExpect(jsonPath("$.lanyard.group").value("HOST"))
+			.andExpect(jsonPath("$.item.staff").value(false));
+		json(patch("/admin/registrations/" + hostStaff), admin, "{\"staff\":true}").andExpect(status().isOk());
+		json(post("/admin/badges/resolve"), admin, "{\"registrationId\":\"%s\"}".formatted(hostStaff))
+			.andExpect(jsonPath("$.lanyard.group").value("STAFF"))
+			.andExpect(jsonPath("$.lanyard.label").value("Staff"));
+		json(patch("/admin/registrations/" + hostStaff), admin, "{\"staff\":false}").andExpect(status().isOk());
+		json(post("/admin/badges/resolve"), admin, "{\"registrationId\":\"%s\"}".formatted(hostStaff))
+			.andExpect(jsonPath("$.lanyard.group").value("HOST"))
+			.andExpect(jsonPath("$.lanyard.color").value("Peach"));
+	}
+
+	@Test
+	void theStaffFlagIsNeitherShownNorAcceptedOutsideTheAdminApi() throws Exception {
+		String admin = bearer();
+		String member = acceptedHacker(admin, uniqueSchool());
+		json(patch("/admin/registrations/" + member), admin, "{\"staff\":true}").andExpect(status().isOk());
+		String email = emailOf(member);
+
+		String ticket = mockMvc.perform(get("/public/tickets/" + ticketToken(member)))
+			.andExpect(status().isOk())
+			.andReturn()
+			.getResponse()
+			.getContentAsString();
+		assertThat(ticket).doesNotContainIgnoringCase("staff");
+
+		mockMvc
+			.perform(post("/platform/auth/password-link").contentType(MediaType.APPLICATION_JSON)
+				.content("{\"email\":\"%s\"}".formatted(email)))
+			.andExpect(status().isNoContent());
+		Matcher link = Pattern.compile("set-password\\?token=([A-Za-z0-9_-]+)")
+			.matcher(awaitEmail(email, "platform sign-in link").text());
+		assertThat(link.find()).isTrue();
+		String session = mockMvc
+			.perform(post("/platform/auth/set-password").contentType(MediaType.APPLICATION_JSON)
+				.content("{\"token\":\"%s\",\"password\":\"%s\"}".formatted(link.group(1), PASSWORD)))
+			.andExpect(status().isOk())
+			.andReturn()
+			.getResponse()
+			.getContentAsString();
+		String hackerToken = "Bearer " + JsonPath.read(session, "$.token");
+		for (String path : List.of("/platform/me", "/platform/hackers", "/platform/teams")) {
+			String body = mockMvc.perform(get(path).header("Authorization", hackerToken))
+				.andExpect(status().isOk())
+				.andReturn()
+				.getResponse()
+				.getContentAsString();
+			assertThat(body).as(path).doesNotContainIgnoringCase("staff");
+		}
+		json(patch("/platform/me"), hackerToken, "{\"bio\":\"Builds things\",\"staff\":false}");
+		assertThat(staff(member)).as("the platform cannot clear the flag").isTrue();
+
+		String sneaky = unique() + "@example.com";
+		json(put("/admin/settings"), admin, "{\"registrationOpen\":true}").andExpect(status().isOk());
+		mockMvc.perform(post("/public/registrations").contentType(MediaType.APPLICATION_JSON).content("""
+				{"firstName":"Ada","lastName":"Lovelace","age":19,"phone":"404 555 0100","email":"%s",
+				 "schoolEmail":"%s","school":"%s","levelOfStudy":"Undergraduate University (3+ year)",
+				 "graduationYear":2028,"graduationMonth":5,"countryOfResidence":"US",
+				 "mlhCodeOfConduct":true,"mlhDataSharing":true,"mlhEmailOptIn":false,"staff":true}
+				""".formatted(sneaky, sneaky, uniqueSchool())));
+		json(put("/admin/settings"), admin, "{\"registrationOpen\":false}").andExpect(status().isOk());
+		assertThat(count("select count(*) from registrations where staff and email = '" + sneaky + "'"))
+			.as("the public form cannot set the flag")
+			.isZero();
+	}
+
 	private List<MockHttpServletResponse> together(ExecutorService pool, Callable<MockHttpServletResponse> first,
 			Callable<MockHttpServletResponse> second) throws Exception {
 		CyclicBarrier start = new CyclicBarrier(2);
@@ -842,6 +1281,24 @@ class BadgeApiTests {
 			body.append(",\"eventId\":\"").append(eventId).append('"');
 		}
 		return json(post("/admin/badges/tap"), token, body.append('}').toString());
+	}
+
+	private ResultActions sponsor(String token, String uid) throws Exception {
+		return json(post("/admin/badges/bind-sponsor"), token, "{\"uid\":\"%s\"}".formatted(uid));
+	}
+
+	private boolean staff(String registrationId) {
+		return jdbc.sql("select staff from registrations where id = :id")
+			.param("id", UUID.fromString(registrationId))
+			.query(Boolean.class)
+			.single();
+	}
+
+	private String emailOf(String registrationId) {
+		return jdbc.sql("select email from registrations where id = :id")
+			.param("id", UUID.fromString(registrationId))
+			.query(String.class)
+			.single();
 	}
 
 	private ResultActions lookup(String token, String uid) throws Exception {

@@ -7,11 +7,14 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * default: until they are set the colour is null and only the group is reported.
  */
 @ConfigurationProperties(prefix = "app.badges")
-public record BadgeProperties(String lanyardHostColor, String lanyardOtherColor) {
+public record BadgeProperties(String lanyardHostColor, String lanyardOtherColor, String lanyardSponsorColor,
+		String lanyardStaffColor) {
 
 	public BadgeProperties {
 		lanyardHostColor = clean(lanyardHostColor);
 		lanyardOtherColor = clean(lanyardOtherColor);
+		lanyardSponsorColor = clean(lanyardSponsorColor);
+		lanyardStaffColor = clean(lanyardStaffColor);
 	}
 
 	private static String clean(String value) {

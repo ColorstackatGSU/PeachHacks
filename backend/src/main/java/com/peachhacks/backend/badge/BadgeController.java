@@ -1,5 +1,6 @@
 package com.peachhacks.backend.badge;
 
+import java.util.List;
 import java.util.UUID;
 
 import com.peachhacks.backend.admin.AdminPrincipal;
@@ -11,6 +12,7 @@ import jakarta.validation.constraints.Size;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -32,6 +34,9 @@ public class BadgeController {
 	}
 
 	public record LookupRequest(String uid) {
+	}
+
+	public record SponsorRequest(String uid) {
 	}
 
 	private final BadgeService service;
@@ -63,6 +68,23 @@ public class BadgeController {
 	@PostMapping("/admin/badges/lookup")
 	BadgeService.LookupResult lookup(@RequestBody LookupRequest request) {
 		return service.lookup(request.uid());
+	}
+
+	@PostMapping("/admin/badges/bind-sponsor")
+	BadgeService.SponsorBindResult bindSponsor(@RequestBody SponsorRequest request,
+			@AuthenticationPrincipal AdminPrincipal current) {
+		return service.bindSponsor(request.uid(), current);
+	}
+
+	@GetMapping("/admin/badges/sponsors")
+	List<BadgeView> sponsors() {
+		return service.sponsors();
+	}
+
+	@DeleteMapping("/admin/badges/sponsors/{uid}")
+	ResponseEntity<Void> revokeSponsor(@PathVariable String uid, @AuthenticationPrincipal AdminPrincipal current) {
+		service.revokeSponsor(uid, current);
+		return ResponseEntity.noContent().build();
 	}
 
 	@DeleteMapping("/admin/registrations/{id}/badge")

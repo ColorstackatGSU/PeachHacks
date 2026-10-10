@@ -138,6 +138,7 @@ function makeRegistration(base, createdAt) {
     linkedinUrl: rand() > 0.5 ? `https://www.linkedin.com/in/${base.email.split("@")[0].replace(/\./g, "-")}` : null,
     status,
     ...acceptance(status, createdAt),
+    staff: false,
     ticketToken: `mockticket${String(idCounter).padStart(12, "0")}`,
     resume: resumeRoll > 0.45
       ? { fileName: `${base.firstName}_${base.lastName}_Resume.pdf`, size: 60000 + Math.floor(rand() * 900000), uploadedAt: createdAt }
@@ -208,6 +209,12 @@ registrations
     }
   });
 
+registrations.filter((r) => r.status === "ACCEPTED").slice(0, 2).forEach((r) => {
+  r.staff = true;
+});
+// Sponsor cards belong to nobody: only the card, who issued it and when.
+const sponsorBadges = [18, 95, 240].map((minutes) => ({ uid: cardUid(), boundAt: new Date(now - minutes * 60000).toISOString(), boundBy: "Door Volunteer" }));
+
 const findCheckIn = (registrationId, eventId) =>
   checkIns.find((c) => c.registrationId === registrationId && c.eventId === eventId) || null;
 const eventCount = (eventId) => checkIns.filter((c) => c.eventId === eventId).length;
@@ -224,6 +231,7 @@ function checkInItem(r, event) {
     email: r.email,
     school: r.school,
     status: r.status,
+    staff: r.staff,
     checkedInAt: checkIn?.checkedInAt || null,
     checkedInBy: checkIn?.checkedInBy || null,
     generalCheckedIn: Boolean(findCheckIn(r.id, generalEvent.id)),
@@ -375,10 +383,10 @@ function withRegistered(list) {
 }
 
 function summary(r) {
-  const { id, firstName, lastName, email, schoolEmail, schoolEmailConfirmed, schoolEmailConfirmedAt, school, levelOfStudy, countryOfResidence, age, status, acceptedAt, acceptanceNotifiedAt, createdAt } = r;
+  const { id, firstName, lastName, email, schoolEmail, schoolEmailConfirmed, schoolEmailConfirmedAt, school, levelOfStudy, countryOfResidence, age, status, staff, acceptedAt, acceptanceNotifiedAt, createdAt } = r;
   const checkedInAt = findCheckIn(id, generalEvent.id)?.checkedInAt || null;
   return {
-    id, firstName, lastName, email, schoolEmail, schoolEmailConfirmed, schoolEmailConfirmedAt, school, levelOfStudy, countryOfResidence, age, status, acceptedAt, acceptanceNotifiedAt, createdAt, checkedInAt,
+    id, firstName, lastName, email, schoolEmail, schoolEmailConfirmed, schoolEmailConfirmedAt, school, levelOfStudy, countryOfResidence, age, status, staff, acceptedAt, acceptanceNotifiedAt, createdAt, checkedInAt,
     hasResume: Boolean(r.resume),
     ageReview: ageReview(r),
   };
@@ -808,16 +816,28 @@ function handle(method, path, params, body, token) {
     return respond(204);
   }
 
+  if (path === "/admin/badges/sponsors" && method === "GET") {
+    return respond(200, [...sponsorBadges].sort((a, b) => (a.boundAt < b.boundAt ? 1 : -1)));
+  }
+  const sponsorMatch = /^\/admin\/badges\/sponsors\/([^/]+)$/.exec(path);
+  if (sponsorMatch && method === "DELETE") {
+    const index = sponsorBadges.findIndex((badge) => badge.uid === decodeURIComponent(sponsorMatch[1]).toUpperCase());
+    if (index < 0) return fail(404, "NOT_FOUND", "This is not an active sponsor badge.");
+    sponsorBadges.splice(index, 1);
+    return respond(204);
+  }
+
   const regMatch = /^\/admin\/registrations\/([^/]+)$/.exec(path);
   if (regMatch) {
     const index = registrations.findIndex((r) => r.id === regMatch[1]);
     if (index < 0) return fail(404, "NOT_FOUND", "Registration not found.");
     if (method === "GET") return respond(200, detail(registrations[index]));
     if (method === "PATCH") {
-      if (!VALID_STATUSES.includes(body.status)) {
+      if ("status" in body && !VALID_STATUSES.includes(body.status)) {
         return fail(400, "VALIDATION_ERROR", "Invalid status.", { status: "Unknown status" });
       }
-      changeStatus(registrations[index], body.status);
+      if ("status" in body) changeStatus(registrations[index], body.status);
+      if ("staff" in body) registrations[index].staff = Boolean(body.staff);
       return respond(200, detail(registrations[index]));
     }
   }

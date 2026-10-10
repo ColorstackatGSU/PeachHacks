@@ -8,6 +8,7 @@ import {
   LoadingBlock,
   PageHeader,
   Pagination,
+  StaffTag,
   StatusBadge,
   isStaffAppOnly,
 } from "../components/ui.jsx";
@@ -50,6 +51,12 @@ function MissingGeneral({ event, item }) {
   return <p className="checkin-note">Has not done general check-in yet. Send them to the front desk afterwards.</p>;
 }
 
+const ScanName = ({ item }) => (
+  <p className="scan-name">
+    {fullName(item)} {item.staff && <StaffTag />}
+  </p>
+);
+
 function ScanResult({ scan, event, busy, onRetry, onDismiss }) {
   const { outcome, item, error } = scan;
   let tone = "bad";
@@ -75,7 +82,7 @@ function ScanResult({ scan, event, busy, onRetry, onDismiss }) {
     title = "Checked in";
     body = (
       <>
-        <p className="scan-name">{fullName(item)}</p>
+        <ScanName item={item} />
         <p>{item.school}</p>
         <MissingGeneral event={event} item={item} />
       </>
@@ -85,7 +92,7 @@ function ScanResult({ scan, event, busy, onRetry, onDismiss }) {
     title = "Already checked in";
     body = (
       <>
-        <p className="scan-name">{fullName(item)}</p>
+        <ScanName item={item} />
         <p>
           at {formatWhen(item.checkedInAt)}
           {item.checkedInBy ? ` by ${item.checkedInBy}` : ""}
@@ -97,7 +104,7 @@ function ScanResult({ scan, event, busy, onRetry, onDismiss }) {
     title = "Not accepted";
     body = (
       <>
-        <p className="scan-name">{fullName(item)}</p>
+        <ScanName item={item} />
         <p>
           {item.school} · status: {statusLabel(item.status)}
         </p>
@@ -233,7 +240,9 @@ function PersonRow({ item, event, pending, error, onCheckIn, onUndo }) {
   return (
     <li className={`person${checkedIn ? " is-in" : ""}`}>
       <div className="person-main">
-        <strong className="person-name">{fullName(item)}</strong>
+        <strong className="person-name">
+          {fullName(item)} {item.staff && <StaffTag />}
+        </strong>
         <span className="person-school">{item.school}</span>
         <span className="person-email">{item.email}</span>
         {!accepted && <NotAccepted status={item.status} />}

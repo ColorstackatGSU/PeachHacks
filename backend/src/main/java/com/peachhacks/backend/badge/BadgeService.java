@@ -1,6 +1,7 @@
 package com.peachhacks.backend.badge;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -27,14 +28,15 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * A badge is an NFC card bound to one registration by its UID; nothing is written to the
- * card. Binding is the front desk's check-in, so it also records the general check-in.
+ * card. Binding is the front desk's check-in, so it also records the general check-in. A
+ * sponsor badge is the same card bound to nobody: it says "sponsor" and records nothing.
  */
 @Service
 public class BadgeService {
 
 	public enum LanyardGroup {
 
-		HOST, OTHER
+		HOST, OTHER, STAFF, SPONSOR
 
 	}
 
@@ -60,9 +62,13 @@ public class BadgeService {
 	public record BindResult(BindOutcome result, CheckInItem item, BadgeView badge, Lanyard lanyard) {
 	}
 
+	/** result is BOUND or ALREADY_BOUND; a sponsor badge is never replaced, only revoked. */
+	public record SponsorBindResult(BindOutcome result, BadgeView badge, Lanyard lanyard) {
+	}
+
 	public enum TapOutcome {
 
-		CHECKED_IN, ALREADY_CHECKED_IN, NOT_ACCEPTED, REVOKED_BADGE, UNKNOWN_BADGE
+		CHECKED_IN, ALREADY_CHECKED_IN, NOT_ACCEPTED, SPONSOR, REVOKED_BADGE, UNKNOWN_BADGE
 
 	}
 
@@ -71,12 +77,13 @@ public class BadgeService {
 
 	public enum LookupOutcome {
 
-		FOUND, REVOKED_BADGE, UNKNOWN_BADGE
+		FOUND, SPONSOR, REVOKED_BADGE, UNKNOWN_BADGE
 
 	}
 
-	/** Everything a lookup account may learn about a badge's holder; keep it to these five. */
-	public record Holder(String firstName, String lastName, String school, boolean accepted, boolean checkedIn) {
+	/** Everything a lookup account may learn about a badge's holder; keep it to these six. */
+	public record Holder(String firstName, String lastName, String school, boolean accepted, boolean checkedIn,
+			boolean staff) {
 	}
 
 	public record LookupResult(LookupOutcome result, Holder holder) {
@@ -146,7 +153,7 @@ public class BadgeService {
 		for (int attempt = 0; attempt < BIND_ATTEMPTS; attempt++) {
 			Optional<Badge> holder = badges.findByUidAndRevokedAtIsNull(uid);
 			if (holder.isPresent()) {
-				if (!holder.get().getRegistrationId().equals(registrationId)) {
+				if (!registrationId.equals(holder.get().getRegistrationId())) {
 					throw inUse();
 				}
 				return bound(BindOutcome.ALREADY_BOUND, registration, lanyard, by);
@@ -169,12 +176,55 @@ public class BadgeService {
 		throw inUse();
 	}
 
+	/** A sponsor's card is bound to nobody and checks nobody in. Repeating the call is safe. */
+	@Transactional
+	public SponsorBindResult bindSponsor(String rawUid, AdminPrincipal by) {
+		String uid = BadgeUid.normalise(rawUid);
+		Lanyard lanyard = new Lanyard(LanyardGroup.SPONSOR, "Sponsor", properties.lanyardSponsorColor());
+		for (int attempt = 0; attempt < BIND_ATTEMPTS; attempt++) {
+			Optional<Badge> active = badges.findByUidAndRevokedAtIsNull(uid);
+			if (active.isPresent()) {
+				if (!active.get().isSponsor()) {
+					throw inUse();
+				}
+				return new SponsorBindResult(BindOutcome.ALREADY_BOUND, BadgeView.of(active.get()), lanyard);
+			}
+			if (badges.insertSponsorIfAbsent(UUID.randomUUID(), uid, Instant.now(), by.name()) == 1) {
+				log.info("Sponsor badge {} bound by {}", uid, by.email());
+				return new SponsorBindResult(BindOutcome.BOUND,
+						badges.findByUidAndRevokedAtIsNull(uid).map(BadgeView::of).orElseThrow(), lanyard);
+			}
+		}
+		throw inUse();
+	}
+
+	@Transactional(readOnly = true)
+	public List<BadgeView> sponsors() {
+		return badges.findByKindAndRevokedAtIsNullOrderByBoundAtDesc(BadgeKind.SPONSOR)
+			.stream()
+			.map(BadgeView::of)
+			.toList();
+	}
+
+	@Transactional
+	public void revokeSponsor(String rawUid, AdminPrincipal by) {
+		String uid = BadgeUid.normalise(rawUid);
+		if (badges.revokeActiveSponsor(uid, Instant.now(), by.name()) == 0) {
+			throw ApiException.notFound("This card is not a sponsor badge.");
+		}
+		log.info("Sponsor badge {} revoked by {}", uid, by.email());
+	}
+
 	@Transactional
 	public TapResult tap(String rawUid, UUID eventId, AdminPrincipal by) {
 		String uid = BadgeUid.normalise(rawUid);
 		Event event = events.resolve(eventId);
 		EventRef ref = EventRef.of(event);
-		Optional<Registration> holder = holder(uid);
+		Optional<Badge> badge = badges.findByUidAndRevokedAtIsNull(uid);
+		if (badge.isPresent() && badge.get().isSponsor()) {
+			return new TapResult(TapOutcome.SPONSOR, ref, null);
+		}
+		Optional<Registration> holder = badge.flatMap(this::holder);
 		if (holder.isEmpty()) {
 			return new TapResult(badges.existsByUid(uid) ? TapOutcome.REVOKED_BADGE : TapOutcome.UNKNOWN_BADGE, ref,
 					null);
@@ -191,7 +241,11 @@ public class BadgeService {
 	@Transactional(readOnly = true)
 	public LookupResult lookup(String rawUid) {
 		String uid = BadgeUid.normalise(rawUid);
-		Optional<Registration> holder = holder(uid);
+		Optional<Badge> badge = badges.findByUidAndRevokedAtIsNull(uid);
+		if (badge.isPresent() && badge.get().isSponsor()) {
+			return new LookupResult(LookupOutcome.SPONSOR, null);
+		}
+		Optional<Registration> holder = badge.flatMap(this::holder);
 		if (holder.isEmpty()) {
 			return new LookupResult(
 					badges.existsByUid(uid) ? LookupOutcome.REVOKED_BADGE : LookupOutcome.UNKNOWN_BADGE, null);
@@ -200,7 +254,7 @@ public class BadgeService {
 		return new LookupResult(LookupOutcome.FOUND,
 				new Holder(registration.getFirstName(), registration.getLastName(), registration.getSchool(),
 						registration.getStatus() == RegistrationStatus.ACCEPTED,
-						checkIns.generalCheckedIn(registration.getId())));
+						checkIns.generalCheckedIn(registration.getId()), registration.isStaff()));
 	}
 
 	@Transactional
@@ -224,12 +278,15 @@ public class BadgeService {
 		return new BindResult(outcome, checkIns.item(registration, general), active(registration.getId()), lanyard);
 	}
 
-	private Optional<Registration> holder(String uid) {
-		return badges.findByUidAndRevokedAtIsNull(uid)
-			.flatMap(badge -> registrations.findById(badge.getRegistrationId()));
+	private Optional<Registration> holder(Badge badge) {
+		return (badge.getRegistrationId() != null) ? registrations.findById(badge.getRegistrationId())
+				: Optional.empty();
 	}
 
 	private Lanyard lanyard(Registration registration) {
+		if (registration.isStaff()) {
+			return new Lanyard(LanyardGroup.STAFF, "Staff", properties.lanyardStaffColor());
+		}
 		if (acceptances.isHostSchool(registration.getId())) {
 			return new Lanyard(LanyardGroup.HOST, acceptanceProperties.hostSchoolName() + " hacker",
 					properties.lanyardHostColor());

@@ -13,7 +13,7 @@ import {
   errorProps,
   useToast,
 } from "../components/ui.jsx";
-import { ROLES, errorText, formatDate, formatDateTime, roleLabel, roleNoun, roleTone, roleWithArticle } from "../lib/format.js";
+import { ROLES, errorText, formatDate, formatDateTime, formatUid, plural, roleLabel, roleNoun, roleTone, roleWithArticle } from "../lib/format.js";
 import { useAsync } from "../lib/hooks.js";
 import { href } from "../lib/router.js";
 import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from "./SetPassword.jsx";
@@ -295,6 +295,125 @@ function WebCheckIn() {
         </div>
       )}
       <InlineError error={saveError} />
+    </section>
+  );
+}
+
+const loadSponsorBadges = (signal) => api.sponsorBadges(signal);
+
+function SponsorBadges() {
+  const notify = useToast();
+  const ids = useId();
+  const badges = useAsync(loadSponsorBadges);
+  const [pendingRevoke, setPendingRevoke] = useState(null);
+  const [revoking, setRevoking] = useState(false);
+  const [revokeError, setRevokeError] = useState(null);
+
+  const rows = Array.isArray(badges.data) ? badges.data : [];
+
+  const revoke = async () => {
+    setRevoking(true);
+    setRevokeError(null);
+    try {
+      await api.revokeSponsorBadge(pendingRevoke.uid);
+      notify(`Revoked sponsor badge ${formatUid(pendingRevoke.uid)}.`);
+      setPendingRevoke(null);
+      badges.reload();
+    } catch (error) {
+      setRevokeError(error);
+    } finally {
+      setRevoking(false);
+    }
+  };
+
+  return (
+    <section className="card" aria-labelledby={`${ids}-title`}>
+      <div className="card-head">
+        <h2 id={`${ids}-title`}>Sponsor badges</h2>
+        <span className="muted">Cards issued to sponsors. They carry no name; tapping one records nothing.</span>
+      </div>
+
+      {badges.error && (
+        <ErrorBlock
+          title={badges.data ? "Could not refresh the list" : "Could not load sponsor badges"}
+          error={badges.error}
+          onRetry={badges.reload}
+        />
+      )}
+      {!badges.data && !badges.error && <LoadingBlock label="Loading sponsor badges…" />}
+
+      {badges.data && (
+        <p className="tag-row">
+          <strong aria-live="polite">{plural(rows.length, "active sponsor badge")}</strong>
+          <button type="button" className="btn btn-small" disabled={badges.loading} onClick={badges.reload}>
+            {badges.loading ? "Refreshing…" : "Refresh"}
+          </button>
+        </p>
+      )}
+      {badges.data && rows.length === 0 && (
+        <EmptyBlock title="No active sponsor badges">Sponsor badges are issued by an admin in the staff app, at the check-in desk.</EmptyBlock>
+      )}
+
+      {rows.length > 0 && (
+        <div className={`table-wrap${badges.loading ? " is-loading" : ""}`} aria-busy={badges.loading}>
+          <table className="data-table">
+            <caption className="sr-only">Active sponsor badges, newest first</caption>
+            <thead>
+              <tr>
+                <th scope="col">Card</th>
+                <th scope="col">Issued by</th>
+                <th scope="col">Issued</th>
+                <th scope="col">
+                  <span className="sr-only">Actions</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.uid}>
+                  <th scope="row" data-label="Card">
+                    <code>{formatUid(row.uid)}</code>
+                  </th>
+                  <td data-label="Issued by">{row.boundBy}</td>
+                  <td data-label="Issued" className="cell-nowrap">
+                    {formatDateTime(row.boundAt)}
+                  </td>
+                  <td className="cell-actions">
+                    <button
+                      type="button"
+                      className="btn btn-small btn-danger-quiet"
+                      aria-label={`Revoke sponsor badge ${formatUid(row.uid)}`}
+                      onClick={() => {
+                        setRevokeError(null);
+                        setPendingRevoke(row);
+                      }}
+                    >
+                      Revoke
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {pendingRevoke && (
+        <ConfirmDialog
+          title="Revoke this sponsor badge?"
+          confirmLabel="Revoke badge"
+          danger
+          busy={revoking}
+          error={revokeError}
+          onConfirm={revoke}
+          onCancel={() => setPendingRevoke(null)}
+        >
+          <p>
+            The card <code>{formatUid(pendingRevoke.uid)}</code> will stop being recognised as a sponsor badge until it
+            is issued again in the staff app. Use this for a lost badge.
+          </p>
+        </ConfirmDialog>
+      )}
     </section>
   );
 }
@@ -807,6 +926,7 @@ export default function Settings({ admin }) {
       <RegistrationGate />
       <EventsCard />
       <WebCheckIn />
+      <SponsorBadges />
       <DiscordVerification />
       <AdminAccounts admin={admin} />
       <ChangePassword />

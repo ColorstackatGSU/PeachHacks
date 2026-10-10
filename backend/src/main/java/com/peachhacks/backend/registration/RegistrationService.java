@@ -10,6 +10,7 @@ import java.util.Set;
 import java.util.UUID;
 
 import com.peachhacks.backend.acceptance.AgeReview;
+import com.peachhacks.backend.admin.AdminPrincipal;
 import com.peachhacks.backend.common.ApiException;
 import com.peachhacks.backend.common.RateLimiter;
 import com.peachhacks.backend.common.RequestValidator;
@@ -178,6 +179,19 @@ public class RegistrationService {
 		});
 		discord.syncRoles(List.of(id));
 		return updated;
+	}
+
+	/** Marks a registration as staff or not. It touches nothing else: no status, no timestamp, no role, no email. */
+	public Registration setStaff(UUID id, boolean staff, AdminPrincipal by) {
+		return transaction.execute(tx -> {
+			Registration registration = get(id);
+			if (registration.isStaff() != staff) {
+				registration.setStaff(staff);
+				log.info("Registration {} {} by {}", id, staff ? "marked as staff" : "no longer marked as staff",
+						by.email());
+			}
+			return registration;
+		});
 	}
 
 	/** Ids that no longer exist are counted, not refused, so one deleted row does not block the rest. */

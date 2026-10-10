@@ -209,6 +209,7 @@ export const api = {
   registration: (id, signal) => json("GET", `/admin/registrations/${encodeURIComponent(id)}`, { signal }),
   setRegistrationStatus: (id, status) =>
     changing(json("PATCH", `/admin/registrations/${encodeURIComponent(id)}`, { body: { status } })),
+  setRegistrationStaff: (id, staff) => json("PATCH", `/admin/registrations/${encodeURIComponent(id)}`, { body: { staff } }),
   setRegistrationStatuses: (ids, status) =>
     changing(json("POST", "/admin/registrations/status", { body: { ids, status } })),
   exportRegistrations: (query) =>
@@ -247,6 +248,9 @@ export const api = {
   undoCheckIn: (id, eventId) =>
     changing(json("DELETE", `/admin/check-in/${encodeURIComponent(id)}`, { query: { eventId } })),
   scanTicket: ({ code, eventId }) => json("POST", "/admin/check-in/scan", { body: { code, eventId: eventId || null } }),
+
+  sponsorBadges: (signal) => json("GET", "/admin/badges/sponsors", { signal }),
+  revokeSponsorBadge: (uid) => json("DELETE", `/admin/badges/sponsors/${encodeURIComponent(uid)}`),
 
   settings: (signal) => json("GET", "/admin/settings", { signal }),
   // Only the keys sent change: `{ registrationOpen }` or `{ webCheckInAdminOnly }`.

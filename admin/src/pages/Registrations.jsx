@@ -11,6 +11,7 @@ import {
   LoadingBlock,
   PageHeader,
   Pagination,
+  StaffTag,
   Tag,
   ToldTag,
   useToast,
@@ -268,6 +269,46 @@ function TicketPanel({ reg, onSent }) {
           </p>
         </ConfirmDialog>
       )}
+    </section>
+  );
+}
+
+function StaffPanel({ reg, onSaved }) {
+  const notify = useToast();
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+
+  const toggle = async () => {
+    const staff = !reg.staff;
+    setSaving(true);
+    setError(null);
+    try {
+      const result = await api.setRegistrationStaff(reg.id, staff);
+      notify(staff ? `${fullName(reg)} marked as staff.` : `${fullName(reg)} is no longer marked as staff.`);
+      onSaved(result || { ...reg, staff });
+    } catch (err) {
+      setError(err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <section className="ticket-panel" aria-label="Staff">
+      <div className="status-panel-head">
+        <span className="tile-label">Staff</span>
+        {reg.staff && <StaffTag />}
+      </div>
+      <p className="muted small">
+        Staff are checked in and tapped like everyone else; the staff app tells the volunteer to hand over the staff
+        lanyard.
+      </p>
+      <div className="resume-actions">
+        <button type="button" className="btn btn-small" disabled={saving} onClick={toggle}>
+          {saving ? "Saving…" : reg.staff ? "Remove staff mark" : "Mark as staff"}
+        </button>
+      </div>
+      <InlineError error={error} />
     </section>
   );
 }
@@ -600,7 +641,15 @@ function RegistrationDrawer({ id, fallbackName, acceptance, onClose, onChanged }
   return (
     <Modal
       variant="drawer"
-      title={reg ? fullName(reg) : fallbackName || "Registration"}
+      title={
+        reg ? (
+          <>
+            {fullName(reg)} {reg.staff && <StaffTag />}
+          </>
+        ) : (
+          fallbackName || "Registration"
+        )
+      }
       onDismiss={onClose}
       footer={
         reg && (
@@ -663,6 +712,13 @@ function RegistrationDrawer({ id, fallbackName, acceptance, onClose, onChanged }
             reg={reg}
             onSent={() => {
               setUpdated({ ...reg, acceptanceNotifiedAt: new Date().toISOString() });
+              onChanged();
+            }}
+          />
+          <StaffPanel
+            reg={reg}
+            onSaved={(saved) => {
+              setUpdated(saved);
               onChanged();
             }}
           />
@@ -1012,7 +1068,8 @@ export default function Registrations({ query }) {
                     <button type="button" className="link-btn row-link" onClick={() => setOpen(item)}>
                       {fullName(item)}
                       <span className="sr-only">, view details</span>
-                    </button>
+                    </button>{" "}
+                    {item.staff && <StaffTag />}
                   </th>
                   <td data-label="Email" className="cell-break">
                     {item.email}

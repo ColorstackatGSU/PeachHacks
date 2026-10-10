@@ -647,7 +647,7 @@ class RegistrationApiTests {
 			.getContentAsString();
 		Map<String, Object> item = JsonPath.read(listed, "$.items[0]");
 		assertThat(item.keySet()).containsExactlyInAnyOrder("id", "firstName", "lastName", "email", "school", "status",
-				"checkedInAt", "checkedInBy", "generalCheckedIn");
+				"checkedInAt", "checkedInBy", "generalCheckedIn", "staff");
 		assertThat(((Number) JsonPath.read(listed, "$.registrationTotal")).longValue())
 			.isEqualTo(count("select count(*) from registrations"));
 		mockMvc.perform(get("/admin/check-in").param("q", "no-such-" + prefix).header("Authorization", admin))

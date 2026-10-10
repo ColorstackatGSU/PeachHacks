@@ -112,6 +112,8 @@ export function Tag({ tone = "neutral", children }) {
 
 export const ToldTag = ({ told }) => (told ? <Tag tone="accepted">Told</Tag> : <Tag tone="waitlisted">Not told yet</Tag>);
 
+export const StaffTag = () => <Tag tone="neutral">Staff</Tag>;
+
 export const ConfirmedTag = ({ confirmed }) =>
   confirmed ? <Tag tone="accepted">Confirmed</Tag> : <Tag tone="waitlisted">Unconfirmed</Tag>;
 

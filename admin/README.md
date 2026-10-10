@@ -6,13 +6,13 @@ single-page app that talks to the Spring Boot API in `../backend`.
 Screens: sign in, overview (headline numbers, sign-ups over time, by-school
 breakdowns, check-ins by event, resume counts, the host-school share),
 pre-registrations, registrations (with a detail drawer, status changes for one
-person or a selection, the ticket, the badge and the resume), acceptances (the host-school
+person or a selection, the staff mark, the ticket, the badge and the resume), acceptances (the host-school
 share, the bucket of accepted people not yet told, and the button that emails
 them all), check-in (scan a ticket QR code or
 search by name, per event), email (event updates and announcements: composer,
 test send, campaign history) and
-settings (the registration gate, check-in events, who may use web check-in and
-accounts).
+settings (the registration gate, check-in events, who may use web check-in,
+sponsor badges and accounts).
 
 Accounts are admins (everything), volunteers (check-in only) or lookup accounts
 (venue staff, who can only tap a badge in the staff app to see who it belongs
@@ -83,6 +83,8 @@ second so the progress can be watched; nothing fails.
 In mock mode most accepted people with a general check-in have a badge, which
 can be revoked from the drawer; nothing binds a new one, since that happens in
 the staff app. Undoing a general check-in removes the badge, as the API does.
+Two accepted people start marked as staff, and Settings lists three sponsor
+badges that can be revoked.
 With "Restrict web check-in to admins" on in Settings, signing in as the mock
 volunteer shows the staff-app message on the Check-in screen (the settings last
 until the page is reloaded, so sign out and in again rather than reloading).
@@ -218,6 +220,19 @@ Mock mode cannot be turned on in production: it is gated on Vite's
   again; the person's check-ins are kept. The panel also shows for someone who is
   no longer accepted but still holds a badge, so it can be revoked. Undoing a
   general check-in on the Check-in screen revokes the badge too.
+- **Staff**: an admin can mark a registration as staff (e-board) in the drawer's
+  Staff panel, one person at a time; nothing else sets it. Staff are checked in
+  and tapped like everyone else, and the staff app tells the volunteer to hand
+  over the staff lanyard. A "Staff" tag shows in the drawer title, beside the
+  name in the Registrations table, and on the Check-in screen's rows and scan
+  results.
+- **Sponsor badges**: sponsors are not people in the system. An admin issues
+  a card as a sponsor badge in the staff app, with no personal data; tapping it
+  is answered as a sponsor and records nothing. The Sponsor badges card in
+  Settings counts and lists the active ones (card UID, who issued it and when,
+  newest first) with Refresh and, per row, "Revoke" (confirmed first) for a lost
+  badge: the card stops being recognised as a sponsor badge until it is issued
+  again.
 - **Web check-in** on this site remains as the fallback when the staff app
   cannot be used. "Restrict web check-in to admins" in Settings (off by default)
   makes the API answer a volunteer's check-in calls from this site with

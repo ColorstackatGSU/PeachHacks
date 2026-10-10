@@ -4,6 +4,8 @@ import java.time.Instant;
 import java.util.UUID;
 
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
@@ -17,7 +19,11 @@ public class Badge {
 
 	private String uid;
 
+	/** Null for a sponsor badge, and only then. */
 	private UUID registrationId;
+
+	@Enumerated(EnumType.STRING)
+	private BadgeKind kind;
 
 	private Instant boundAt;
 
@@ -40,6 +46,14 @@ public class Badge {
 
 	public UUID getRegistrationId() {
 		return registrationId;
+	}
+
+	public BadgeKind getKind() {
+		return kind;
+	}
+
+	public boolean isSponsor() {
+		return kind == BadgeKind.SPONSOR;
 	}
 
 	public Instant getBoundAt() {

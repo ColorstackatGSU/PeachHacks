@@ -60,7 +60,8 @@ public class SecurityConfig {
 				.hasAnyRole(AdminRole.ADMIN.name(), AdminRole.VOLUNTEER.name(), AdminRole.LOOKUP.name())
 				.requestMatchers(HttpMethod.POST, "/admin/badges/lookup")
 				.hasAnyRole(AdminRole.ADMIN.name(), AdminRole.VOLUNTEER.name(), AdminRole.LOOKUP.name())
-				.requestMatchers(HttpMethod.POST, "/admin/badges/resolve", "/admin/badges/bind", "/admin/badges/tap")
+				.requestMatchers(HttpMethod.POST, "/admin/badges/resolve", "/admin/badges/bind",
+						"/admin/badges/tap")
 				.hasAnyRole(AdminRole.ADMIN.name(), AdminRole.VOLUNTEER.name())
 				.requestMatchers("/admin/check-in", "/admin/check-in/**")
 				.hasAnyRole(AdminRole.ADMIN.name(), AdminRole.VOLUNTEER.name())

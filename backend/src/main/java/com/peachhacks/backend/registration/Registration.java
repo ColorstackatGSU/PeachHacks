@@ -109,6 +109,9 @@ public class Registration {
 
 	private boolean unsubscribed;
 
+	/** Set by an admin only; the public site and the hacker platform never see or send it. */
+	private boolean staff;
+
 	private String unsubscribeToken;
 
 	private String ticketToken;
@@ -325,6 +328,14 @@ public class Registration {
 	 * A change of status starts the acceptance over: someone accepted again after being
 	 * moved out has to be told again. Saving the status it already has changes nothing.
 	 */
+	public boolean isStaff() {
+		return staff;
+	}
+
+	void setStaff(boolean staff) {
+		this.staff = staff;
+	}
+
 	public boolean changeStatus(RegistrationStatus status, Instant now) {
 		if (this.status == status) {
 			return false;
