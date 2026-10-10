@@ -222,6 +222,7 @@ export const api = {
   resendSchoolEmail: (id) => json("POST", `/admin/registrations/${encodeURIComponent(id)}/school-email/resend`),
   downloadResume: (id) => download(`/admin/registrations/${encodeURIComponent(id)}/resume`, null, "resume.pdf"),
   deleteResume: (id) => json("DELETE", `/admin/registrations/${encodeURIComponent(id)}/resume`),
+  revokeBadge: (id) => json("DELETE", `/admin/registrations/${encodeURIComponent(id)}/badge`),
   // The resume book holds accepted registrants who uploaded a resume, so the same filters
   // on the list endpoint give the number of resumes it will contain.
   resumeBookCount: async (attendedOnly, signal) => {
@@ -248,7 +249,8 @@ export const api = {
   scanTicket: ({ code, eventId }) => json("POST", "/admin/check-in/scan", { body: { code, eventId: eventId || null } }),
 
   settings: (signal) => json("GET", "/admin/settings", { signal }),
-  saveSettings: (registrationOpen) => json("PUT", "/admin/settings", { body: { registrationOpen } }),
+  // Only the keys sent change: `{ registrationOpen }` or `{ webCheckInAdminOnly }`.
+  saveSettings: (changes) => json("PUT", "/admin/settings", { body: changes }),
   // The link is only in this answer; making another one stops the previous link working.
   createPreviewLink: () => json("POST", "/admin/settings/registration-preview"),
   endPreview: () => json("DELETE", "/admin/settings/registration-preview"),

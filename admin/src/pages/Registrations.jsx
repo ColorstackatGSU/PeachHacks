@@ -28,6 +28,7 @@ import {
   STATUSES,
   formatBytes,
   formatDateTime,
+  formatUid,
   formatWhen,
   fullName,
   plural,
@@ -264,6 +265,91 @@ function TicketPanel({ reg, onSent }) {
           <p>
             <strong>{fullName(reg)}</strong> will be emailed “You’re in” and their ticket at {reg.email} right away,
             ahead of everyone else in the bucket. This cannot be recalled once it is sent.
+          </p>
+        </ConfirmDialog>
+      )}
+    </section>
+  );
+}
+
+// Shown for anyone accepted, and for anyone else who still holds a badge so it can be revoked.
+function BadgePanel({ reg, onRevoked }) {
+  const notify = useToast();
+  const [confirming, setConfirming] = useState(false);
+  const [revoking, setRevoking] = useState(false);
+  const [error, setError] = useState(null);
+
+  if (!reg.badge) {
+    if (reg.status !== "ACCEPTED") return null;
+    return (
+      <section className="ticket-panel" aria-label="Badge">
+        <span className="tile-label">Badge</span>
+        <p className="muted small">No badge. Badges are bound in the staff app when the person is checked in.</p>
+      </section>
+    );
+  }
+
+  const revoke = async () => {
+    setRevoking(true);
+    setError(null);
+    try {
+      await api.revokeBadge(reg.id);
+      notify(`Revoked the badge for ${fullName(reg)}.`);
+      setConfirming(false);
+      onRevoked();
+    } catch (err) {
+      setError(err);
+    } finally {
+      setRevoking(false);
+    }
+  };
+
+  return (
+    <section className="ticket-panel" aria-label="Badge">
+      <div className="status-panel-head">
+        <span className="tile-label">Badge</span>
+        {reg.status !== "ACCEPTED" && <Tag tone="waitlisted">Holder not accepted</Tag>}
+      </div>
+      <p className="resume-file">
+        <strong>
+          <code>{formatUid(reg.badge.uid)}</code>
+        </strong>
+        <span className="muted small">
+          Bound {formatDateTime(reg.badge.boundAt)}
+          {reg.badge.boundBy ? ` by ${reg.badge.boundBy}` : ""}
+        </span>
+      </p>
+      <p className="muted small">
+        {reg.status === "ACCEPTED"
+          ? "Tapping this card in the staff app checks them in to events."
+          : "They are no longer accepted, so tapping this card checks nobody in. It stays bound to them until it is revoked."}
+      </p>
+      <div className="resume-actions">
+        <button
+          type="button"
+          className="btn btn-small btn-danger-quiet"
+          onClick={() => {
+            setError(null);
+            setConfirming(true);
+          }}
+        >
+          Revoke badge
+        </button>
+      </div>
+      {confirming && (
+        <ConfirmDialog
+          title="Revoke this badge?"
+          confirmLabel="Revoke badge"
+          danger
+          busy={revoking}
+          error={error}
+          onConfirm={revoke}
+          onCancel={() => setConfirming(false)}
+        >
+          <p>
+            The card <code>{formatUid(reg.badge.uid)}</code> will stop working for event check-ins until it is bound
+            again in the staff app, to {fullName(reg)} or to someone else. The check-ins {fullName(reg)} already has are
+            kept.
           </p>
         </ConfirmDialog>
       )}
@@ -578,6 +664,17 @@ function RegistrationDrawer({ id, fallbackName, acceptance, onClose, onChanged }
             onSent={() => {
               setUpdated({ ...reg, acceptanceNotifiedAt: new Date().toISOString() });
               onChanged();
+            }}
+          />
+          <BadgePanel
+            reg={reg}
+            onRevoked={async () => {
+              setUpdated({ ...reg, badge: null });
+              try {
+                setUpdated(await api.registration(id));
+              } catch {
+                // The copy above already shows the badge gone.
+              }
             }}
           />
           <ResumePanel

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api, getToken, onUnauthorized, setToken } from "./api/client.js";
 import { CHECK_IN_PATH, Layout, NAV } from "./components/Layout.jsx";
 import { EmptyBlock, ErrorBlock, LoadingBlock, ToastProvider } from "./components/ui.jsx";
-import { isVolunteer } from "./lib/format.js";
+import { isAdmin, isVolunteer } from "./lib/format.js";
 import { href, navigate, useRoute } from "./lib/router.js";
 import Acceptances from "./pages/Acceptances.jsx";
 import CheckIn from "./pages/CheckIn.jsx";
@@ -43,12 +43,14 @@ export default function App() {
     return () => controller.abort();
   }, [session.status]);
 
+  const volunteer = session.status === "signedIn" && isVolunteer(session.admin);
+  // Anything that is neither an admin nor a volunteer (a lookup account) has no screen here.
+  const appOnly = session.status === "signedIn" && !volunteer && !isAdmin(session.admin);
+
   useEffect(() => {
     const section = NAV.find((item) => item.path === route.path)?.label;
-    document.title = session.status === "signedIn" && section ? `${section} · PeachHacks Admin` : "PeachHacks Admin";
-  }, [route.path, session.status]);
-
-  const volunteer = session.status === "signedIn" && isVolunteer(session.admin);
+    document.title = session.status === "signedIn" && !appOnly && section ? `${section} · PeachHacks Admin` : "PeachHacks Admin";
+  }, [route.path, session.status, appOnly]);
 
   // Volunteers have one screen; any other address (typed, bookmarked or left over from an
   // admin who used this browser) goes there. The API enforces the same limit.
@@ -113,6 +115,23 @@ export default function App() {
 
   if (session.status !== "signedIn") {
     return <SignIn notice={session.notice} onSignedIn={handleSignedIn} />;
+  }
+
+  if (appOnly) {
+    return (
+      <div className="fullpage">
+        <div className="state-block">
+          <strong>This account works in the PeachHacks staff app only</strong>
+          <p>
+            {session.admin?.email ? `${session.admin.email} is` : "You are"} signed in, but there is nothing for this
+            account on the admin site. Sign in to the staff app instead.
+          </p>
+          <button type="button" className="btn" onClick={handleSignOut} disabled={signingOut}>
+            {signingOut ? "Signing out…" : "Sign out"}
+          </button>
+        </div>
+      </div>
+    );
   }
 
   let page;

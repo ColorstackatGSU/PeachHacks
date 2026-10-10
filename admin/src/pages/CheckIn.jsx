@@ -2,7 +2,15 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 import { MOCK_MODE, api } from "../api/client.js";
 import { ConfirmDialog } from "../components/Modal.jsx";
 import { Scanner } from "../components/Scanner.jsx";
-import { EmptyBlock, ErrorBlock, LoadingBlock, PageHeader, Pagination, StatusBadge } from "../components/ui.jsx";
+import {
+  EmptyBlock,
+  ErrorBlock,
+  LoadingBlock,
+  PageHeader,
+  Pagination,
+  StatusBadge,
+  isStaffAppOnly,
+} from "../components/ui.jsx";
 import { errorText, formatNumber, formatWhen, fullName, statusLabel } from "../lib/format.js";
 import { useAsync, useDebounced, useEvents } from "../lib/hooks.js";
 import { cameraSupported, primeFeedback, signal } from "../lib/scanner.js";
@@ -112,7 +120,7 @@ function ScanResult({ scan, event, busy, onRetry, onDismiss }) {
   );
 }
 
-function ScanMode({ event, eventId, onCheckedIn, onUseSearch }) {
+function ScanMode({ event, eventId, onCheckedIn, onRestricted, onUseSearch }) {
   const ids = useId();
   const [scan, setScan] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -150,12 +158,13 @@ function ScanMode({ event, eventId, onCheckedIn, onUseSearch }) {
       } catch (error) {
         setScan({ code, error });
         signal("problem");
+        if (isStaffAppOnly(error)) onRestricted();
       } finally {
         busyRef.current = false;
         setBusy(false);
       }
     },
-    [eventId, onCheckedIn, clear],
+    [eventId, onCheckedIn, onRestricted, clear],
   );
 
   const handleRead = useCallback(
@@ -291,8 +300,8 @@ function SearchMode({ event, list, search, setSearch, page, setPage, changes, on
     } catch (error) {
       setErrors((prev) => ({ ...prev, [item.id]: error }));
       if (!undo) signal("problem");
-      // The row was out of date; fetch its real status.
-      if (isRefusal(error)) list.reload();
+      // The row was out of date, or web check-in was restricted since the list loaded.
+      if (isRefusal(error) || isStaffAppOnly(error)) list.reload();
     } finally {
       setPending((prev) => ({ ...prev, [item.id]: false }));
     }
@@ -366,7 +375,9 @@ function SearchMode({ event, list, search, setSearch, page, setPage, changes, on
         >
           <p>
             <strong>{fullName(undoing)}</strong> will be marked as not checked in
-            {event && !event.general ? ` for ${event.name}` : ""}. Only do this to fix a mistake.
+            {event && !event.general ? ` for ${event.name}` : ""}.
+            {event && !event.general ? "" : " If they were given a badge, it is revoked and has to be bound again."} Only
+            do this to fix a mistake.
           </p>
         </ConfirmDialog>
       )}
@@ -413,6 +424,17 @@ export default function CheckIn() {
       // The choice just will not be remembered.
     }
   };
+
+  // A volunteer while web check-in is restricted to admins: every check-in route refuses,
+  // so the message stands in for the whole screen.
+  if (isStaffAppOnly(list.error)) {
+    return (
+      <>
+        <PageHeader title="Check-in" />
+        <ErrorBlock error={list.error} />
+      </>
+    );
+  }
 
   return (
     <>
@@ -461,6 +483,7 @@ export default function CheckIn() {
           event={event}
           eventId={eventId}
           onCheckedIn={list.reload}
+          onRestricted={list.reload}
           onUseSearch={() => switchMode("search")}
         />
       ) : (

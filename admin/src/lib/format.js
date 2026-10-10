@@ -107,13 +107,24 @@ export const audiencesFor = (kind) => (kind === "EVENT_UPDATE" ? AUDIENCES.filte
 export const audienceLabel = (value) => AUDIENCES.find((a) => a.value === value)?.label || value;
 
 export const ROLES = [
-  { value: "ADMIN", label: "Admin", option: "Admin (full access)", hint: "Can see and change everything on this site, including registrations, email and accounts." },
-  { value: "VOLUNTEER", label: "Volunteer", option: "Volunteer (check-in only)", hint: "Can only open the Check-in screen to scan tickets and check people in." },
+  { value: "ADMIN", label: "Admin", noun: "admin", a: "an admin", tone: "accepted", option: "Admin (full access)", hint: "Can see and change everything on this site, including registrations, email and accounts." },
+  { value: "VOLUNTEER", label: "Volunteer", noun: "volunteer", a: "a volunteer", tone: "waitlisted", option: "Volunteer (check-in only)", hint: "Can check people in, in the staff app and on this site’s Check-in screen. Nothing else on this site." },
+  { value: "LOOKUP", label: "Lookup", noun: "lookup account", a: "a lookup account", tone: "neutral", option: "Lookup (venue staff)", hint: "Can only tap a badge in the staff app to see who it belongs to. Nothing on this site, and no check-ins." },
 ];
 
-export const roleLabel = (value) => ROLES.find((role) => role.value === value)?.label || "Admin";
+const role = (value) => ROLES.find((item) => item.value === value);
 
+// A role this build does not know is shown as it came, never as an admin.
+export const roleLabel = (value) => role(value)?.label || value || "Unknown";
+export const roleTone = (value) => role(value)?.tone || "neutral";
+export const roleNoun = (value) => role(value)?.noun || "account";
+export const roleWithArticle = (value) => role(value)?.a || "an account";
+
+export const isAdmin = (account) => account?.role === "ADMIN";
 export const isVolunteer = (account) => account?.role === "VOLUNTEER";
+
+// The formatted form of a badge's card UID: "04A1B2C3D4E5F6" reads as "04:A1:B2:C3:D4:E5:F6".
+export const formatUid = (uid) => String(uid || "").match(/.{1,2}/g)?.join(":") || "";
 
 export const STATUSES = ["PENDING", "ACCEPTED", "WAITLISTED", "REJECTED"];
 

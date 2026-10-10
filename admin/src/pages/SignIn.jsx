@@ -105,7 +105,8 @@ export default function SignIn({ notice, onSignedIn }) {
             {MOCK_MODE && (
               <p className="notice">
                 Mock mode: any email and password work. An email starting with “volunteer” signs in as a check-in
-                volunteer. Use the password “wrong” to see the error.
+                volunteer, and one starting with “lookup” as a lookup account. Use the password “wrong” to see the
+                error.
               </p>
             )}
             {notice && !error && (

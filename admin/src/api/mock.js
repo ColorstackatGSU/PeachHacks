@@ -166,9 +166,10 @@ const admins = [
   { id: uuid(), email: "admin@peachhacks.local", name: "Local Admin", role: "ADMIN", createdAt: new Date(now - 60 * DAY).toISOString() },
   { id: uuid(), email: "logistics@peachhacks.local", name: "Logistics Lead", role: "ADMIN", createdAt: new Date(now - 21 * DAY).toISOString() },
   { id: uuid(), email: "volunteer@peachhacks.local", name: "Door Volunteer", role: "VOLUNTEER", createdAt: new Date(now - 2 * DAY).toISOString() },
+  { id: uuid(), email: "lookup@peachhacks.local", name: "Venue Staff", role: "LOOKUP", createdAt: new Date(now - DAY).toISOString() },
 ];
 const MOCK_PASSWORD_URL = `${window.location.origin}/#/set-password?token=mock`;
-const settings = { registrationOpen: false, previewActive: false };
+const settings = { registrationOpen: false, previewActive: false, webCheckInAdminOnly: false };
 const discord = {
   configured: true,
   verified: 12,
@@ -181,7 +182,7 @@ const discord = {
   message: "**Verify to get into PeachHacks**\nPress Verify to open the hacker channels.",
 };
 // One token per role so a reload keeps whichever account was signed in.
-const TOKENS = { "mock-token": admins[0], "mock-volunteer-token": admins[2] };
+const TOKENS = { "mock-token": admins[0], "mock-volunteer-token": admins[2], "mock-lookup-token": admins[3] };
 const sessions = new Set(Object.keys(TOKENS));
 
 const events = [
@@ -190,11 +191,17 @@ const events = [
 ];
 const generalEvent = events[0];
 const checkIns = [];
+// Active badges by registration id; the API also keeps revoked ones as history.
+const badges = new Map();
+const cardUid = () => `04${Array.from({ length: 6 }, () => Math.floor(rand() * 256).toString(16).padStart(2, "0")).join("")}`.toUpperCase();
 registrations
   .filter((r) => r.status === "ACCEPTED")
   .forEach((r, index) => {
     if (index % 3 === 0) {
-      checkIns.push({ registrationId: r.id, eventId: generalEvent.id, checkedInAt: new Date(now - index * 60000).toISOString(), checkedInBy: "Door Volunteer" });
+      const checkedInAt = new Date(now - index * 60000).toISOString();
+      checkIns.push({ registrationId: r.id, eventId: generalEvent.id, checkedInAt, checkedInBy: "Door Volunteer" });
+      // Most people checked in at the desk got a badge; the rest were checked in on the web.
+      if (index % 4 !== 3) badges.set(r.id, { uid: cardUid(), boundAt: checkedInAt, boundBy: "Door Volunteer" });
     }
     if (index % 6 === 0) {
       checkIns.push({ registrationId: r.id, eventId: events[1].id, checkedInAt: new Date(now - index * 30000).toISOString(), checkedInBy: "Logistics Lead" });
@@ -241,6 +248,7 @@ function detail(r) {
     ticketUrl: accepted ? `https://www.peachhacks.com/ticket?t=${ticketToken}` : null,
     googleWalletUrl: null,
     ageReview: ageReview(r),
+    badge: badges.get(r.id) || null,
   };
 }
 
@@ -515,7 +523,7 @@ function handle(method, path, params, body, token) {
     if (!body.email || !body.password || body.password === "wrong") {
       return fail(401, "INVALID_CREDENTIALS", "Incorrect email or password.");
     }
-    const mockToken = /^volunteer/i.test(body.email) ? "mock-volunteer-token" : "mock-token";
+    const mockToken = /^volunteer/i.test(body.email) ? "mock-volunteer-token" : /^lookup/i.test(body.email) ? "mock-lookup-token" : "mock-token";
     sessions.add(mockToken);
     return respond(200, { token: mockToken, expiresAt: new Date(Date.now() + 8 * 3600000).toISOString(), admin: TOKENS[mockToken] });
   }
@@ -536,8 +544,13 @@ function handle(method, path, params, body, token) {
   if (!token || !sessions.has(token)) return fail(401, "UNAUTHORIZED", "Sign in to continue.");
   const currentAdmin = TOKENS[token];
 
-  const open = path.startsWith("/admin/auth/") || path === "/admin/check-in" || path.startsWith("/admin/check-in/") || (path === "/admin/events" && method === "GET");
-  if (currentAdmin.role === "VOLUNTEER" && !open) return fail(403, "FORBIDDEN", "You do not have access to this resource.");
+  const authRoute = path.startsWith("/admin/auth/");
+  const checkInRoute = path === "/admin/check-in" || path.startsWith("/admin/check-in/");
+  const open = currentAdmin.role === "VOLUNTEER" ? authRoute || checkInRoute || (path === "/admin/events" && method === "GET") : authRoute;
+  if (currentAdmin.role !== "ADMIN" && !open) return fail(403, "FORBIDDEN", "You do not have access to this resource.");
+  if (currentAdmin.role === "VOLUNTEER" && checkInRoute && settings.webCheckInAdminOnly) {
+    return fail(403, "WEB_CHECK_IN_ADMIN_ONLY", "Check-in is done in the PeachHacks staff app. Ask an organizer if you need it here.");
+  }
 
   if (path === "/admin/auth/logout" && method === "POST") {
     sessions.delete(token);
@@ -640,6 +653,8 @@ function handle(method, path, params, body, token) {
     if (method === "DELETE") {
       const index = checkIns.findIndex((c) => c.registrationId === r.id && c.eventId === event.id);
       if (index >= 0) checkIns.splice(index, 1);
+      // Binding a badge is the general check-in, so undoing one undoes the other.
+      if (event.general) badges.delete(r.id);
     }
     return respond(200, checkInItem(r, event));
   }
@@ -786,6 +801,13 @@ function handle(method, path, params, body, token) {
     });
   }
 
+  const badgeMatch = /^\/admin\/registrations\/([^/]+)\/badge$/.exec(path);
+  if (badgeMatch && method === "DELETE") {
+    if (!registrations.some((reg) => reg.id === badgeMatch[1])) return fail(404, "NOT_FOUND", "Registration not found.");
+    if (!badges.delete(badgeMatch[1])) return fail(404, "NOT_FOUND", "This registration has no active badge.");
+    return respond(204);
+  }
+
   const regMatch = /^\/admin\/registrations\/([^/]+)$/.exec(path);
   if (regMatch) {
     const index = registrations.findIndex((r) => r.id === regMatch[1]);
@@ -801,7 +823,11 @@ function handle(method, path, params, body, token) {
   }
 
   if (path === "/admin/settings") {
-    if (method === "PUT") settings.registrationOpen = Boolean(body.registrationOpen);
+    if (method === "PUT") {
+      ["registrationOpen", "webCheckInAdminOnly"].forEach((key) => {
+        if (key in body) settings[key] = Boolean(body[key]);
+      });
+    }
     return respond(200, { ...settings });
   }
   if (path === "/admin/settings/registration-preview") {
@@ -894,7 +920,7 @@ function handle(method, path, params, body, token) {
       if (!body.name?.trim()) fieldErrors.name = "Name is required";
       if (!/^\S+@\S+\.\S+$/.test(body.email || "")) fieldErrors.email = "Must be a valid email";
       else if (admins.some((a) => a.email.toLowerCase() === body.email.toLowerCase())) fieldErrors.email = "An account with this email already exists";
-      if (body.role && !["ADMIN", "VOLUNTEER"].includes(body.role)) fieldErrors.role = "Role must be ADMIN or VOLUNTEER";
+      if (body.role && !["ADMIN", "VOLUNTEER", "LOOKUP"].includes(body.role)) fieldErrors.role = "Role must be ADMIN, VOLUNTEER or LOOKUP";
       if (Object.keys(fieldErrors).length) return fail(400, "VALIDATION_ERROR", "Check the highlighted fields.", fieldErrors);
       const admin = { id: uuid(), email: body.email, name: body.name, role: body.role || "ADMIN", createdAt: new Date().toISOString(), pending: true };
       admins.push(admin);

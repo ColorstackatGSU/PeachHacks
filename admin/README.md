@@ -6,16 +6,21 @@ single-page app that talks to the Spring Boot API in `../backend`.
 Screens: sign in, overview (headline numbers, sign-ups over time, by-school
 breakdowns, check-ins by event, resume counts, the host-school share),
 pre-registrations, registrations (with a detail drawer, status changes for one
-person or a selection, the ticket and the resume), acceptances (the host-school
+person or a selection, the ticket, the badge and the resume), acceptances (the host-school
 share, the bucket of accepted people not yet told, and the button that emails
 them all), check-in (scan a ticket QR code or
 search by name, per event), email (event updates and announcements: composer,
 test send, campaign history) and
-settings (the registration gate, check-in events and accounts).
+settings (the registration gate, check-in events, who may use web check-in and
+accounts).
 
-Accounts are admins (everything) or volunteers (the Check-in screen only). A
+Accounts are admins (everything), volunteers (check-in only) or lookup accounts
+(venue staff, who can only tap a badge in the staff app to see who it belongs
+to). Volunteers check people in with the staff app in `../mobile`; on this site a
 volunteer sees only Check-in in the navigation and is sent there from any other
-address; the API enforces the same limit, and a `403 FORBIDDEN` shows a "you
+address. A lookup account has nothing on this site: signing in shows a page
+saying the account works in the staff app only, with Sign out, whatever the
+address. The API enforces the same limits, and a `403 FORBIDDEN` shows a "you
 don't have access" message instead of signing the user out.
 
 ## Run
@@ -65,8 +70,8 @@ VITE_MOCK_API=1 npm run dev
 
 Any email and password sign in (use the password `wrong` to see the error
 state). An email starting with `volunteer`, for example
-`volunteer@peachhacks.local`, signs in as a check-in volunteer; anything else
-is a full admin. Mock mode has no camera, so the Check-in screen's Scan tab shows
+`volunteer@peachhacks.local`, signs in as a check-in volunteer and one starting
+with `lookup` as a lookup account; anything else is a full admin. Mock mode has no camera, so the Check-in screen's Scan tab shows
 a text field instead: paste a ticket token (shown in an accepted registration's
 detail drawer under Ticket) or a ticket URL to get each scan result. Data is generated in the browser, shaped like the real API, and resets
 on reload. A peach banner marks every screen while it is on.
@@ -74,6 +79,13 @@ on reload. A peach banner marks every screen while it is on.
 In mock mode about a third of the accepted registrations start in the acceptance
 bucket, and "Send acceptance emails" works through it at roughly three people a
 second so the progress can be watched; nothing fails.
+
+In mock mode most accepted people with a general check-in have a badge, which
+can be revoked from the drawer; nothing binds a new one, since that happens in
+the staff app. Undoing a general check-in removes the badge, as the API does.
+With "Restrict web check-in to admins" on in Settings, signing in as the mock
+volunteer shows the staff-app message on the Check-in screen (the settings last
+until the page is reloaded, so sign out and in again rather than reloading).
 
 Mock mode stores no files: "Download resume" saves a placeholder PDF and the resume
 book is an empty ZIP.
@@ -197,9 +209,26 @@ Mock mode cannot be turned on in production: it is gated on Vite's
   acceptance and ticket email and account invites and password resets are not campaigns: the API
   always sends them, without an unsubscribe link. "Unsubscribed" in the
   pre-registrations table therefore means "no announcements".
+- **Badges**: a badge is an NFC card bound to an accepted person at check-in.
+  Binding a card and tapping it at workshops and meals happen in the staff app
+  (`../mobile`), not here. For an accepted person the registration drawer has a
+  Badge panel with the card's UID (shown in pairs, `04:A1:B2:C3:D4:E5:F6`), who
+  bound it and when, or a line saying there is none yet. "Revoke badge"
+  (confirmed first) stops the card working for event check-ins until it is bound
+  again; the person's check-ins are kept. The panel also shows for someone who is
+  no longer accepted but still holds a badge, so it can be revoked. Undoing a
+  general check-in on the Check-in screen revokes the badge too.
+- **Web check-in** on this site remains as the fallback when the staff app
+  cannot be used. "Restrict web check-in to admins" in Settings (off by default)
+  makes the API answer a volunteer's check-in calls from this site with
+  `403 WEB_CHECK_IN_ADMIN_ONLY`, and the Check-in screen then shows "Check-in is
+  done in the PeachHacks staff app" in place of the scanner and the list. Admins
+  are not affected. The restriction steers volunteers to the app; it is not a
+  security boundary, because the API tells the two apart by a request header
+  that anyone could send.
 - **Passwords** are chosen by the account's owner. Adding an account in Settings
   emails a one-time link to `#/set-password?token=...`; the same screen serves the
-  "Forgot password?" link on the sign-in page. Settings shows the link once after
+  "Forgot password?" link on the sign-in page; all three account types use it. Settings shows the link once after
   an invite (or "Resend invite") so it can be passed on by hand, and has a change
   password form for the signed-in account.
 - **Scanning** uses the camera through `getUserMedia`, which browsers only allow
