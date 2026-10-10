@@ -1,0 +1,51 @@
+{
+  "expo": {
+    "name": "PeachHacks Staff",
+    "slug": "peachhacks-staff",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#001f3a",
+    "ios": {
+      "bundleIdentifier": "com.peachhacks.staff",
+      "supportsTablet": false,
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "com.peachhacks.staff",
+      "adaptiveIcon": {
+        "backgroundColor": "#001f3a",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "blockedPermissions": ["android.permission.RECORD_AUDIO"]
+    },
+    "plugins": [
+      [
+        "react-native-nfc-manager",
+        {
+          "nfcPermission": "PeachHacks Staff uses NFC to read PeachHacks badges.",
+          "includeNdefEntitlement": false
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "PeachHacks Staff uses the camera to scan ticket QR codes.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
+      ],
+      [
+        "expo-secure-store",
+        {
+          "faceIDPermission": false
+        }
+      ]
+    ]
+  }
+}
