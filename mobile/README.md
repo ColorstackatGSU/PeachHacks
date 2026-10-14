@@ -14,7 +14,7 @@ to be sent later; see [When the connection drops](#when-the-connection-drops).
 A badge is an NFC card (NTAG215). The app only ever reads the card's UID. It never
 writes to a card and never reads what is stored on it.
 
-## The three jobs
+## The jobs
 
 There is no tab bar. The app opens on a short home screen, "What are you doing?",
 and each job opens full screen from there, with a back arrow to return. The app
@@ -26,11 +26,12 @@ the admin site):
 | --- | --- | --- | --- |
 | Arrivals | yes | yes | no |
 | An event (meals, workshops) | yes | yes | no |
-| Check a badge | yes | yes | yes, and nothing else |
+| Who's here | yes | yes | yes |
+| Check a badge | yes | yes | yes |
 
-A Lookup account skips the home screen and opens straight into Check a badge.
-The account name and Sign out are in a small sheet behind the round button at the
-top of the home screen.
+A Lookup account (venue staff) gets a home screen with only Who's here and Check
+a badge. The account name and Sign out are in a small sheet behind the round
+button at the top of the home screen.
 
 - **Arrivals** is the general check-in. Scan the hacker's ticket QR code (there is
   a light button on the camera), or "Search by name" for someone without it. The
@@ -58,6 +59,14 @@ top of the home screen.
   1.5 seconds; everything else stays until the next badge. The header shows how
   many are in, and the last few taps are listed under the result. On an iPhone,
   when iOS closes the reader, "Tap to keep reading" starts it again.
+- **Who's here** is read only: nothing on it checks anyone in or out. Search by
+  name, and choose a scope: "Arrived" (everyone through Arrivals, newest first)
+  or one event (the event happening now first; the general event is Arrived). The
+  total for the scope shows under the chips ("214 arrived", "88 at Saturday
+  lunch"). Each row has the name, a Staff tag when it applies, the school and the
+  time they arrived or were checked in. Tapping someone shows when they arrived
+  and the events they are checked in to, with times. It pages as you scroll and
+  refreshes when pulled. It never shows emails or who checked anyone in.
 - **Check a badge.** Hold a badge to the phone to see whose it is: the name, one
   status line (Checked in, Not checked in yet, Not accepted, Badge turned off,
   Unknown badge, or Sponsor badge) and the school. On Android it reads for as
@@ -355,7 +364,9 @@ Things to know:
 - `App.js`: the sign-in gate, the "No connection" banner and the job switcher,
   which remembers the last job in the device's secure storage.
 - `src/screens/`: `Home`, `Arrivals` (with `SponsorBadge`), `EventScreen`,
-  `CheckBadge` and `SignIn`.
+  `WhosHere`, `CheckBadge` and `SignIn`.
+- `src/lib/attendance.js`: the Who's here scope chips, totals, empty-state wording,
+  row times and paging, covered by `src/lib/__tests__/attendance.test.js`.
 - `src/api/client.js`: every API call, in the same shape as the admin site's
   client. A `401 UNAUTHORIZED` clears the session and returns to the sign-in
   screen. It also tracks whether the last request reached the server, which is
@@ -418,11 +429,11 @@ NTAG215 cards.
 
 On-device checklist, to run on at least one iPhone and one Android phone:
 
-1. Sign in as a volunteer: the home screen offers Arrivals, the events and Check
-   a badge, and the Arrivals "⋯" menu has no "Issue sponsor badge". Sign in as an
-   admin: it is there. Sign in as a Lookup account: the app opens straight into
-   Check a badge, with no way back to a home screen. Close and reopen the app: it
-   comes back to the last job.
+1. Sign in as a volunteer: the home screen offers Arrivals, the events, Who's
+   here and Check a badge, and the Arrivals "⋯" menu has no "Issue sponsor
+   badge". Sign in as an admin: it is there. Sign in as a Lookup account: the home
+   offers only Who's here and Check a badge, and Sign out is in its account
+   sheet. Close and reopen the app: it comes back to the last job.
 2. Arrivals: scan an accepted hacker's ticket QR. Name and school show. Press "ID
    matches, tap badge" and hold a blank card to the phone. The lanyard to hand
    over shows, then the scanner is back after three seconds.
@@ -459,8 +470,13 @@ On-device checklist, to run on at least one iPhone and one Android phone:
 18. As an admin, issue a sponsor badge from the Arrivals "⋯" menu, then tap it at
     an event ("Sponsor badge, OK", nothing counted) and in Check a badge ("Sponsor
     badge").
-19. Mark a registration as staff on the admin site: the "Staff" tag shows next to
-    the name at Arrivals, in search, in event results and in Check a badge.
+19. Who's here: "Arrived" lists the people checked in at Arrivals, newest first,
+    with the total; switch to an event and back; search a name; tap someone to see
+    their events; an event no one has been to says so. Nothing on the screen
+    changes anything.
+20. Mark a registration as staff on the admin site: the "Staff" tag shows next to
+    the name at Arrivals, in search, in event results, in Who's here and in Check a
+    badge.
 
 ## What has and has not been tested
 

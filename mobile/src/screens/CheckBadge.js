@@ -5,14 +5,13 @@ import { api } from "../api/client";
 import { JobHeader } from "../components/Header";
 import { canRead, DevInput, NfcUnavailable, useNfcStatus } from "../components/NfcState";
 import { Ready, ResultPanel } from "../components/Result";
-import { IconButton, PrimaryButton } from "../components/ui";
+import { PrimaryButton } from "../components/ui";
 import { signal } from "../lib/feedback";
 import { errorText } from "../lib/format";
 import { lookupView, NOT_A_BADGE } from "../lib/results";
 import { looksLikeUid } from "../lib/uid";
 import { cancelRead, nfcProblemText, readUid, startContinuous } from "../nfc";
 import { space } from "../theme";
-import { AccountSheet } from "./Home";
 
 // Android reads for as long as the screen is open. iOS needs its scan sheet opened
 // for each read, so it has a button.
@@ -23,7 +22,6 @@ export default function CheckBadge({ onBack }) {
   const [view, setView] = useState(null);
   const [busy, setBusy] = useState(false);
   const [pulse, setPulse] = useState(0);
-  const [account, setAccount] = useState(false);
   const live = useRef(true);
   const reader = useRef(null);
 
@@ -89,12 +87,7 @@ export default function CheckBadge({ onBack }) {
 
   return (
     <View style={styles.root}>
-      <JobHeader
-        title="Check a badge"
-        onBack={onBack}
-        right={onBack ? null : <IconButton name="account-circle-outline" label="Account" onPress={() => setAccount(true)} />}
-      />
-      {onBack ? null : <AccountSheet visible={account} onClose={() => setAccount(false)} />}
+      <JobHeader title="Check a badge" onBack={onBack} />
       <View style={styles.body}>
         <View style={styles.stage}>
           {view ? <ResultPanel view={view} pulse={pulse} /> : canRead(nfc) ? <Ready title={busy ? "Checking…" : "Ready"} /> : null}

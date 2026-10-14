@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "
 import { ActivityIndicator, Animated, Easing, StyleSheet, View } from "react-native";
 import { initialWindowMetrics, SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { isReachable, onConnectionChange } from "./src/api/client";
+import { api, isReachable, onConnectionChange } from "./src/api/client";
 import { ResultPanel } from "./src/components/Result";
 import { Icon, PrimaryButton, T, TextButton } from "./src/components/ui";
 import { loadLastJob, saveLastJob } from "./src/lib/session";
@@ -11,6 +11,7 @@ import Arrivals from "./src/screens/Arrivals";
 import CheckBadge from "./src/screens/CheckBadge";
 import EventScreen from "./src/screens/EventScreen";
 import Home from "./src/screens/Home";
+import WhosHere from "./src/screens/WhosHere";
 import SignIn, { Brand, NightSky } from "./src/screens/SignIn";
 import { AuthProvider, canCheckIn, canLookUp, useAuth } from "./src/state/Auth";
 import { useEvents } from "./src/state/events";
@@ -66,7 +67,7 @@ function Jobs() {
   const insets = useSafeAreaInsets();
   const { admin } = useAuth();
   const staff = canCheckIn(admin);
-  const events = useEvents();
+  const events = useEvents(staff ? api.events : null);
   const [job, setJob] = useState(null);
 
   useEffect(() => {
@@ -83,8 +84,8 @@ function Jobs() {
   }, []);
   const home = useCallback(() => go({ kind: "home" }), [go]);
 
-  // A Lookup account has one job and no home screen.
-  let current = staff ? job : { kind: "check" };
+  let current = job;
+  if (!staff && current && ["arrivals", "event"].includes(current.kind)) current = { kind: "home" };
   const event = current?.kind === "event" ? (events.events || []).find((item) => item.id === current.eventId) : null;
   if (current?.kind === "event" && events.events && !event) current = { kind: "home" };
   if (!canLookUp(admin)) current = { kind: "none" };
@@ -115,14 +116,17 @@ function Jobs() {
         }}
       />
     );
+  } else if (current.kind === "who") {
+    screen = <WhosHere onBack={home} />;
   } else if (current.kind === "check") {
-    screen = <CheckBadge onBack={staff ? home : null} />;
+    screen = <CheckBadge onBack={home} />;
   } else {
     screen = (
       <Home
         events={events}
         onArrivals={() => go({ kind: "arrivals" })}
         onEvent={(eventId) => go({ kind: "event", eventId })}
+        onWho={() => go({ kind: "who" })}
         onCheck={() => go({ kind: "check" })}
       />
     );

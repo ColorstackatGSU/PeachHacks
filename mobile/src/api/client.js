@@ -156,6 +156,12 @@ export const api = {
 
   events: (signal) => json("GET", "/admin/events", { signal }),
 
+  // Read only: who has arrived (newest first) and who is checked in to one event.
+  attendanceEvents: (signal) => json("GET", "/admin/attendance/events", { signal }),
+  attendance: (query, signal) => json("GET", "/admin/attendance", { query, signal }),
+  eventAttendance: (id, query, signal) =>
+    json("GET", `/admin/events/${encodeURIComponent(id)}/attendance`, { query, signal }),
+
   checkInList: (query, signal) => json("GET", "/admin/check-in", { query, signal }),
   // Someone who is not accepted is refused with 409 `NOT_ACCEPTED`.
   checkIn: (id) => json("POST", `/admin/check-in/${encodeURIComponent(id)}`),

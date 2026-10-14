@@ -6,7 +6,7 @@ import { API_BASE } from "../api/client";
 import { Bar, Icon, Row, T, TextButton } from "../components/ui";
 import { errorText } from "../lib/format";
 import { eventTime, homeEvents, initials } from "../lib/results";
-import { canCheckIn, useAuth } from "../state/Auth";
+import { canCheckIn, canLookUp, useAuth } from "../state/Auth";
 import { colors, radii, space, type } from "../theme";
 
 const ROLE_NAMES = { ADMIN: "Organizer", VOLUNTEER: "Volunteer", LOOKUP: "Badge checks" };
@@ -71,7 +71,7 @@ function FeaturedCard({ event, kind, half, onPress }) {
   );
 }
 
-export default function Home({ events, onArrivals, onEvent, onCheck }) {
+export default function Home({ events, onArrivals, onEvent, onWho, onCheck }) {
   const insets = useSafeAreaInsets();
   const { admin } = useAuth();
   const [sheet, setSheet] = useState(false);
@@ -162,6 +162,15 @@ export default function Home({ events, onArrivals, onEvent, onCheck }) {
               </>
             ) : null}
           </View>
+        ) : null}
+
+        {canLookUp(admin) ? (
+          <Row
+            icon="account-multiple-outline"
+            title="Who's here"
+            subtitle="Search who has arrived or is at an event"
+            onPress={onWho}
+          />
         ) : null}
 
         <Row icon="account-search-outline" title="Check a badge" subtitle="See whose badge it is" onPress={onCheck} />
