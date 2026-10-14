@@ -358,11 +358,11 @@ class AttendanceApiTests {
 		json(put("/admin/settings"), admin, "{\"registrationOpen\":true}").andExpect(status().isOk());
 		String created = mockMvc
 			.perform(post("/public/registrations").contentType(MediaType.APPLICATION_JSON).content("""
-					{"firstName":"%s","lastName":"%s","age":19,"phone":"404 555 0100","email":"%s",
+					{"firstName":"%s","lastName":"%s","dateOfBirth":"2007-06-01","phone":"404 555 0100","email":"%s",
 					 "schoolEmail":"%s","school":"%s","levelOfStudy":"Undergraduate University (3+ year)",
 					 "graduationYear":2028,"graduationMonth":5,"countryOfResidence":"US",
 					 "mlhCodeOfConduct":true,"mlhDataSharing":true,"mlhEmailOptIn":false}
-					""".formatted(firstName, lastName, email, email, school)))
+					""".formatted(firstName, lastName, email, email.replace("@example.com", "@school.edu"), school)))
 			.andExpect(status().isCreated())
 			.andReturn()
 			.getResponse()

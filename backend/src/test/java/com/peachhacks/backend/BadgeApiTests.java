@@ -1242,7 +1242,7 @@ class BadgeApiTests {
 		String sneaky = unique() + "@example.com";
 		json(put("/admin/settings"), admin, "{\"registrationOpen\":true}").andExpect(status().isOk());
 		mockMvc.perform(post("/public/registrations").contentType(MediaType.APPLICATION_JSON).content("""
-				{"firstName":"Ada","lastName":"Lovelace","age":19,"phone":"404 555 0100","email":"%s",
+				{"firstName":"Ada","lastName":"Lovelace","dateOfBirth":"2007-06-01","phone":"404 555 0100","email":"%s",
 				 "schoolEmail":"%s","school":"%s","levelOfStudy":"Undergraduate University (3+ year)",
 				 "graduationYear":2028,"graduationMonth":5,"countryOfResidence":"US",
 				 "mlhCodeOfConduct":true,"mlhDataSharing":true,"mlhEmailOptIn":false,"staff":true}
@@ -1351,11 +1351,11 @@ class BadgeApiTests {
 		json(put("/admin/settings"), adminToken, "{\"registrationOpen\":true}").andExpect(status().isOk());
 		String created = mockMvc
 			.perform(post("/public/registrations").contentType(MediaType.APPLICATION_JSON).content("""
-					{"firstName":"Ada","lastName":"Lovelace","age":19,"phone":"404 555 0100","email":"%s",
+					{"firstName":"Ada","lastName":"Lovelace","dateOfBirth":"2007-06-01","phone":"404 555 0100","email":"%s",
 					 "schoolEmail":"%s","school":"%s","levelOfStudy":"Undergraduate University (3+ year)",
 					 "graduationYear":2028,"graduationMonth":5,"countryOfResidence":"US",
 					 "mlhCodeOfConduct":true,"mlhDataSharing":true,"mlhEmailOptIn":false}
-					""".formatted(email, email, school)))
+					""".formatted(email, email.replace("@example.com", "@school.edu"), school)))
 			.andExpect(status().isCreated())
 			.andReturn()
 			.getResponse()
