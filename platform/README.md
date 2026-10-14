@@ -32,8 +32,8 @@ Whether "Sign in with Google" and "Connect Discord" appear is decided by the bac
 
 - **Sign in** (`#/`, signed out): Continue with Google (a link to the API, which takes the tab to Google and back with `?google=`), email and password, and "Email me a link" for a first sign-in or a forgotten password. **Choose your password** (`#/set-password?token=`) is where that link lands.
 - **Home** (`#/`, and `#/discord`, which opens it at the Discord card; PeachBot's Verify button links there): the ticket with its QR code and Google Wallet link, Discord, the hacker's card (bio, GitHub, LinkedIn, looking for a team, shown in the directory or not) and password.
-- **Hackers** (`#/hackers`): everyone who has signed in and is listed, with search and filters by school and team status.
-- **Teams** (`#/teams`): start a team, ask to join one, and for a team lead, answer requests and remove members.
+- **Hackers** (`#/hackers`): everyone who has signed in and turned on "Show me on the Hackers page" (off for new accounts), with search and filters by school and team status. Cards start empty; nothing is copied from the registration form.
+- **Teams** (`#/teams`): start a team, ask to join one, and for a team lead, answer requests and remove members. Every team is shown with its members' names and schools; Discord usernames are sent only for the caller's own team and for join requests to it.
 
 Discord sends the browser back to the bare origin with `?code=&state=`; `App.jsx` finishes the connection and removes the query from the address bar. The `state` value is kept in `sessionStorage`, so only a connection started in this browser is completed.
 
