@@ -44,6 +44,9 @@ app:
     web-base-url: ${WEB_BASE_URL:http://localhost:5173}
     admin-base-url: ${ADMIN_BASE_URL:http://localhost:5174}
     campaign-delay: 600ms
+  sponsor:
+    # Where sponsor form submissions are emailed.
+    inbox: ${SPONSOR_INBOX:sponsors@peachhacks.com}
   google-wallet:
     issuer-id: ${GOOGLE_WALLET_ISSUER_ID:}
     service-account-email: ${GOOGLE_WALLET_SERVICE_ACCOUNT_EMAIL:}

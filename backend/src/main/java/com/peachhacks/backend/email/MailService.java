@@ -105,6 +105,24 @@ public class MailService {
 	}
 
 	/**
+	 * A sponsor form submission, to the organizers' inbox. Replying answers the sender.
+	 * Sends on the calling thread: the submission is not stored anywhere else.
+	 * @param message null when the sender left none
+	 * @throws RuntimeException when the provider did not take the message
+	 */
+	public void sendSponsorInquiryNow(String inbox, String organization, String name, String email,
+			String message) {
+		List<String> paragraphs = new ArrayList<>();
+		paragraphs.add("Organization: " + organization + "\nContact: " + name + "\nEmail: " + email);
+		paragraphs.add((message != null) ? "Their message:\n" + message : "They did not leave a message.");
+		paragraphs.add("Reply to this email to answer " + name + " directly.");
+		Content content = Content.of(name + " from " + organization + " filled in the sponsor form.",
+				"New sponsor inquiry", paragraphs);
+		String subject = ("Sponsor inquiry: " + organization).replaceAll("[\\r\\n]+", " ");
+		sender.send(composer.compose(inbox, subject, content, Footer.SPONSOR_INQUIRY).withReplyTo(email));
+	}
+
+	/**
 	 * Goes to the school address itself; the link is the only proof that the person can read
 	 * it. That inbox has never heard from us, so the message opens with who we are and which
 	 * sign-up it belongs to, naming the personal address only in masked form.

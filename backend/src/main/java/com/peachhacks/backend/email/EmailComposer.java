@@ -122,6 +122,9 @@ public class EmailComposer {
 		public static final Footer ADMIN_ACCOUNT = essential(
 				"You are receiving this because you were given an account on the PeachHacks admin site.");
 
+		public static final Footer SPONSOR_INQUIRY = essential(
+				"You are receiving this because someone filled in the sponsor form on the PeachHacks site.");
+
 		private static Footer essential(String reason) {
 			return new Footer(reason, null, false);
 		}
