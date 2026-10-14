@@ -1,0 +1,48 @@
+name: Update Logo Copies
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'brand/**'
+      - 'web/public/assets/logo.svg'
+      - 'web/public/assets/logo-stacked.svg'
+      - 'web/public/assets/email-logo.png'
+      - 'admin/public/assets/logo.svg'
+      - 'platform/public/assets/logo.svg'
+      - 'backend/src/main/resources/discord/logo.png'
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: brand/package-lock.json
+
+      - name: Regenerate the copies from brand/
+        working-directory: brand
+        run: |
+          npm ci
+          npm run build
+
+      - name: Commit any copies that changed
+        run: |
+          git add -A web admin platform backend
+          if git diff --cached --quiet; then
+            echo "Every copy already matches brand/."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Update the logo copies from brand/"
+          git push
