@@ -75,7 +75,8 @@ export function PrivacyPage() {
         </li>
         <li>
           If you are on a team, every accepted hacker sees the team on the Teams page with its members&rsquo; names
-          and schools, whether or not you are on the Hackers page.
+          and schools, whether or not you are on the Hackers page. If you leave the Hackers page, only your teammates
+          see your Discord username.
         </li>
         <li>If you ask to join a team, its leader sees your name, school, Discord username and your message.</li>
         <li>Your email address, phone number and age are never shown to other hackers.</li>
