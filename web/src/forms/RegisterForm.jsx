@@ -380,7 +380,7 @@ export default function RegisterForm({ titleId, onSuccess, onClosed }) {
           />
           <ResumeField
             name="resume" file={values.resume} onChoose={chooseResume} onRemove={removeResume} error={errors.resume}
-            hint="Optional. PDF only, up to 2 MB. Sponsors receive it for recruiting, with your name, emails, school, level of study, graduation date, major, LinkedIn and GitHub."
+            hint="Highly recommended. PDF only, up to 2 MB."
           />
         </div>
       </Section>
