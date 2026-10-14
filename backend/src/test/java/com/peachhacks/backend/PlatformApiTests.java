@@ -26,7 +26,6 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 import org.springframework.http.MediaType;
-import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
@@ -38,7 +37,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.not;
-import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -141,9 +139,6 @@ class PlatformApiTests {
 	@Autowired
 	private MockMvc mockMvc;
 
-	@Autowired
-	private JdbcClient jdbc;
-
 	private String admin;
 
 	@BeforeEach
@@ -192,10 +187,7 @@ class PlatformApiTests {
 			.andExpect(jsonPath("$.hasPassword").value(true))
 			.andExpect(jsonPath("$.ticket.token").isNotEmpty())
 			.andExpect(jsonPath("$.ticket.url").isNotEmpty())
-			.andExpect(jsonPath("$.profile.listed").value(false))
-			.andExpect(jsonPath("$.profile.linkedinUrl").value(nullValue()))
-			.andExpect(jsonPath("$.profile.githubUrl").value(nullValue()));
-		as(session, get("/platform/hackers")).andExpect(jsonPath("$[*].id", not(hasItem(ada.id()))));
+			.andExpect(jsonPath("$.profile.listed").value(true));
 
 		login(ada.email(), "not-the-password").andExpect(status().isUnauthorized());
 		String second = token(login(ada.email().toUpperCase(), "a-long-password").andExpect(status().isOk()));
@@ -204,7 +196,7 @@ class PlatformApiTests {
 				{"bio":"Builds things","githubUrl":"http://example.com/ada","lookingForTeam":true}
 				""").andExpect(status().isBadRequest()).andExpect(jsonPath("$.fieldErrors.githubUrl").exists());
 		as(second, patch("/platform/me")).content("""
-				{"bio":"Builds things","githubUrl":"https://github.com/ada","lookingForTeam":true,"listed":true}
+				{"bio":"Builds things","githubUrl":"https://github.com/ada","lookingForTeam":true}
 				""").andExpect(status().isOk()).andExpect(jsonPath("$.profile.lookingForTeam").value(true));
 		as(second, get("/platform/hackers")).andExpect(jsonPath("$[?(@.id=='%s')].bio".formatted(ada.id()),
 				hasItem("Builds things")));
@@ -262,10 +254,8 @@ class PlatformApiTests {
 		String lead = signIn(register("Lead", "ACCEPTED"));
 		Hacker joinerHacker = register("Joiner", "ACCEPTED");
 		String joiner = signIn(joinerHacker);
-		Hacker lateHacker = register("Late", "ACCEPTED");
-		String late = signIn(lateHacker);
+		String late = signIn(register("Late", "ACCEPTED"));
 		String name = "Peach Pit " + UUID.randomUUID().toString().substring(0, 6);
-		as(joiner, patch("/platform/me")).content("{\"listed\":true}").andExpect(status().isOk());
 
 		as(lead, post("/platform/teams")).content("{\"name\":\"x\"}").andExpect(status().isBadRequest());
 		String created = as(lead, post("/platform/teams"))
@@ -301,15 +291,6 @@ class PlatformApiTests {
 			.andExpect(jsonPath("$.code").value("TEAM_FULL"));
 		as(late, post("/platform/teams/" + teamId + "/requests")).andExpect(status().isConflict());
 		as(joiner, get("/platform/me")).andExpect(jsonPath("$.teamId").value(teamId));
-		jdbc.sql("insert into discord_links (registration_id, discord_user_id, discord_username) values (:id, :user, 'joiner_on_discord')")
-			.param("id", UUID.fromString(joinerHacker.id()))
-			.param("user", UUID.randomUUID().toString().substring(0, 18))
-			.update();
-		as(lead, get("/platform/teams"))
-			.andExpect(jsonPath("$[0].members[*].discordUsername", hasItem("joiner_on_discord")));
-		as(late, get("/platform/teams"))
-			.andExpect(jsonPath("$[?(@.id=='%s')].members[*].discordUsername".formatted(teamId), not(hasItem("joiner_on_discord"))))
-			.andExpect(jsonPath("$[?(@.id=='%s')].members[*].firstName".formatted(teamId), hasItem("Joiner")));
 		as(joiner, get("/platform/hackers"))
 			.andExpect(jsonPath("$[?(@.id=='%s')].teamName".formatted(joinerHacker.id()), hasItem(name)));
 
@@ -404,8 +385,7 @@ class PlatformApiTests {
 					{"firstName":"%s","lastName":"Example","age":19,"phone":"404 555 0100","email":"%s",
 					 "schoolEmail":"%s","school":"Georgia State University",
 					 "levelOfStudy":"Undergraduate University (3+ year)","graduationYear":2028,"graduationMonth":5,
-					 "countryOfResidence":"US","linkedinUrl":"https://www.linkedin.com/in/example",
-					 "githubUrl":"https://github.com/example","mlhCodeOfConduct":true,"mlhDataSharing":true,"mlhEmailOptIn":false}
+					 "countryOfResidence":"US","mlhCodeOfConduct":true,"mlhDataSharing":true,"mlhEmailOptIn":false}
 					""".formatted(firstName, email, email)))
 			.andExpect(status().isCreated())
 			.andReturn()

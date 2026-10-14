@@ -28,7 +28,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 /**
  * What a signed-in hacker sees and does: their own profile and ticket, the directory of
  * other hackers, and teams. Everyone shown is ACCEPTED; the directory holds only people
- * who have signed in to the platform and chosen to be listed.
+ * who have signed in to the platform and left themselves listed.
  */
 @Service
 public class PlatformService {
@@ -164,10 +164,7 @@ public class PlatformService {
 			.list();
 	}
 
-	/**
-	 * Every team, fullest last so the ones with room come first; the caller's own team leads.
-	 * Members' Discord usernames are included only for the caller's own team.
-	 */
+	/** Every team, fullest last so the ones with room come first; the caller's own team leads. */
 	public List<Team> teams(UUID callerId) {
 		record Row(UUID id, String name, String description, UUID ownerId) {
 		}
@@ -197,13 +194,8 @@ public class PlatformService {
 		UUID own = teamOf(callerId).orElse(null);
 		List<Team> teams = new ArrayList<>();
 		for (Row row : rows) {
-			boolean mine = row.id().equals(own);
 			List<Member> team = members.getOrDefault(row.id(), List.of());
-			if (!mine) {
-				team = team.stream()
-					.map(m -> new Member(m.id(), m.firstName(), m.lastName(), m.school(), null, m.owner()))
-					.toList();
-			}
+			boolean mine = row.id().equals(own);
 			teams.add(new Team(row.id(), row.name(), row.description(), team,
 					Math.max(0, properties.maxTeamSize() - team.size()), requested.contains(row.id()),
 					mine ? requests(row.id()) : List.of()));
