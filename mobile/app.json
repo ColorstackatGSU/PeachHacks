@@ -22,7 +22,9 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "blockedPermissions": ["android.permission.RECORD_AUDIO"]
+      "blockedPermissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "plugins": [
       [
@@ -45,7 +47,28 @@
         {
           "faceIDPermission": false
         }
-      ]
+      ],
+      [
+        "expo-font",
+        {
+          "fonts": [
+            "node_modules/@expo-google-fonts/open-sans/400Regular/OpenSans_400Regular.ttf",
+            "node_modules/@expo-google-fonts/open-sans/600SemiBold/OpenSans_600SemiBold.ttf",
+            "node_modules/@expo-google-fonts/open-sans/700Bold/OpenSans_700Bold.ttf",
+            "node_modules/@expo-google-fonts/open-sans/800ExtraBold/OpenSans_800ExtraBold.ttf",
+            "node_modules/@expo-google-fonts/agbalumo/400Regular/Agbalumo_400Regular.ttf"
+          ]
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#001f3a",
+          "image": "./assets/splash.png",
+          "imageWidth": 160
+        }
+      ],
+      "@react-native-vector-icons/material-design-icons"
     ]
   }
 }

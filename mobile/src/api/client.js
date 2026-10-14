@@ -12,7 +12,7 @@ export const ADMIN_SITE = "https://admin.peachhacks.com";
 
 const DEFAULT_TIMEOUT_MS = 15000;
 // A tap that hangs holds up the line; past this it counts as not recorded.
-const TAP_TIMEOUT_MS = 8000;
+const TAP_TIMEOUT_MS = 5000;
 
 export class ApiError extends Error {
   constructor({ status = 0, code = "UNKNOWN", message, fieldErrors = null }) {
@@ -164,6 +164,8 @@ export const api = {
   resolveBadge: (body) => json("POST", "/admin/badges/resolve", { body }),
   bindBadge: ({ registrationId, uid, replace = false }) =>
     json("POST", "/admin/badges/bind", { body: { registrationId, uid, replace } }),
+  // A card for a sponsor: not tied to a person, and a tap with it records nothing.
+  bindSponsorBadge: (uid) => json("POST", "/admin/badges/bind-sponsor", { body: { uid } }),
   tapBadge: ({ uid, eventId }) =>
     json("POST", "/admin/badges/tap", { body: { uid, eventId }, timeoutMs: TAP_TIMEOUT_MS }),
   lookupBadge: (uid) => json("POST", "/admin/badges/lookup", { body: { uid } }),

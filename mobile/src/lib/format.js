@@ -24,7 +24,3 @@ export const errorText = (error) => error?.message || "Something went wrong.";
 
 export const statusLabel = (value) => (value ? value.charAt(0) + value.slice(1).toLowerCase() : "");
 
-export const whenAndWho = (item) =>
-  [item?.checkedInAt && `at ${formatWhen(item.checkedInAt)}`, item?.checkedInBy && `by ${item.checkedInBy}`]
-    .filter(Boolean)
-    .join(" ");

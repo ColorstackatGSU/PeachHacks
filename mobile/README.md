@@ -1,8 +1,8 @@
 # PeachHacks Staff
 
-The phone app staff use at the event. It checks hackers in at the front desk and
-hands each one an NFC badge, records badge taps at meals and workshops, and lets
-venue staff look up whose badge they are holding. It is a React Native app built
+The phone app staff use at the event. At Arrivals it checks hackers in and hands
+each one an NFC badge; at meals and workshops it records badge taps; and anyone,
+venue staff included, can check whose badge they are holding. It is a React Native app built
 with Expo, for iOS and Android, and talks to the Spring Boot API in `../backend`.
 
 The app is the main check-in tool. The Check-in screen on the admin site
@@ -14,34 +14,63 @@ to be sent later; see [When the connection drops](#when-the-connection-drops).
 A badge is an NFC card (NTAG215). The app only ever reads the card's UID. It never
 writes to a card and never reads what is stored on it.
 
-## The three areas
+## The three jobs
 
-What a person sees depends on the role of the account they sign in with. They are
-the same accounts as on the admin site.
+There is no tab bar. The app opens on a short home screen, "What are you doing?",
+and each job opens full screen from there, with a back arrow to return. The app
+remembers the last job and reopens straight into it. What a person can choose
+depends on the role of the account they sign in with (the same accounts as on
+the admin site):
 
-| Area | Admin | Volunteer | Lookup |
+| Job | Admin | Volunteer | Lookup |
 | --- | --- | --- | --- |
-| Check-in desk | yes | yes | no |
-| Event taps | yes | yes | no |
-| Lookup | yes | yes | yes |
+| Arrivals | yes | yes | no |
+| An event (meals, workshops) | yes | yes | no |
+| Check a badge | yes | yes | yes, and nothing else |
 
-- **Check-in desk.** Scan the hacker's ticket QR code, or search for their name
-  if they do not have it. The app shows the name and school in large type:
-  check them against a photo ID. Then press "ID checked — tap badge" and hold a
-  blank badge to the phone. That one step links the badge to the person and
-  records the general check-in; nothing is recorded before it. The app then shows
-  which lanyard to hand over and goes back to scanning. Someone who is not
-  accepted cannot be checked in until an organizer accepts them, and there is no
-  override. "Check in without a badge" records the check-in alone, for when
-  badges cannot be read.
-- **Event taps.** Pick an event, press "Start tapping", and tap badges one after
-  another. Each tap shows a result: checked in (with the name), already checked
-  in (with when and by whom, which is how a second trip through the meal line
-  shows up), not accepted, a revoked badge or an unknown badge. A tap that
-  does not reach the server shows "NOT RECORDED" and has to be tapped again.
-- **Lookup.** Tap a badge to see the holder's name and school, whether they are
-  accepted and whether they are checked in. A Lookup account sees only this
-  screen.
+A Lookup account skips the home screen and opens straight into Check a badge.
+The account name and Sign out are in a small sheet behind the round button at the
+top of the home screen.
+
+- **Arrivals** is the general check-in. Scan the hacker's ticket QR code (there is
+  a light button on the camera), or "Search by name" for someone without it. The
+  next screen shows the name very large and the school: check them against a
+  photo ID, press "ID matches, tap badge" and hold a blank badge to the phone.
+  That one step links the badge to the person and records the check-in; nothing
+  is recorded before it. The app then names the lanyard to hand over, largest of
+  all ("Georgia State University lanyard", "Staff lanyard", or the colour once
+  organizers configure one), with the name under it, and goes back to the
+  scanner after three seconds (tap the screen to go back at once). Someone who is
+  not accepted cannot be checked in until an organizer accepts them, and there is
+  no override. Someone who already has a badge gets the choice to replace a lost
+  one. The "⋯" menu holds the rare actions: "Check in without a badge" (also
+  offered on the screen after a badge read fails) and, for admins only, "Issue
+  sponsor badge".
+- **An event.** The event happening now (from half an hour before its start time
+  to two hours after) is a large card on the home screen, two side by side if two
+  overlap; with none happening, the next one is shown as "Up next". The rest are
+  listed under it. Opening an event switches the reader on straight away; hold
+  badges to the phone one after another. Each one gets a verdict in its own
+  colour, with an icon and the person's name: Checked in, Already in (with the
+  time of the first tap, which is how a second trip through the meal line shows
+  up), Not accepted, Badge turned off, Unknown badge (both "Send them to
+  Arrivals"), Sponsor badge OK, or Not saved. Successes clear back to Ready after
+  1.5 seconds; everything else stays until the next badge. The header shows how
+  many are in, and the last few taps are listed under the result. On an iPhone,
+  when iOS closes the reader, "Tap to keep reading" starts it again.
+- **Check a badge.** Hold a badge to the phone to see whose it is: the name, one
+  status line (Checked in, Not checked in yet, Not accepted, Badge turned off,
+  Unknown badge, or Sponsor badge) and the school. On Android it reads for as
+  long as the screen is open; on an iPhone press "Check a badge" for each one.
+
+Sponsor badges are not tied to a person. Tapped at an event they show "Sponsor
+badge, OK" and record nothing. The API lets only a full admin issue them, so a
+volunteer never sees "Issue sponsor badge", but still sees the sponsor result
+when one is tapped.
+
+People an organizer has marked as staff carry a small "Staff" tag next to their
+name wherever the app shows it. The app never shows which staff member checked
+someone in or issued a badge; that is on the admin site only.
 
 Sign-ins last 30 days, so staff sign in once for the event. The app remembers the email
 address, never the password. "Forgot password?" opens `admin.peachhacks.com`,
@@ -192,10 +221,10 @@ How reading behaves on an iPhone:
 - Each read opens the system scan sheet, which covers the lower half of the
   screen. The app puts the result on the sheet as well as at the top of its own
   screen.
-- iOS closes a session after about 60 seconds. On the Event taps screen the app
-  keeps one session open across taps. When iOS times it out, the app opens a new
-  one by itself as long as a badge was tapped in the last five minutes; otherwise
-  it shows "Resume tapping". Pressing Cancel on the sheet also pauses it.
+- iOS closes a session after about 60 seconds. On an event screen the app keeps
+  one session open across taps. When iOS times it out, the app opens a new one by
+  itself as long as a badge was tapped in the last five minutes; otherwise it
+  shows "Tap to keep reading". Pressing Cancel on the sheet also stops it.
 - The antenna is at the top edge of the phone. Hold the badge there.
 
 ## Android NFC notes
@@ -208,8 +237,8 @@ How reading behaves on an iPhone:
   read and nothing else. The app gives its own vibration.
 - If NFC is switched off, the app says so and offers a button that opens the
   NFC settings. It checks again when you come back.
-- There is no system sheet. The Event taps screen reads continuously until "Stop
-  tapping" is pressed or the screen is left.
+- There is no system sheet. An event screen and Check a badge read continuously
+  until the screen is left.
 - The antenna is on the back of the phone, and its position differs between
   models. Find it once on each phone before the doors open.
 
@@ -294,18 +323,18 @@ nothing is kept on the phone to be sent later.
 
 What staff see:
 
-- **Event taps.** A tap that does not get an answer (no connection, no answer
-  within 8 seconds, or a server error) shows a red "NOT RECORDED" card with an
-  error vibration, clearly unlike the green "Checked in". The tap was not saved.
+- **Events.** A tap that does not get an answer (no connection, no answer
+  within 5 seconds, or a server error) shows a cream "Not saved" panel with a red
+  edge and an error vibration, clearly unlike the green "Checked in". The tap was not saved.
   Check the connection and tap the same badge again; it is read again straight
   away, without the usual two-second wait for a repeated card. On an iPhone the
   badge has to be lifted off the phone for a second first.
-- **Check-in desk.** Finding a person and saving a badge show the error with
+- **Arrivals.** Finding a person and saving a badge show the error with
   "Try again". After a badge tap, "Try again" sends the same badge again, so the
   card does not have to be tapped a second time. A failed "Check in without a
   badge" shows the error and can be pressed again.
-- **Lookup.** The card says the badge could not be looked up. Tap it again.
-- **All three** show a red "No connection" banner from the moment a request
+- **Check a badge.** The panel says the badge could not be checked. Hold it again.
+- **Every job** shows a red "No connection" banner from the moment a request
   fails to reach the server until a request gets through again. The app does not
   watch the network itself, so the banner appears after the first failed request
   and clears on the next one that works.
@@ -316,31 +345,70 @@ What staff see:
 Things to know:
 
 - A tap that timed out may have reached the server after all. Tapping the badge
-  again then shows "ALREADY CHECKED IN" with your own name and the time a moment
-  ago. That person is checked in.
+  again then shows "Already in" with a first tap a moment ago. That person is
+  checked in.
 - The admin site's Check-in screen needs a connection too, so it is not a
   fallback for a network failure, only for a phone or reader that fails.
 
 ## How it is put together
 
-- `App.js`: sign-in gate and the tab bar, filtered by role.
+- `App.js`: the sign-in gate, the "No connection" banner and the job switcher,
+  which remembers the last job in the device's secure storage.
+- `src/screens/`: `Home`, `Arrivals` (with `SponsorBadge`), `EventScreen`,
+  `CheckBadge` and `SignIn`.
 - `src/api/client.js`: every API call, in the same shape as the admin site's
   client. A `401 UNAUTHORIZED` clears the session and returns to the sign-in
   screen. It also tracks whether the last request reached the server, which is
   what the "No connection" banner shows.
 - `src/nfc/index.js`: the only file that talks to `react-native-nfc-manager`.
   `readUid()` reads one badge; `startContinuous()` keeps reading.
-- `src/lib/`: plain modules (UID and ticket helpers, formatting, the stored
-  session).
-- `src/state/Auth.js`: who is signed in.
-- `src/screens/`: sign-in and the three areas.
+- `src/theme.js`: every colour, font, size and spacing value. Components take
+  their colours from here only.
+- `src/components/Result.js`: the result panel (a result's colour, a 48 icon, the
+  verdict, the name, one detail line; it slides in and, for "Already in", shakes)
+  and the waiting phone with its rings.
+- `src/lib/results.js`: what each API answer looks like (colour family, icon,
+  words), the lanyard wording, and which events the home screen features. Plain
+  functions, covered by `src/lib/__tests__/results.test.js`.
+- `src/lib/feedback.js`: one haptic pattern per result family: a short pulse for
+  a success, two for "already in", a hard one for a refusal, a refusal and a thud
+  for "not saved". There are no sounds.
+- `src/lib/` also has the UID and ticket helpers, formatting and the stored
+  session.
+- `src/state/`: who is signed in (`Auth.js`) and the event list (`events.js`).
 - `src/dev/DevEntry.js`: development stand-ins. In a development build on a
-  device without NFC (a simulator or emulator) a text field takes a typed UID,
-  and the scan screen has a text field for a ticket code. The file is loaded
-  behind `__DEV__`, so it is left out of release bundles.
+  device without NFC (a simulator or emulator) the screens act as if a reader
+  were listening and a small "Dev input" toggle opens a field for a typed UID;
+  the scan screen has one for a ticket code. The file is loaded behind
+  `__DEV__`, so it is left out of release bundles.
 
-The session token and the remembered email are kept in the device keychain or
-keystore through `expo-secure-store`. Nothing else is stored on the phone.
+The session token, the remembered email and the last job are kept in the device
+keychain or keystore through `expo-secure-store`. Nothing else is stored on the
+phone. Arrivals and the event screen keep the screen awake while they are open.
+
+### Look and assets
+
+- The app is a calm navy tool. Peach is used for the one main button on a screen
+  and small accents (the "Happening now" dot); colour fills large areas only for a
+  result. Lists are plain rows with hairlines.
+- Functional type is Open Sans (Regular, SemiBold, Bold). Agbalumo, the website's
+  display face, is used only for the PeachHacks wordmark (sign-in and the home
+  screen). Both come from `@expo-google-fonts/*` and are embedded in the native
+  build by the `expo-font` config plugin, so there is no loading step. Android
+  names an embedded font after its file and iOS after the name inside the file, so
+  `src/theme.js` picks the family name per platform; never add `fontWeight` to
+  them.
+- Icons are the outline Material Design Icons from
+  `@react-native-vector-icons/material-design-icons` (one set, its own config
+  plugin). `@expo/vector-icons` is being retired by Expo and is not used.
+- The brand images in `assets/brand/` (logo, moon, star, peach) and the app icon,
+  Android adaptive icon layers and splash image were exported to PNG from the
+  SVGs in `web/public/assets/`, so the app needs no SVG library. The app icon is
+  the site's tag mark (`peachhacks_icon_tag.svg`) on navy.
+- The splash screen comes from the `expo-splash-screen` plugin: the mark on
+  navy. Splash changes only show in a release build.
+- Fonts, icons, the splash and keep-awake are native: after changing any of them,
+  make a new development build.
 
 ## Testing NFC on real devices
 
@@ -350,39 +418,49 @@ NTAG215 cards.
 
 On-device checklist, to run on at least one iPhone and one Android phone:
 
-1. Sign in as a volunteer. All three tabs show. Sign in as a Lookup account: only
-   Lookup shows.
-2. Check-in desk: scan an accepted hacker's ticket QR. Name and school show.
-   Press "ID checked — tap badge" and tap a blank card. "Checked in" shows with
-   the lanyard, and the app returns to scanning.
+1. Sign in as a volunteer: the home screen offers Arrivals, the events and Check
+   a badge, and the Arrivals "⋯" menu has no "Issue sponsor badge". Sign in as an
+   admin: it is there. Sign in as a Lookup account: the app opens straight into
+   Check a badge, with no way back to a home screen. Close and reopen the app: it
+   comes back to the last job.
+2. Arrivals: scan an accepted hacker's ticket QR. Name and school show. Press "ID
+   matches, tap badge" and hold a blank card to the phone. The lanyard to hand
+   over shows, then the scanner is back after three seconds.
 3. Tap the same card for the same person again: still a success.
 4. Tap that card for a different person: "This badge already belongs to someone
    else". Try another card.
-5. For someone who has a badge, tap a different blank card: "Replace lost
-   badge?" appears. Replace it, then confirm the old card reads as no longer
-   valid on Lookup.
+5. For someone who has a badge, tap a different blank card: "Already has a badge"
+   offers "Replace lost badge". Replace it, then check the old card shows "Badge
+   turned off" in Check a badge.
 6. Scan the ticket of someone who is not accepted, and a QR code that is not a
-   ticket: both dead-end screens show.
+   ticket: both refusals show.
 7. Search by name, pick someone, and finish the check-in with a badge.
-8. "Check in without a badge" checks someone in and asks first.
-9. Event taps: pick an event and tap several badges in a row without touching
-   the screen. Tap one twice: "ALREADY CHECKED IN" with the time and name.
+8. "Check in without a badge" (the "⋯" menu) checks someone in and asks first.
+9. Events: the event happening now is the large card on the home screen. Open it
+   and hold several badges in a row without touching the screen. Tap one twice:
+   "Already in" with the name and the time of the first tap (never who tapped it).
 10. Leave a card resting on the phone for ten seconds: it is counted once.
 11. iPhone: leave the scan sheet open for over a minute, then tap a badge. Note
-    whether the sheet reopened by itself and whether "Resume tapping" works.
-12. Switch on airplane mode and tap a badge: the red "NOT RECORDED" card shows
-    with an error vibration, the "No connection" banner appears, and nothing is
-    saved. Switch airplane mode off and tap the same card: it checks in and the
-    banner goes.
-13. In airplane mode, scan a ticket on the Check-in desk and tap a badge on
-    Lookup: both show an error and the banner. Close the app and open it again
-    while still in airplane mode: "No connection" with "Try again" shows, and
-    "Try again" works once the connection is back.
+    whether the sheet reopened by itself and whether "Tap to keep reading" works.
+12. Switch on airplane mode and tap a badge: the "Not saved" panel shows with an
+    error vibration, the "No connection" banner appears, and nothing is saved.
+    Switch airplane mode off and tap the same card: it checks in and the banner
+    goes.
+13. In airplane mode, scan a ticket at Arrivals and hold a badge in Check a badge:
+    both show an error and the banner. Close the app and open it again while still
+    in airplane mode: "No connection" with "Try again" shows, and "Try again"
+    works once the connection is back.
 14. Android: switch NFC off. The app says so and the button opens settings.
 15. Tap a card that is not a badge (a transit card, a bank card): it is either
     ignored or refused as an unknown badge, and reading carries on.
-16. Lookup: tap a bound badge, a revoked badge and a blank card.
+16. Check a badge: hold a bound badge, a turned-off badge and a blank card.
 17. Deny the camera permission: the scan screen explains and Search still works.
+    Try the light button on the camera.
+18. As an admin, issue a sponsor badge from the Arrivals "⋯" menu, then tap it at
+    an event ("Sponsor badge, OK", nothing counted) and in Check a badge ("Sponsor
+    badge").
+19. Mark a registration as staff on the admin site: the "Staff" tag shows next to
+    the name at Arrivals, in search, in event results and in Check a badge.
 
 ## What has and has not been tested
 
@@ -390,24 +468,27 @@ Run on a Windows machine, with no phone, no cards and no Mac:
 
 - `npm run lint`, `npm test`, `npx expo-doctor` and `npm run build:check` (the
   JavaScript bundles for Android and iOS) pass.
-- `npx expo config --type introspect` shows the `TAG` entitlement, the NFC and
-  camera usage strings, and the Android NFC and CAMERA permissions.
+- `npx expo config --type introspect` shows the `TAG`-only entitlement, the NFC
+  and camera usage strings, and the Android NFC and CAMERA permissions.
+- A development build ran on an Android emulator. The first design pass ran against the local backend; the final screens were checked against a small stand-in API on the laptop shaped like the contract, because the local backend was down at the time. Every
+  screen was used there: sign-in, the home screen with one, two and no events
+  happening, Arrivals (scan, search, person, check-in with a typed UID, done, the
+  "⋯" menu), the sponsor badge screen, every event result including "Not saved"
+  with the emulator's network switched off and the retry once it was back, Check a
+  badge, the account sheet, and the role differences. The emulator has no NFC, so
+  UIDs came from the Dev input, and its camera shows a test scene, so tickets
+  were typed too.
 
 Not tested:
 
-- No native build was made, for either platform, locally or on EAS. The app has
-  never been installed or launched on a device, simulator or emulator, so no
-  screen has been seen running.
+- Anything on an iPhone, and any native build for iOS (no Mac). EAS builds were
+  not made.
 - Nothing involving a physical card: reading a UID, the iOS scan sheet, keeping
   one iOS session open across taps, the automatic reopen after a timeout, Android
   reader mode, and the two-second repeat guard on a real reader.
-- The camera and QR scanning on a device.
-- Haptics and the keychain and keystore on a device.
-- How a failed request behaves on a real network: the 8-second tap timeout, the
-  "No connection" banner, and tapping the same card again after a failure.
-- The app against the real API. The calls follow the agreed contract, but the
-  badge endpoints were written at the same time as the app and the two have not
-  been run together.
+- Scanning a real QR code with a camera.
+- Haptics (the emulator does not vibrate), the keychain on iOS, and how text
+  sizes behave with large accessibility font settings.
+- How a failed request behaves on a real venue network, beyond switching the
+  emulator's network off.
 - `eas init`, `eas build`, `eas submit`, TestFlight and Play distribution.
-
-The app icon is still the Expo template's placeholder.

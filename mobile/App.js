@@ -1,98 +1,169 @@
 import { StatusBar } from "expo-status-bar";
-import { useState } from "react";
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from "react-native";
-import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { ActivityIndicator, Animated, Easing, StyleSheet, View } from "react-native";
+import { initialWindowMetrics, SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { Button, Muted, Notice } from "./src/components/ui";
-import CheckInDesk from "./src/screens/CheckInDesk";
-import EventTaps from "./src/screens/EventTaps";
-import Lookup from "./src/screens/Lookup";
-import SignIn from "./src/screens/SignIn";
+import { isReachable, onConnectionChange } from "./src/api/client";
+import { ResultPanel } from "./src/components/Result";
+import { Icon, PrimaryButton, T, TextButton } from "./src/components/ui";
+import { loadLastJob, saveLastJob } from "./src/lib/session";
+import Arrivals from "./src/screens/Arrivals";
+import CheckBadge from "./src/screens/CheckBadge";
+import EventScreen from "./src/screens/EventScreen";
+import Home from "./src/screens/Home";
+import SignIn, { Brand, NightSky } from "./src/screens/SignIn";
 import { AuthProvider, canCheckIn, canLookUp, useAuth } from "./src/state/Auth";
-import { colors } from "./src/theme";
+import { useEvents } from "./src/state/events";
+import { colors, space } from "./src/theme";
 
-const AREAS = [
-  { key: "desk", label: "Check-in desk", allowed: canCheckIn, Screen: CheckInDesk },
-  { key: "taps", label: "Event taps", allowed: canCheckIn, Screen: EventTaps },
-  { key: "lookup", label: "Lookup", allowed: canLookUp, Screen: Lookup },
-];
+// Up from the first request that fails to reach the server until one gets through,
+// then green for a moment so the recovery is seen.
+function ConnectionBanner() {
+  const reachable = useSyncExternalStore(onConnectionChange, isReachable);
+  const [state, setState] = useState(reachable ? "hidden" : "down");
+  const [slide] = useState(() => new Animated.Value(0));
+  const wasReachable = useRef(reachable);
 
-function Header({ title }) {
-  const { admin, signOut } = useAuth();
+  useEffect(() => {
+    if (reachable === wasReachable.current) return undefined;
+    wasReachable.current = reachable;
+    setState(reachable ? "back" : "down");
+    if (!reachable) return undefined;
+    const timer = setTimeout(() => setState("hidden"), 1500);
+    return () => clearTimeout(timer);
+  }, [reachable]);
 
-  const confirmSignOut = () =>
-    Alert.alert("Sign out?", `You are signed in as ${admin?.name || admin?.email}.`, [
-      { text: "Cancel", style: "cancel" },
-      { text: "Sign out", style: "destructive", onPress: signOut },
-    ]);
+  useEffect(() => {
+    if (state !== "down") return;
+    slide.setValue(0);
+    Animated.timing(slide, { toValue: 1, duration: 200, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+  }, [slide, state]);
 
+  if (state === "hidden") return null;
+  const down = state === "down";
   return (
-    <View style={styles.header}>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.eyebrow}>PEACHHACKS STAFF</Text>
-        <Text style={styles.title}>{title}</Text>
-      </View>
-      <Pressable accessibilityRole="button" onPress={confirmSignOut} hitSlop={10}>
-        <Text style={styles.signOut}>Sign out</Text>
-      </Pressable>
+    <View style={styles.bannerClip}>
+      <Animated.View
+        accessibilityRole="alert"
+        style={[
+          styles.banner,
+          down ? styles.bannerDown : styles.bannerBack,
+          down && { transform: [{ translateY: slide.interpolate({ inputRange: [0, 1], outputRange: [-40, 0] }) }] },
+        ]}
+      >
+        <Icon name={down ? "wifi-off" : "wifi"} size={20} color={down ? colors.white : colors.night} />
+        <T v="secondary" color={down ? colors.white : colors.night}>
+          {down ? "No connection. Nothing is being saved." : "Back online"}
+        </T>
+      </Animated.View>
     </View>
   );
 }
 
-function SignedIn() {
+// Which job the phone is doing: the home screen, Arrivals, one event or Check a
+// badge. The last one is remembered, so the app reopens straight into it.
+function Jobs() {
+  const insets = useSafeAreaInsets();
   const { admin } = useAuth();
-  const areas = AREAS.filter((area) => area.allowed(admin));
-  const [chosen, setChosen] = useState(null);
-  const area = areas.find((item) => item.key === chosen) || areas[0];
+  const staff = canCheckIn(admin);
+  const events = useEvents();
+  const [job, setJob] = useState(null);
 
-  if (!area) {
-    return (
-      <>
-        <Header title="No access" />
-        <View style={{ padding: 16 }}>
-          <Notice tone="bad">This account cannot use the staff app. Ask an organizer.</Notice>
-        </View>
-      </>
+  useEffect(() => {
+    let live = true;
+    loadLastJob().then((saved) => live && setJob(saved || { kind: "home" }));
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  const go = useCallback((next) => {
+    setJob(next);
+    saveLastJob(next.kind === "home" ? null : next);
+  }, []);
+  const home = useCallback(() => go({ kind: "home" }), [go]);
+
+  // A Lookup account has one job and no home screen.
+  let current = staff ? job : { kind: "check" };
+  const event = current?.kind === "event" ? (events.events || []).find((item) => item.id === current.eventId) : null;
+  if (current?.kind === "event" && events.events && !event) current = { kind: "home" };
+  if (!canLookUp(admin)) current = { kind: "none" };
+
+  let screen;
+  if (!current || (current.kind === "event" && !event)) {
+    screen = <ActivityIndicator color={colors.peach} style={styles.loading} />;
+  } else if (current.kind === "none") {
+    screen = (
+      <View style={styles.padded}>
+        <ResultPanel
+          view={{ family: "stop", icon: "account-off-outline", word: "No access", detail: "This account cannot use the staff app. Ask an organizer." }}
+        />
+      </View>
+    );
+  } else if (current.kind === "arrivals" && staff) {
+    screen = <Arrivals onBack={home} />;
+  } else if (current.kind === "event" && staff) {
+    screen = (
+      <EventScreen
+        key={event.id}
+        event={event}
+        version={events.version}
+        onBack={home}
+        onGone={() => {
+          events.reload();
+          home();
+        }}
+      />
+    );
+  } else if (current.kind === "check") {
+    screen = <CheckBadge onBack={staff ? home : null} />;
+  } else {
+    screen = (
+      <Home
+        events={events}
+        onArrivals={() => go({ kind: "arrivals" })}
+        onEvent={(eventId) => go({ kind: "event", eventId })}
+        onCheck={() => go({ kind: "check" })}
+      />
     );
   }
 
+  const homeScreen = current?.kind === "home";
   return (
-    <>
-      <Header title={area.label} />
-      <View style={{ flex: 1 }}>
-        <area.Screen key={area.key} />
-      </View>
-      {areas.length > 1 ? (
-        <View style={styles.tabs} accessibilityRole="tablist">
-          {areas.map((item) => {
-            const selected = item.key === area.key;
-            return (
-              <Pressable
-                key={item.key}
-                accessibilityRole="tab"
-                accessibilityState={{ selected }}
-                onPress={() => setChosen(item.key)}
-                style={[styles.tab, selected && styles.tabSelected]}
-              >
-                <Text style={[styles.tabText, selected && styles.tabTextSelected]}>{item.label}</Text>
-              </Pressable>
-            );
-          })}
-        </View>
-      ) : null}
-    </>
+    <View style={[styles.root, { paddingTop: insets.top }, !homeScreen && { paddingBottom: insets.bottom }]}>
+      <ConnectionBanner />
+      {screen}
+    </View>
   );
 }
 
 function Unreachable() {
-  const { notice, retry, signOut } = useAuth();
+  const insets = useSafeAreaInsets();
+  const { retry, signOut } = useAuth();
   return (
-    <View style={styles.unreachable}>
-      <Text style={styles.title}>No connection</Text>
-      <Notice tone="bad">{notice}</Notice>
-      <Muted>The app needs a connection for everything it does. You are still signed in on this phone.</Muted>
-      <Button title="Try again" variant="primary" big onPress={retry} />
-      <Button title="Sign out" variant="link" onPress={signOut} />
+    <View style={[styles.padded, { paddingTop: insets.top + space.lg, paddingBottom: insets.bottom + space.lg }]}>
+      <ResultPanel
+        view={{
+          family: "void",
+          icon: "wifi-off",
+          word: "No connection",
+          detail: "The app needs a connection for everything it does. You are still signed in on this phone.",
+        }}
+      />
+      <View style={styles.bottom}>
+        <PrimaryButton title="Try again" icon="refresh" onPress={retry} />
+        <TextButton title="Sign out" tone="danger" onPress={signOut} />
+      </View>
+    </View>
+  );
+}
+
+function Starting() {
+  return (
+    <View style={styles.starting}>
+      <NightSky />
+      <Brand />
+      <ActivityIndicator size="large" color={colors.peach} />
     </View>
   );
 }
@@ -100,26 +171,15 @@ function Unreachable() {
 function Shell() {
   const { phase } = useAuth();
   return (
-    <SafeAreaView style={styles.root}>
-      {phase === "loading" ? (
-        <View style={styles.loading}>
-          <ActivityIndicator size="large" color={colors.peach} />
-          <Muted>Starting…</Muted>
-        </View>
-      ) : phase === "signed-in" ? (
-        <SignedIn />
-      ) : phase === "unreachable" ? (
-        <Unreachable />
-      ) : (
-        <SignIn />
-      )}
-    </SafeAreaView>
+    <View style={styles.root}>
+      {phase === "loading" ? <Starting /> : phase === "signed-in" ? <Jobs /> : phase === "unreachable" ? <Unreachable /> : <SignIn />}
+    </View>
   );
 }
 
 export default function App() {
   return (
-    <SafeAreaProvider>
+    <SafeAreaProvider initialMetrics={initialWindowMetrics}>
       <StatusBar style="light" />
       <AuthProvider>
         <Shell />
@@ -129,31 +189,20 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.navy },
-  loading: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
-  unreachable: { flex: 1, justifyContent: "center", padding: 16, gap: 14 },
-  header: {
+  root: { flex: 1, backgroundColor: colors.night },
+  loading: { flex: 1 },
+  padded: { flex: 1, padding: space.gutter, gap: space.lg },
+  bottom: { flex: 1, justifyContent: "flex-end", gap: space.xs },
+  starting: { flex: 1, alignItems: "center", justifyContent: "center", gap: space.xl },
+  bannerClip: { overflow: "hidden" },
+  banner: {
+    height: 40,
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.line,
-  },
-  eyebrow: { color: colors.peach, fontSize: 11, fontWeight: "800", letterSpacing: 2 },
-  title: { color: colors.cream, fontSize: 22, fontWeight: "800" },
-  signOut: { color: colors.peach, fontSize: 15, fontWeight: "700", textDecorationLine: "underline" },
-  tabs: { flexDirection: "row", borderTopWidth: 1, borderTopColor: colors.line, backgroundColor: colors.deep },
-  tab: {
-    flex: 1,
-    minHeight: 56,
-    alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 4,
-    borderTopWidth: 3,
-    borderTopColor: "transparent",
+    gap: space.sm,
+    paddingHorizontal: space.lg,
   },
-  tabSelected: { borderTopColor: colors.peach },
-  tabText: { color: colors.mist, fontSize: 14, fontWeight: "700", textAlign: "center" },
-  tabTextSelected: { color: colors.cream },
+  bannerDown: { backgroundColor: colors.stop },
+  bannerBack: { backgroundColor: colors.ok },
 });

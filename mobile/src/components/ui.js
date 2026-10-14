@@ -1,170 +1,237 @@
-import { useSyncExternalStore } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { MaterialDesignIcons } from "@react-native-vector-icons/material-design-icons";
+import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
-import { isReachable, onConnectionChange } from "../api/client";
-import { colors, tones } from "../theme";
+import { colors, fonts, radii, sizes, space, type } from "../theme";
 
-export function Button({ title, onPress, variant = "default", big = false, disabled = false, busy = false }) {
-  const filled = variant === "primary" || variant === "danger";
+export const Icon = ({ name, size = 24, color = colors.textMuted, style }) => (
+  <MaterialDesignIcons name={name} size={size} color={color} style={style} />
+);
+
+// All text goes through here so every string is in an embedded font.
+export function T({ v = "body", color = colors.text, center = false, style, children, ...rest }) {
+  return (
+    <Text
+      maxFontSizeMultiplier={v === "name" || v === "title" ? 1.15 : 1.3}
+      style={[type[v], { color }, center && styles.center, style]}
+      {...rest}
+    >
+      {children}
+    </Text>
+  );
+}
+
+// The one peach thing on a screen.
+export function PrimaryButton({ title, onPress, icon, disabled = false, busy = false }) {
+  const off = disabled || busy;
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityState={{ disabled: disabled || busy, busy }}
-      disabled={disabled || busy}
+      accessibilityState={{ disabled: off, busy }}
+      disabled={off}
       onPress={onPress}
-      style={({ pressed }) => [
-        styles.button,
-        big && styles.buttonBig,
-        variant === "primary" && styles.buttonPrimary,
-        variant === "danger" && styles.buttonDanger,
-        variant === "link" && styles.buttonLink,
-        (disabled || busy) && styles.buttonDisabled,
-        pressed && styles.buttonPressed,
-      ]}
+      style={({ pressed }) => [styles.primary, pressed && styles.pressed]}
     >
-      {busy && <ActivityIndicator color={filled ? colors.navy : colors.cream} />}
-      <Text
-        style={[
-          styles.buttonText,
-          big && styles.buttonTextBig,
-          variant === "primary" && styles.buttonTextPrimary,
-          variant === "danger" && styles.buttonTextDanger,
-          variant === "link" && styles.buttonTextLink,
-        ]}
-      >
+      {busy ? <ActivityIndicator color={colors.night} /> : icon ? <Icon name={icon} size={22} color={colors.night} /> : null}
+      <Text maxFontSizeMultiplier={1.2} numberOfLines={1} style={[styles.primaryText, off && !busy && styles.primaryOff]}>
         {title}
       </Text>
     </Pressable>
   );
 }
 
-// The one thing staff have to see at a glance: a full-width block in the result's colour.
-export function ResultCard({ tone = "quiet", title, name, lines = [], children }) {
-  const palette = tones[tone] || tones.quiet;
+// Secondary and destructive actions are plain text: cream, or red for destructive.
+export function TextButton({ title, onPress, icon, tone = "plain", align = "center", disabled = false }) {
+  const color = tone === "danger" ? colors.stopSoft : tone === "muted" ? colors.textMuted : colors.text;
   return (
-    <View style={[styles.result, { backgroundColor: palette.background }]} accessibilityRole="alert" accessibilityLiveRegion="assertive">
-      <Text style={[styles.resultTitle, { color: palette.text }]}>{title}</Text>
-      {name ? <Text style={[styles.resultName, { color: palette.text }]}>{name}</Text> : null}
-      {lines.filter(Boolean).map((line) => (
-        <Text key={line} style={[styles.resultLine, { color: palette.text }]}>
-          {line}
-        </Text>
-      ))}
-      {children}
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ disabled }}
+      disabled={disabled}
+      onPress={onPress}
+      hitSlop={6}
+      style={({ pressed }) => [
+        styles.textButton,
+        align === "start" && styles.textButtonStart,
+        (pressed || disabled) && styles.pressed,
+      ]}
+    >
+      {icon ? <Icon name={icon} size={22} color={color} /> : null}
+      <Text maxFontSizeMultiplier={1.2} style={[styles.textButtonText, { color }]}>
+        {title}
+      </Text>
+    </Pressable>
+  );
+}
+
+export function IconButton({ name, label, onPress, color = colors.text }) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      onPress={onPress}
+      hitSlop={8}
+      style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
+    >
+      <Icon name={name} size={26} color={color} />
+    </Pressable>
+  );
+}
+
+// A one-line notice: a refusal in red, or a caution outlined in yellow.
+export function Bar({ tone = "stop", icon, children }) {
+  const stop = tone === "stop";
+  return (
+    <View accessibilityRole="alert" style={[styles.bar, stop ? styles.barStop : styles.barRepeat]}>
+      <Icon name={icon || (stop ? "alert-circle-outline" : "alert-outline")} size={22} color={stop ? colors.white : colors.repeat} />
+      <T v="secondary" color={stop ? colors.white : colors.text} style={styles.barText}>
+        {children}
+      </T>
     </View>
   );
 }
 
-export function Notice({ tone = "quiet", children }) {
+export function StaffTag({ color = colors.text }) {
   return (
-    <View style={[styles.notice, tone === "bad" && styles.noticeBad, tone === "warn" && styles.noticeWarn]}>
-      <Text style={styles.noticeText}>{children}</Text>
-    </View>
-  );
-}
-
-// Stays up from a request that could not reach the server until one gets through.
-export function ConnectionBanner() {
-  const reachable = useSyncExternalStore(onConnectionChange, isReachable);
-  if (reachable) return null;
-  return (
-    <View style={styles.offline} accessibilityRole="alert">
-      <Text style={styles.offlineTitle}>No connection</Text>
-      <Text style={styles.offlineText}>
-        The last request did not reach the server. Nothing is recorded without a connection.
+    <View style={[styles.staff, { borderColor: color }]}>
+      <Text maxFontSizeMultiplier={1.1} style={[styles.staffText, { color }]}>
+        Staff
       </Text>
     </View>
   );
 }
 
-export function Segmented({ options, value, onChange }) {
+// Android splits a long hyphenated surname in the middle of a word; a zero-width
+// space after each hyphen lets it break there instead.
+const breakable = (name) => String(name || "").replace(/-/g, "-​");
+
+// A name with the Staff tag after it when the person is flagged staff.
+export function Name({ name, staff = false, v = "name", color = colors.text, numberOfLines = 3 }) {
+  const text = (
+    <T v={v} color={color} numberOfLines={numberOfLines} adjustsFontSizeToFit minimumFontScale={0.7} style={styles.nameText}>
+      {breakable(name)}
+    </T>
+  );
+  if (!staff) return text;
   return (
-    <View style={styles.segmented} accessibilityRole="tablist">
-      {options.map((option) => {
-        const selected = option.value === value;
-        return (
-          <Pressable
-            key={option.value}
-            accessibilityRole="tab"
-            accessibilityState={{ selected }}
-            onPress={() => onChange(option.value)}
-            style={[styles.segment, selected && styles.segmentSelected]}
-          >
-            <Text style={[styles.segmentText, selected && styles.segmentTextSelected]}>{option.label}</Text>
-          </Pressable>
-        );
-      })}
+    <View style={styles.name}>
+      {text}
+      <StaffTag color={color} />
     </View>
   );
 }
 
-export const Muted = ({ children, style }) => <Text style={[styles.muted, style]}>{children}</Text>;
-export const Heading = ({ children }) => <Text style={styles.heading}>{children}</Text>;
+// A plain list row: hairline below, title and optional subtitle, chevron.
+export function Row({ title, subtitle, icon, right, onPress, accessibilityLabel }) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      onPress={onPress}
+      style={({ pressed }) => [styles.row, subtitle && styles.rowTall, pressed && styles.rowPressed]}
+    >
+      {icon ? <Icon name={icon} size={24} /> : null}
+      <View style={styles.rowMain}>
+        {typeof title === "string" ? (
+          <T v="row" numberOfLines={2}>
+            {title}
+          </T>
+        ) : (
+          title
+        )}
+        {subtitle ? (
+          <T v="secondary" color={colors.textMuted} numberOfLines={1}>
+            {subtitle}
+          </T>
+        ) : null}
+      </View>
+      {right}
+      <Icon name="chevron-right" size={22} />
+    </Pressable>
+  );
+}
+
+export function Field({ label, inputRef, style, ...rest }) {
+  return (
+    <View style={styles.fieldWrap}>
+      {label ? (
+        <T v="caption" color={colors.textMuted}>
+          {label}
+        </T>
+      ) : null}
+      <TextInput
+        ref={inputRef}
+        style={[styles.field, style]}
+        placeholderTextColor={colors.textMuted}
+        selectionColor={colors.peach}
+        {...rest}
+      />
+    </View>
+  );
+}
 
 export const styles = StyleSheet.create({
-  button: {
-    minHeight: 48,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderWidth: 1,
-    borderColor: colors.lineStrong,
-    borderRadius: 4,
+  center: { textAlign: "center" },
+  pressed: { opacity: 0.6 },
+  primary: {
+    height: sizes.primary,
+    paddingHorizontal: space.lg,
+    borderRadius: radii.button,
+    backgroundColor: colors.peach,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
+    gap: space.sm,
   },
-  buttonBig: { minHeight: 68 },
-  buttonPrimary: { backgroundColor: colors.peach, borderColor: colors.peach },
-  buttonDanger: { backgroundColor: colors.badStrong, borderColor: colors.badStrong },
-  buttonLink: { borderColor: "transparent", minHeight: 44 },
-  buttonDisabled: { opacity: 0.5 },
-  buttonPressed: { opacity: 0.8 },
-  buttonText: { color: colors.cream, fontSize: 16, fontWeight: "700", textAlign: "center" },
-  buttonTextBig: { fontSize: 20 },
-  buttonTextPrimary: { color: colors.navy, fontWeight: "800" },
-  buttonTextDanger: { color: "#ffffff", fontWeight: "800" },
-  buttonTextLink: { color: colors.peach, textDecorationLine: "underline" },
-  result: { borderRadius: 6, padding: 20, gap: 6 },
-  resultTitle: { fontSize: 30, fontWeight: "800", lineHeight: 36 },
-  resultName: { fontSize: 26, fontWeight: "700", lineHeight: 32 },
-  resultLine: { fontSize: 18, lineHeight: 24 },
-  notice: {
-    padding: 12,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: colors.lineStrong,
-    backgroundColor: colors.panel,
-  },
-  noticeBad: { borderColor: colors.bad },
-  noticeWarn: { borderColor: colors.peach },
-  noticeText: { color: colors.cream, fontSize: 15, lineHeight: 21 },
-  offline: { padding: 12, borderRadius: 4, backgroundColor: colors.badStrong },
-  offlineTitle: { color: "#ffffff", fontSize: 18, fontWeight: "800" },
-  offlineText: { color: "#ffffff", fontSize: 15, lineHeight: 21 },
-  segmented: {
+  primaryOff: { opacity: 0.45 },
+  primaryText: { ...type.button, color: colors.night, includeFontPadding: false, flexShrink: 1 },
+  textButton: {
+    minHeight: sizes.text,
     flexDirection: "row",
-    borderWidth: 1,
-    borderColor: colors.lineStrong,
-    borderRadius: 4,
-    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: space.xs,
   },
-  segment: { flex: 1, minHeight: 44, alignItems: "center", justifyContent: "center", paddingHorizontal: 8 },
-  segmentSelected: { backgroundColor: colors.cream },
-  segmentText: { color: colors.mist, fontSize: 15, fontWeight: "700" },
-  segmentTextSelected: { color: colors.navy },
-  muted: { color: colors.mist, fontSize: 15, lineHeight: 21 },
-  heading: { color: colors.cream, fontSize: 22, fontWeight: "800" },
-  input: {
-    minHeight: 48,
-    paddingHorizontal: 12,
+  textButtonStart: { justifyContent: "flex-start", alignSelf: "flex-start" },
+  textButtonText: { ...type.button, includeFontPadding: false },
+  iconButton: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
+  iconButtonPressed: { backgroundColor: colors.raised },
+  bar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space.sm,
+    paddingHorizontal: space.md,
+    paddingVertical: space.md,
+    borderRadius: radii.button,
+  },
+  barStop: { backgroundColor: colors.stop },
+  barRepeat: { borderWidth: 1.5, borderColor: colors.repeat },
+  barText: { flex: 1 },
+  staff: { borderWidth: 1.5, borderRadius: radii.pill, paddingHorizontal: space.sm, paddingVertical: 1 },
+  staffText: { fontFamily: fonts.semi, fontSize: 13, lineHeight: 18, includeFontPadding: false },
+  name: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: space.sm, rowGap: space.xs },
+  nameText: { maxWidth: "100%" },
+  row: {
+    minHeight: sizes.row,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space.md,
+    paddingVertical: space.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.lineStrong,
+  },
+  rowTall: { minHeight: sizes.rowTall },
+  rowPressed: { backgroundColor: colors.raised },
+  rowMain: { flex: 1, gap: 2 },
+  fieldWrap: { gap: space.xs },
+  field: {
+    height: sizes.field,
+    paddingHorizontal: space.lg,
     borderWidth: 1,
     borderColor: colors.lineStrong,
-    borderRadius: 4,
+    borderRadius: radii.button,
     backgroundColor: colors.field,
-    color: colors.cream,
+    color: colors.text,
+    fontFamily: fonts.regular,
     fontSize: 17,
   },
-  label: { color: colors.mist, fontSize: 13, fontWeight: "700", marginBottom: 6 },
-  screen: { flexGrow: 1, padding: 16, gap: 14 },
 });
