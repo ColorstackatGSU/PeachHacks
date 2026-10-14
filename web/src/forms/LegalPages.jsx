@@ -64,10 +64,6 @@ export function PrivacyPage() {
           When you join the server, PeachBot posts a welcome picture made from your Discord display name and
           avatar, and remembers your Discord user ID so it welcomes you only once.
         </li>
-        <li>
-          PeachBot posts each new application (name, school, expected graduation and level of study) to a channel
-          that only organizers can see.
-        </li>
       </ul>
 
       <h2>What other hackers see</h2>
@@ -88,7 +84,7 @@ export function PrivacyPage() {
       <ul>
         <li>Vercel hosts our websites, Railway runs our server and Supabase hosts our database.</li>
         <li>Resend delivers our emails, such as platform sign-in links.</li>
-        <li>Google and Discord, when you use them as described above.</li>
+        <li>Google, if you sign in with it, and Discord, which runs our server and PeachBot.</li>
       </ul>
       <p>We do not sell your information to anyone.</p>
 
