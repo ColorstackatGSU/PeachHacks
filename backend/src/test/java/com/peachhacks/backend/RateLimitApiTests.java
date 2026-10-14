@@ -1,6 +1,5 @@
 package com.peachhacks.backend;
 
-import java.net.URI;
 import java.util.UUID;
 
 import com.jayway.jsonpath.JsonPath;
@@ -29,7 +28,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * X-Forwarded-For.
  */
 @Import(TestcontainersConfiguration.class)
-@SpringBootTest(properties = { "app.rate-limit.public-per-minute=100000", "app.rate-limit.login-per-minute=5",
+@SpringBootTest(properties = { "app.rate-limit.public-per-minute=100000",
 		"app.rate-limit.sign-up-per-window=2", "app.rate-limit.sign-up-global-per-hour=5",
 		"app.rate-limit.login-failures-per-account=3", "app.rate-limit.trust-forwarded-for=true" })
 @AutoConfigureMockMvc
@@ -45,37 +44,25 @@ class RateLimitApiTests {
 	private AuthService authService;
 
 	@Test
-	void anEncodedLoginPathCountsAsALoginAndTheClientIsTheLastForwardedEntry() throws Exception {
-		for (int attempt = 0; attempt < 5; attempt++) {
-			mockMvc
-				.perform(from(loginRequest(post(URI.create("/admin/%61uth/login")), unique() + "@test.local", "wrong"),
-						"198.51.100." + attempt + ", 203.0.113.1"))
-				.andExpect(status().isUnauthorized());
+	void signInsFromOneAddressAreNotLimited() throws Exception {
+		for (int attempt = 0; attempt < 40; attempt++) {
+			login(unique() + "@test.local", "wrong", "203.0.113.1").andExpect(status().isUnauthorized());
 		}
-		mockMvc
-			.perform(from(loginRequest(post(URI.create("/admin/%61uth/login")), unique() + "@test.local", "wrong"),
-					"198.51.100.99, 203.0.113.1"))
-			.andExpect(status().isTooManyRequests())
-			.andExpect(jsonPath("$.code").value("RATE_LIMITED"));
-		login(unique() + "@test.local", "wrong", "203.0.113.1").andExpect(status().isTooManyRequests());
-		login(unique() + "@test.local", "wrong", "203.0.113.1, 203.0.113.2").andExpect(status().isUnauthorized());
+		login(account(), PASSWORD, "203.0.113.1").andExpect(status().isOk());
 	}
 
 	@Test
-	void changingAPasswordSharesTheLoginAllowance() throws Exception {
+	void changingAPasswordIsNotLimitedPerAddress() throws Exception {
 		String email = account();
 		String session = "Bearer " + JsonPath.read(login(email, PASSWORD, "203.0.113.10").andExpect(status().isOk())
 			.andReturn()
 			.getResponse()
 			.getContentAsString(), "$.token");
 
-		for (int attempt = 0; attempt < 4; attempt++) {
+		for (int attempt = 0; attempt < 12; attempt++) {
 			changePassword(session, "203.0.113.10").andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.fieldErrors.currentPassword").isNotEmpty());
 		}
-		changePassword(session, "203.0.113.10").andExpect(status().isTooManyRequests())
-			.andExpect(jsonPath("$.code").value("RATE_LIMITED"));
-		changePassword(session, "203.0.113.11").andExpect(status().isBadRequest());
 	}
 
 	@Test

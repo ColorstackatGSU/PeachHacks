@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.List;
 
 import com.fasterxml.jackson.annotation.JsonUnwrapped;
+import com.peachhacks.backend.badge.BadgeView;
 import com.peachhacks.backend.checkin.CheckInService;
 
 /**
@@ -15,9 +16,9 @@ import com.peachhacks.backend.checkin.CheckInService;
  * schoolEmailConfirmedAt come from the registration itself; an unconfirmed school email
  * does not stop any status change, it is there for the organizer to see. ageReview is the
  * same kind of information: under the minimum age for students of other schools and not
- * at the host school.
+ * at the host school. badge is the NFC badge bound to the registration now, null without one.
  */
 public record RegistrationDetail(@JsonUnwrapped Registration registration, Instant checkedInAt, String checkedInBy,
 		List<CheckInService.EventCheckIn> checkIns, String ticketToken, String ticketUrl,
-		String googleWalletUrl, ResumeInfo resume, boolean ageReview) {
+		String googleWalletUrl, ResumeInfo resume, boolean ageReview, BadgeView badge) {
 }

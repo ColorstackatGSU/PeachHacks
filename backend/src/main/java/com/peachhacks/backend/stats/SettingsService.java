@@ -15,6 +15,8 @@ public class SettingsService {
 
 	private static final String PREVIEW_KEY_HASH = "registration_preview_key_hash";
 
+	private static final String WEB_CHECK_IN_ADMIN_ONLY = "web_check_in_admin_only";
+
 	private final JdbcClient jdbc;
 
 	public SettingsService(JdbcClient jdbc) {
@@ -22,16 +24,23 @@ public class SettingsService {
 	}
 
 	public boolean isRegistrationOpen() {
-		return jdbc.sql("select value from settings where key = :key")
-			.param("key", REGISTRATION_OPEN)
-			.query(String.class)
-			.optional()
-			.map(Boolean::parseBoolean)
-			.orElse(false);
+		return flag(REGISTRATION_OPEN);
 	}
 
 	public void setRegistrationOpen(boolean open) {
 		put(REGISTRATION_OPEN, Boolean.toString(open));
+	}
+
+	/**
+	 * While on, volunteers are sent to the staff app for check-in and the check-in screen of
+	 * the admin site is for admins only. Off until an admin turns it on.
+	 */
+	public boolean isWebCheckInAdminOnly() {
+		return flag(WEB_CHECK_IN_ADMIN_ONLY);
+	}
+
+	public void setWebCheckInAdminOnly(boolean adminOnly) {
+		put(WEB_CHECK_IN_ADMIN_ONLY, Boolean.toString(adminOnly));
 	}
 
 	/**
@@ -64,6 +73,15 @@ public class SettingsService {
 		String expected = previewKeyHash();
 		return expected != null && MessageDigest.isEqual(expected.getBytes(StandardCharsets.UTF_8),
 				Tokens.sha256(previewKey.strip()).getBytes(StandardCharsets.UTF_8));
+	}
+
+	private boolean flag(String key) {
+		return jdbc.sql("select value from settings where key = :key")
+			.param("key", key)
+			.query(String.class)
+			.optional()
+			.map(Boolean::parseBoolean)
+			.orElse(false);
 	}
 
 	private String previewKeyHash() {

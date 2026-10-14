@@ -56,10 +56,20 @@ public class SecurityConfig {
 				.permitAll()
 				.requestMatchers(AdminAuthController.UNAUTHENTICATED_PATHS)
 				.permitAll()
-				.requestMatchers("/admin/auth/**", "/admin/check-in", "/admin/check-in/**")
+				.requestMatchers("/admin/auth/**")
+				.hasAnyRole(AdminRole.ADMIN.name(), AdminRole.VOLUNTEER.name(), AdminRole.LOOKUP.name())
+				.requestMatchers(HttpMethod.POST, "/admin/badges/lookup")
+				.hasAnyRole(AdminRole.ADMIN.name(), AdminRole.VOLUNTEER.name(), AdminRole.LOOKUP.name())
+				.requestMatchers(HttpMethod.POST, "/admin/badges/resolve", "/admin/badges/bind",
+						"/admin/badges/tap")
+				.hasAnyRole(AdminRole.ADMIN.name(), AdminRole.VOLUNTEER.name())
+				.requestMatchers("/admin/check-in", "/admin/check-in/**")
 				.hasAnyRole(AdminRole.ADMIN.name(), AdminRole.VOLUNTEER.name())
 				.requestMatchers(HttpMethod.GET, "/admin/events")
 				.hasAnyRole(AdminRole.ADMIN.name(), AdminRole.VOLUNTEER.name())
+				.requestMatchers(HttpMethod.GET, "/admin/attendance", "/admin/attendance/events",
+						"/admin/events/*/attendance")
+				.hasAnyRole(AdminRole.ADMIN.name(), AdminRole.VOLUNTEER.name(), AdminRole.LOOKUP.name())
 				// Everything else under /admin is admin-only, including routes added later.
 				.requestMatchers("/admin/**")
 				.hasRole(AdminRole.ADMIN.name())

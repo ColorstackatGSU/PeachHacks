@@ -7,7 +7,7 @@ import com.peachhacks.backend.common.Texts;
 
 public enum AdminRole {
 
-	ADMIN, VOLUNTEER;
+	ADMIN, VOLUNTEER, LOOKUP;
 
 	public String authority() {
 		return "ROLE_" + name();
@@ -19,7 +19,7 @@ public enum AdminRole {
 			return valueOf(Texts.orEmpty(value).toUpperCase(Locale.ROOT));
 		}
 		catch (IllegalArgumentException ex) {
-			throw ApiException.invalidField("role", "Role must be ADMIN or VOLUNTEER");
+			throw ApiException.invalidField("role", "Role must be ADMIN, VOLUNTEER or LOOKUP");
 		}
 	}
 

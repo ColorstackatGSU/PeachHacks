@@ -10,13 +10,12 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * client address.
  */
 @ConfigurationProperties(prefix = "app.rate-limit")
-public record RateLimitProperties(Integer publicPerMinute, Integer loginPerMinute, Integer ticketPerMinute,
+public record RateLimitProperties(Integer publicPerMinute, Integer ticketPerMinute,
 		Integer signUpPerWindow, Duration signUpWindow, Integer signUpGlobalPerHour, Integer loginFailuresPerAccount,
 		Duration loginFailureWindow, boolean trustForwardedFor) {
 
 	public RateLimitProperties {
 		publicPerMinute = (publicPerMinute != null) ? publicPerMinute : 60;
-		loginPerMinute = (loginPerMinute != null) ? loginPerMinute : 10;
 		ticketPerMinute = (ticketPerMinute != null) ? ticketPerMinute : 300;
 		signUpPerWindow = (signUpPerWindow != null) ? signUpPerWindow : 30;
 		signUpWindow = (signUpWindow != null) ? signUpWindow : Duration.ofMinutes(10);

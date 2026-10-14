@@ -85,7 +85,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest(properties = { "app.admin.bootstrap-email=Organizer@Test.local",
 		"app.admin.bootstrap-password=correct-horse-battery", "app.admin.bootstrap-name=Test Organizer",
-		"app.rate-limit.public-per-minute=100000", "app.rate-limit.login-per-minute=100000", "app.rate-limit.sign-up-per-window=100000",
+		"app.rate-limit.public-per-minute=100000", "app.rate-limit.sign-up-per-window=100000",
 		"app.rate-limit.sign-up-global-per-hour=100000",
 		"app.email.campaign-delay=0ms" })
 @AutoConfigureMockMvc
@@ -684,7 +684,7 @@ class RegistrationApiTests {
 			.getContentAsString();
 		Map<String, Object> item = JsonPath.read(listed, "$.items[0]");
 		assertThat(item.keySet()).containsExactlyInAnyOrder("id", "firstName", "lastName", "email", "school", "status",
-				"checkedInAt", "checkedInBy", "generalCheckedIn");
+				"checkedInAt", "checkedInBy", "generalCheckedIn", "staff");
 		assertThat(((Number) JsonPath.read(listed, "$.registrationTotal")).longValue())
 			.isEqualTo(count("select count(*) from registrations"));
 		mockMvc.perform(get("/admin/check-in").param("q", "no-such-" + prefix).header("Authorization", admin))
@@ -714,7 +714,7 @@ class RegistrationApiTests {
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.id").value(firstId))
 			.andExpect(jsonPath("$.checkedInAt").isNotEmpty())
-			.andExpect(jsonPath("$.checkedInBy").value("Door Volunteer"))
+			.andExpect(jsonPath("$.checkedInBy").isEmpty())
 			.andExpect(jsonPath("$.generalCheckedIn").value(true))
 			.andExpect(jsonPath("$.phone").doesNotExist())
 			.andReturn()
@@ -952,7 +952,7 @@ class RegistrationApiTests {
 			.andExpect(jsonPath("$.event.general").value(true))
 			.andExpect(jsonPath("$.item.id").value(acceptedId))
 			.andExpect(jsonPath("$.item.status").value("ACCEPTED"))
-			.andExpect(jsonPath("$.item.checkedInBy").value("Scanner"))
+			.andExpect(jsonPath("$.item.checkedInBy").isEmpty())
 			.andExpect(jsonPath("$.item.phone").doesNotExist())
 			.andReturn()
 			.getResponse()

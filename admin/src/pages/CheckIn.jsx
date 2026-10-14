@@ -2,7 +2,16 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 import { MOCK_MODE, api } from "../api/client.js";
 import { ConfirmDialog } from "../components/Modal.jsx";
 import { Scanner } from "../components/Scanner.jsx";
-import { EmptyBlock, ErrorBlock, LoadingBlock, PageHeader, Pagination, StatusBadge } from "../components/ui.jsx";
+import {
+  EmptyBlock,
+  ErrorBlock,
+  LoadingBlock,
+  PageHeader,
+  Pagination,
+  StaffTag,
+  StatusBadge,
+  isStaffAppOnly,
+} from "../components/ui.jsx";
 import { errorText, formatNumber, formatWhen, fullName, statusLabel } from "../lib/format.js";
 import { useAsync, useDebounced, useEvents } from "../lib/hooks.js";
 import { cameraSupported, primeFeedback, signal } from "../lib/scanner.js";
@@ -42,6 +51,12 @@ function MissingGeneral({ event, item }) {
   return <p className="checkin-note">Has not done general check-in yet. Send them to the front desk afterwards.</p>;
 }
 
+const ScanName = ({ item }) => (
+  <p className="scan-name">
+    {fullName(item)} {item.staff && <StaffTag />}
+  </p>
+);
+
 function ScanResult({ scan, event, busy, onRetry, onDismiss }) {
   const { outcome, item, error } = scan;
   let tone = "bad";
@@ -67,7 +82,7 @@ function ScanResult({ scan, event, busy, onRetry, onDismiss }) {
     title = "Checked in";
     body = (
       <>
-        <p className="scan-name">{fullName(item)}</p>
+        <ScanName item={item} />
         <p>{item.school}</p>
         <MissingGeneral event={event} item={item} />
       </>
@@ -77,7 +92,7 @@ function ScanResult({ scan, event, busy, onRetry, onDismiss }) {
     title = "Already checked in";
     body = (
       <>
-        <p className="scan-name">{fullName(item)}</p>
+        <ScanName item={item} />
         <p>
           at {formatWhen(item.checkedInAt)}
           {item.checkedInBy ? ` by ${item.checkedInBy}` : ""}
@@ -89,7 +104,7 @@ function ScanResult({ scan, event, busy, onRetry, onDismiss }) {
     title = "Not accepted";
     body = (
       <>
-        <p className="scan-name">{fullName(item)}</p>
+        <ScanName item={item} />
         <p>
           {item.school} · status: {statusLabel(item.status)}
         </p>
@@ -112,7 +127,7 @@ function ScanResult({ scan, event, busy, onRetry, onDismiss }) {
   );
 }
 
-function ScanMode({ event, eventId, onCheckedIn, onUseSearch }) {
+function ScanMode({ event, eventId, onCheckedIn, onRestricted, onUseSearch }) {
   const ids = useId();
   const [scan, setScan] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -150,12 +165,13 @@ function ScanMode({ event, eventId, onCheckedIn, onUseSearch }) {
       } catch (error) {
         setScan({ code, error });
         signal("problem");
+        if (isStaffAppOnly(error)) onRestricted();
       } finally {
         busyRef.current = false;
         setBusy(false);
       }
     },
-    [eventId, onCheckedIn, clear],
+    [eventId, onCheckedIn, onRestricted, clear],
   );
 
   const handleRead = useCallback(
@@ -224,7 +240,9 @@ function PersonRow({ item, event, pending, error, onCheckIn, onUndo }) {
   return (
     <li className={`person${checkedIn ? " is-in" : ""}`}>
       <div className="person-main">
-        <strong className="person-name">{fullName(item)}</strong>
+        <strong className="person-name">
+          {fullName(item)} {item.staff && <StaffTag />}
+        </strong>
         <span className="person-school">{item.school}</span>
         <span className="person-email">{item.email}</span>
         {!accepted && <NotAccepted status={item.status} />}
@@ -291,8 +309,8 @@ function SearchMode({ event, list, search, setSearch, page, setPage, changes, on
     } catch (error) {
       setErrors((prev) => ({ ...prev, [item.id]: error }));
       if (!undo) signal("problem");
-      // The row was out of date; fetch its real status.
-      if (isRefusal(error)) list.reload();
+      // The row was out of date, or web check-in was restricted since the list loaded.
+      if (isRefusal(error) || isStaffAppOnly(error)) list.reload();
     } finally {
       setPending((prev) => ({ ...prev, [item.id]: false }));
     }
@@ -366,7 +384,9 @@ function SearchMode({ event, list, search, setSearch, page, setPage, changes, on
         >
           <p>
             <strong>{fullName(undoing)}</strong> will be marked as not checked in
-            {event && !event.general ? ` for ${event.name}` : ""}. Only do this to fix a mistake.
+            {event && !event.general ? ` for ${event.name}` : ""}.
+            {event && !event.general ? "" : " If they were given a badge, it is revoked and has to be bound again."} Only
+            do this to fix a mistake.
           </p>
         </ConfirmDialog>
       )}
@@ -413,6 +433,17 @@ export default function CheckIn() {
       // The choice just will not be remembered.
     }
   };
+
+  // A volunteer while web check-in is restricted to admins: every check-in route refuses,
+  // so the message stands in for the whole screen.
+  if (isStaffAppOnly(list.error)) {
+    return (
+      <>
+        <PageHeader title="Check-in" />
+        <ErrorBlock error={list.error} />
+      </>
+    );
+  }
 
   return (
     <>
@@ -461,6 +492,7 @@ export default function CheckIn() {
           event={event}
           eventId={eventId}
           onCheckedIn={list.reload}
+          onRestricted={list.reload}
           onUseSearch={() => switchMode("search")}
         />
       ) : (
