@@ -324,8 +324,8 @@ class DiscordApiTests {
 		String email = firstName.toLowerCase() + "-" + UUID.randomUUID().toString().substring(0, 8) + "@example.com";
 		String created = mockMvc
 			.perform(post("/public/registrations").contentType(MediaType.APPLICATION_JSON).content("""
-					{"firstName":"%s","lastName":"Example","age":19,"phone":"404 555 0100","email":"%s",
-					 "schoolEmail":"%s","school":"Georgia State University",
+					{"firstName":"%s","lastName":"Example","dateOfBirth":"2007-06-01","phone":"404 555 0100","email":"%s",
+					 "schoolEmail":"%s.edu","school":"Georgia State University",
 					 "levelOfStudy":"Undergraduate University (3+ year)","graduationYear":2028,"graduationMonth":5,
 					 "countryOfResidence":"US","mlhCodeOfConduct":true,"mlhDataSharing":true,"mlhEmailOptIn":false}
 					""".formatted(firstName, email, email)))

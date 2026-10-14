@@ -1,4 +1,4 @@
-import { CONTACT_EMAIL } from '../home/site.js';
+import { CONTACT_EMAIL, EVENT_FIRST_DAY } from '../home/site.js';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const EMAIL_LOCAL_MAX = 64;
@@ -7,12 +7,42 @@ const PHONE_CHARS_PATTERN = /^[0-9+()\-.\sx#]+$/i;
 const NAME_PATTERN = /^[\p{L}\p{M} .'’-]+$/u;
 const NAME_MESSAGE = 'Use letters, spaces, apostrophes, periods and hyphens only';
 const LINKEDIN_MAX_LENGTH = 255;
+const DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
+export const AGE_MIN = 13;
+const AGE_MAX = 120;
 
 export function isEmail(value) {
   const email = value.trim();
   if (!EMAIL_PATTERN.test(email)) return false;
   const at = email.indexOf('@');
   return at <= EMAIL_LOCAL_MAX && !email.slice(at + 1).includes('..');
+}
+
+export function isEduEmail(value) {
+  return isEmail(value) && /\.edu$/i.test(value.trim());
+}
+
+function parseDate(value) {
+  const match = DATE_PATTERN.exec(value);
+  if (!match) return null;
+  const [year, month, day] = match.slice(1).map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCMonth() === month - 1 && date.getUTCDate() === day ? { year, month, day } : null;
+}
+
+// Age on the event's first day, or null for anything that is not a real yyyy-mm-dd date.
+export function ageAtEvent(dateOfBirth) {
+  const born = parseDate(dateOfBirth);
+  if (!born) return null;
+  const event = parseDate(EVENT_FIRST_DAY);
+  const birthdayStillAhead = event.month < born.month || (event.month === born.month && event.day < born.day);
+  return event.year - born.year - (birthdayStillAhead ? 1 : 0);
+}
+
+export function todayIso() {
+  const now = new Date();
+  const pad = (number) => String(number).padStart(2, '0');
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 
 export function isPhone(value) {
@@ -144,7 +174,14 @@ export const FIELD_RULES = {
   },
   schoolEmail: (value) => {
     if (!value.trim()) return 'Enter your school email address.';
-    return isEmail(value) ? null : 'Enter a valid email, like name@school.edu.';
+    if (!isEmail(value)) return 'Enter a valid email, like name@school.edu.';
+    return isEduEmail(value) ? null : 'Use your school email. It needs to end in .edu.';
+  },
+  dateOfBirth: (value) => {
+    if (!value) return 'Enter your date of birth.';
+    const age = ageAtEvent(value);
+    if (age === null || value >= todayIso() || age > AGE_MAX) return 'Enter a valid date of birth.';
+    return age < AGE_MIN ? `You need to be at least ${AGE_MIN} on the first day of PeachHacks.` : null;
   },
   phone: (value) => {
     if (!value.trim()) return 'Enter your phone number.';
@@ -180,7 +217,7 @@ export function validateIdentity(values) {
 export function schoolEmailHint(values) {
   return sameEmail(values.schoolEmail, values.email)
     ? "Same as your personal email. That's fine if it's the only one you use."
-    : 'The address your school gave you.';
+    : 'The address your school gave you, ending in .edu.';
 }
 
 export function focusFirstInvalid(form) {

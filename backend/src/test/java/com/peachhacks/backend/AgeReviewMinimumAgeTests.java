@@ -1,5 +1,6 @@
 package com.peachhacks.backend;
 
+import java.time.LocalDate;
 import java.util.UUID;
 
 import com.jayway.jsonpath.JsonPath;
@@ -70,14 +71,19 @@ class AgeReviewMinimumAgeTests {
 			.andExpect(jsonPath("$.ageReview.accepted").value(0));
 	}
 
+	/** A date of birth that makes someone exactly this old on the event's first day. */
+	private static String bornAged(int age) {
+		return LocalDate.of(2027, 2, 5).minusYears(age).toString();
+	}
+
 	private String register(String school, int age) throws Exception {
 		String email = "age-" + UUID.randomUUID().toString().substring(0, 8) + "@example.com";
 		String created = mockMvc
 			.perform(post("/public/registrations").contentType(MediaType.APPLICATION_JSON).content("""
-					{"firstName":"Ada","lastName":"Example","age":%d,"phone":"404 555 0100","email":"%s",
-					 "schoolEmail":"%s","school":"%s","levelOfStudy":"Undergraduate University (3+ year)","graduationYear":2028,"graduationMonth":5,
+					{"firstName":"Ada","lastName":"Example","dateOfBirth":"%s","phone":"404 555 0100","email":"%s",
+					 "schoolEmail":"%s.edu","school":"%s","levelOfStudy":"Undergraduate University (3+ year)","graduationYear":2028,"graduationMonth":5,
 					 "countryOfResidence":"US","mlhCodeOfConduct":true,"mlhDataSharing":true,"mlhEmailOptIn":false}
-					""".formatted(age, email, email, school)))
+					""".formatted(bornAged(age), email, email, school)))
 			.andExpect(status().isCreated())
 			.andReturn()
 			.getResponse()

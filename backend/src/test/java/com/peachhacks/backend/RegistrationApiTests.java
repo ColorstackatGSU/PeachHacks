@@ -40,6 +40,7 @@ import com.peachhacks.backend.email.EmailSender;
 import com.peachhacks.backend.registration.Registration;
 import com.peachhacks.backend.registration.RegistrationRepository;
 import com.peachhacks.backend.registration.RegistrationStatus;
+import com.peachhacks.backend.schoolemail.SchoolEmailService;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -154,6 +155,9 @@ class RegistrationApiTests {
 	@Autowired
 	private PlatformTransactionManager transactionManager;
 
+	@Autowired
+	private SchoolEmailService schoolEmailService;
+
 	@Test
 	void aRepeatedPreRegistrationKeepsTheFirstSubmissionAndIsAnsweredLikeANewOne() throws Exception {
 		String school = uniqueSchool();
@@ -206,6 +210,9 @@ class RegistrationApiTests {
 			.andExpect(status().isBadRequest())
 			.andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
 			.andExpect(jsonPath("$.fieldErrors.schoolEmail").value("Must be a valid email"));
+		preRegister("Ada", "Lovelace", unique() + "@example.com", school, "ada@gmail.com")
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.fieldErrors.schoolEmail").value("Use your school email, ending in .edu"));
 
 		mockMvc
 			.perform(post("/public/pre-registrations").contentType(MediaType.APPLICATION_JSON).content("""
@@ -278,6 +285,7 @@ class RegistrationApiTests {
 			.andExpect(jsonPath("$.email").value(email))
 			.andExpect(jsonPath("$.schoolEmail").value("ada.lovelace@school.edu"))
 			.andExpect(jsonPath("$.age").value(19))
+			.andExpect(jsonPath("$.dateOfBirth").value("2007-06-01"))
 			.andExpect(jsonPath("$.mlhCodeOfConduct").value(true))
 			.andExpect(jsonPath("$.mlhEmailOptIn").value(false))
 			.andExpect(jsonPath("$.dietaryRestrictions", hasSize(2)))
@@ -327,14 +335,43 @@ class RegistrationApiTests {
 		register(registrationJson(unique() + "@example.com", uniqueSchool(), true, false))
 			.andExpect(status().isBadRequest())
 			.andExpect(jsonPath("$.fieldErrors.mlhDataSharing").isNotEmpty());
-		register("{\"firstName\":\"Only\",\"age\":12,\"countryOfResidence\":\"usa\"}").andExpect(status().isBadRequest())
+		register("{\"firstName\":\"Only\",\"countryOfResidence\":\"usa\"}").andExpect(status().isBadRequest())
 			.andExpect(jsonPath("$.fieldErrors.lastName").value("Last name is required"))
 			.andExpect(jsonPath("$.fieldErrors.schoolEmail").value("School email is required"))
-			.andExpect(jsonPath("$.fieldErrors.age").isNotEmpty())
+			.andExpect(jsonPath("$.fieldErrors.dateOfBirth").value("Date of birth is required"))
 			.andExpect(jsonPath("$.fieldErrors.countryOfResidence").isNotEmpty())
 			.andExpect(jsonPath("$.fieldErrors.mlhCodeOfConduct").isNotEmpty())
 			.andExpect(jsonPath("$.fieldErrors.mlhDataSharing").isNotEmpty())
 			.andExpect(jsonPath("$.fieldErrors.mlhEmailOptIn").isNotEmpty());
+
+		setRegistrationOpen(token, false);
+	}
+
+	@Test
+	void registrationTakesADateOfBirthAndASchoolEmailEndingInEdu() throws Exception {
+		String token = bearer();
+		setRegistrationOpen(token, true);
+		String json = registrationJson(unique() + "@example.com", uniqueSchool(), true, true);
+
+		register(withSchoolEmail(json, "ada@gmail.com")).andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.fieldErrors.schoolEmail").value("Use your school email, ending in .edu"));
+		register(withSchoolEmail(json, "ada@school.edu.example.com")).andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.fieldErrors.schoolEmail").value("Use your school email, ending in .edu"));
+		register(json.replace("2007-06-01", "2099-01-01")).andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.fieldErrors.dateOfBirth").value("Enter your date of birth"));
+		register(json.replace("2007-06-01", "2014-02-06")).andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.fieldErrors.dateOfBirth")
+				.value("You must be at least 13 on the first day of PeachHacks"));
+		register(json.replace("2007-06-01", "1900-01-01")).andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.fieldErrors.dateOfBirth").value("Enter a valid date of birth"));
+
+		String id = JsonPath.read(register(json.replace("2007-06-01", "2014-02-05")).andExpect(status().isCreated())
+			.andReturn()
+			.getResponse()
+			.getContentAsString(), "$.id");
+		mockMvc.perform(get("/admin/registrations/" + id).header("Authorization", token))
+			.andExpect(jsonPath("$.age").value(13))
+			.andExpect(jsonPath("$.dateOfBirth").value("2014-02-05"));
 
 		setRegistrationOpen(token, false);
 	}
@@ -1884,6 +1921,51 @@ class RegistrationApiTests {
 	}
 
 	@Test
+	void anExpiredSchoolEmailLinkIsMailedAgainAFewTimesAtMost() throws Exception {
+		String school = uniqueSchool();
+		String schoolEmail = unique() + "@school.edu";
+		String quietSchoolEmail = unique() + "@school.edu";
+		preRegister("Ada", "Lovelace", unique() + "@example.com", school, schoolEmail).andExpect(status().isCreated());
+		preRegister("Grace", "Hopper", unique() + "@example.com", school, quietSchoolEmail)
+			.andExpect(status().isCreated());
+		assertThat(confirmationEmails(schoolEmail, 1)).hasSize(1);
+		assertThat(confirmationEmails(quietSchoolEmail, 1)).hasSize(1);
+		jdbc.sql("update pre_registrations set unsubscribed = true where school_email = :schoolEmail")
+			.param("schoolEmail", quietSchoolEmail)
+			.update();
+
+		schoolEmailService.resendExpiredLinks();
+		assertThat(confirmationEmails(schoolEmail, 2)).as("the first link has not expired").hasSize(1);
+
+		for (int resend = 2; resend <= 3; resend++) {
+			expireLinks(schoolEmail);
+			expireLinks(quietSchoolEmail);
+			schoolEmailService.resendExpiredLinks();
+			assertThat(confirmationEmails(schoolEmail, resend)).hasSize(resend);
+		}
+		jdbc.sql("update school_email_confirmations set last_sent_at = now() - interval '15 days' where school_email = :schoolEmail")
+			.param("schoolEmail", schoolEmail)
+			.update();
+		schoolEmailService.resendExpiredLinks();
+		assertThat(confirmationEmails(schoolEmail, 4)).as("two automatic resends at most").hasSize(3);
+		assertThat(confirmationEmails(quietSchoolEmail, 2)).as("not after unsubscribing").hasSize(1);
+
+		List<EmailMessage> links = confirmationEmails(schoolEmail, 3);
+		confirm(confirmationToken(links.get(2))).andExpect(status().isOk())
+			.andExpect(jsonPath("$.schoolEmail").value(schoolEmail));
+	}
+
+	private void expireLinks(String schoolEmail) {
+		jdbc.sql("update school_email_confirmations set last_sent_at = now() - interval '15 days' where school_email = :schoolEmail")
+			.param("schoolEmail", schoolEmail)
+			.update();
+		jdbc.sql("""
+				update school_email_tokens set expires_at = now() - interval '1 day'
+				where confirmation_id in (select id from school_email_confirmations where school_email = :schoolEmail)
+				""").param("schoolEmail", schoolEmail).update();
+	}
+
+	@Test
 	void adminsCanResendTheSchoolEmailLinkUntilItIsConfirmed() throws Exception {
 		String admin = bearer();
 		String school = uniqueSchool();
@@ -2632,7 +2714,7 @@ class RegistrationApiTests {
 	private static String registrationJson(String email, String school, boolean codeOfConduct, boolean dataSharing) {
 		return """
 				{
-				  "firstName": "Ada", "lastName": "Lovelace", "age": 19, "phone": "+1 404 555 0100",
+				  "firstName": "Ada", "lastName": "Lovelace", "dateOfBirth": "2007-06-01", "phone": "+1 404 555 0100",
 				  "email": "%s", "schoolEmail": "Ada.Lovelace@School.EDU", "school": "%s",
 				  "levelOfStudy": "Undergraduate University (3+ year)", "graduationYear": 2028, "graduationMonth": 5, "countryOfResidence": "US",
 				  "mlhCodeOfConduct": %s, "mlhDataSharing": %s, "mlhEmailOptIn": false,

@@ -19,7 +19,8 @@ public record PreRegistrationRequest(
 		@NotBlank(message = "School is required") @Size(max = 255,
 				message = "School must be at most 255 characters") String school,
 		@NotBlank(message = "School email is required") @Email(regexp = Patterns.EMAIL,
-				message = "Must be a valid email") @Size(max = 255,
+				message = "Must be a valid email") @Pattern(regexp = Patterns.EDU_EMAIL,
+						message = Patterns.EDU_EMAIL_MESSAGE) @Size(max = 255,
 						message = "School email must be at most 255 characters") String schoolEmail,
 		/* Honeypot: real visitors never see or fill this field. */
 		String website) {

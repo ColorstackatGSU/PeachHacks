@@ -26,6 +26,7 @@ import {
 } from "../lib/acceptance.js";
 import {
   STATUSES,
+  formatBirthDate,
   formatBytes,
   formatDateTime,
   formatWhen,
@@ -98,7 +99,8 @@ function RegistrationDetail({ reg }) {
           {present(reg.schoolEmail) ? <a href={`mailto:${reg.schoolEmail}`}>{reg.schoolEmail}</a> : null}
         </Row>
         <Row label="Phone">{reg.phone}</Row>
-        <Row label="Age">{reg.age}</Row>
+        <Row label="Date of birth">{formatBirthDate(reg.dateOfBirth)}</Row>
+        <Row label="Age at the event">{reg.age}</Row>
         <Row label="Country of residence">{reg.countryOfResidence}</Row>
         <Row label="LinkedIn">
           {linkedin ? (

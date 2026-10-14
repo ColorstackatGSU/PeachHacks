@@ -9,6 +9,7 @@ const dateTimeFormat = new Intl.DateTimeFormat("en-US", {
 const timeFormat = new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit" });
 const dateFormat = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" });
 const dayFormat = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+const birthDateFormat = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
 
 export const formatNumber = (value) => (typeof value === "number" ? numberFormat.format(value) : "0");
 
@@ -16,6 +17,12 @@ function toDate(value) {
   if (!value) return null;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+// A yyyy-mm-dd date with no time, read as UTC so it does not move a day in western time zones.
+export function formatBirthDate(value) {
+  const date = toDate(value);
+  return date ? birthDateFormat.format(date) : "";
 }
 
 // API timestamps are UTC; these render in the organizer's local time zone.

@@ -35,7 +35,7 @@ export function PrivacyPage() {
 
       <h3>When you register</h3>
       <ul>
-        <li>Your name, age, phone number, email address, school email address, school, level of study, expected graduation month and year, and country of residence.</li>
+        <li>Your name, date of birth, phone number, email address, school email address, school, level of study, expected graduation month and year, and country of residence.</li>
         <li>
           If you choose to give them: dietary restrictions, T-shirt size, major, LinkedIn and GitHub links, your resume, and
           answers to demographic questions (gender, pronouns, race or ethnicity, sexual orientation, whether you
@@ -110,7 +110,7 @@ export function PrivacyPage() {
       <p>
         On the hacker platform, other accepted hackers can see your name, school, the card you filled in, your
         Discord username if you connected one, and your team. You can take yourself off the Hackers page from
-        your Home page; your teammates still see you on your team. Your email address, phone number, age and
+        your Home page; your teammates still see you on your team. Your email address, phone number, date of birth and
         demographic answers are never shown to other hackers.
       </p>
 
@@ -141,7 +141,7 @@ export function PrivacyPage() {
 
       <h2>If you are under 18</h2>
       <p>
-        PeachHacks is for current university students, and a few university students are under 18. We ask your age
+        PeachHacks is for current university students, and a few university students are under 18. We ask your date of birth
         on the registration form so organizers know. We do not knowingly collect information from children under
         13; if you believe a child has registered, email {contact} and we will remove it.
       </p>
