@@ -63,6 +63,9 @@ public class ResendEmailSender implements EmailSender {
 		payload.put("subject", message.subject());
 		payload.put("html", message.html());
 		payload.put("text", message.text());
+		if (message.replyTo() != null) {
+			payload.put("reply_to", message.replyTo());
+		}
 		if (!message.headers().isEmpty()) {
 			payload.put("headers", message.headers());
 		}
