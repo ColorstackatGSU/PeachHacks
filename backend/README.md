@@ -244,7 +244,7 @@ A refusal is 403 `FORBIDDEN`. The rule lives in `SecurityConfig`, so a route add
 
 Check-ins are recorded per event. One event, "General check-in", is built in (seeded by the migration, cannot be deleted) and is what "attendance" means everywhere else: `checkedInAt` on registrations, the `checkedIn` filter and count, and the `checked_in_at` CSV column. Workshops are extra events an admin adds. Every check-in endpoint takes an optional `eventId` and uses the general event without it; an unknown `eventId` is 404.
 
-Items returned by the check-in endpoints carry only what someone at the door needs: `id`, `firstName`, `lastName`, `email`, `school`, `status`, `checkedInAt` and `checkedInBy` for the event asked about, `generalCheckedIn`, so a workshop check-in can flag someone who skipped the front desk, and `staff`.
+Items returned by the check-in endpoints carry only what someone at the door needs: `id`, `firstName`, `lastName`, `email`, `school`, `status`, `checkedInAt` and `checkedInBy` for the event asked about (`checkedInBy`, the staff member who did it, is null unless the caller is an admin), `generalCheckedIn`, so a workshop check-in can flag someone who skipped the front desk, and `staff`.
 
 Only an `ACCEPTED` registration can be checked in, to the general event or to a workshop, by an admin or a volunteer. There is no override: `POST /admin/check-in/{registrationId}` answers 409 `NOT_ACCEPTED` ("This person has not been accepted, so they can't be checked in. An organizer has to accept them first.") and a scan reports `NOT_ACCEPTED` without recording anything. An organizer accepts the person first. Undo works whatever the status.
 
@@ -255,7 +255,7 @@ Undoing the general check-in also revokes the registration's active badge, becau
 | `result` | Meaning |
 | --- | --- |
 | `CHECKED_IN` | Checked in by this call |
-| `ALREADY_CHECKED_IN` | Nothing changed; `item.checkedInAt` and `item.checkedInBy` say when and by whom |
+| `ALREADY_CHECKED_IN` | Nothing changed; `item.checkedInAt` says when (and, for an admin, `item.checkedInBy` by whom) |
 | `NOT_ACCEPTED` | The ticket belongs to someone whose status is not `ACCEPTED`. `item` is returned, nobody was checked in, and there is no way to force it |
 | `NOT_RECOGNISED` | No ticket matches; `item` is null |
 
@@ -294,7 +294,7 @@ It refuses with 404 `NOT_FOUND` (unknown registration), 400 (bad `uid`), 409 `NO
 | `result` | Meaning |
 | --- | --- |
 | `CHECKED_IN` | Checked in by this call |
-| `ALREADY_CHECKED_IN` | Nothing changed; `item.checkedInAt` and `item.checkedInBy` say when and by whom, which is how a second trip through a meal line shows up |
+| `ALREADY_CHECKED_IN` | Nothing changed; `item.checkedInAt` says when, which is how a second trip through a meal line shows up (`item.checkedInBy`, who tapped, is shown to admins only) |
 | `NOT_ACCEPTED` | The holder is no longer `ACCEPTED`. `item` is returned and nothing is recorded, also for an event they were checked in to before |
 | `SPONSOR` | The card is a sponsor badge. `event` is set, `item` is null and nothing is recorded, whatever the event |
 | `REVOKED_BADGE` | The card was revoked or replaced and is nobody's badge now; `item` is null |

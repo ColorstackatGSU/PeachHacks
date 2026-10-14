@@ -105,7 +105,7 @@ class BadgeApiTests {
 			.andExpect(jsonPath("$.item.status").value("ACCEPTED"))
 			.andExpect(jsonPath("$.item.generalCheckedIn").value(true))
 			.andExpect(jsonPath("$.item.checkedInAt").isNotEmpty())
-			.andExpect(jsonPath("$.item.checkedInBy").value("Desk Volunteer"))
+			.andExpect(jsonPath("$.item.checkedInBy").isEmpty())
 			.andExpect(jsonPath("$.badge.uid").value(hostCard))
 			.andExpect(jsonPath("$.badge.boundAt").isNotEmpty())
 			.andExpect(jsonPath("$.badge.boundBy").value("Desk Volunteer"))
@@ -339,7 +339,7 @@ class BadgeApiTests {
 			.andExpect(jsonPath("$.event.general").value(true))
 			.andExpect(jsonPath("$.event.name").value("General check-in"))
 			.andExpect(jsonPath("$.item.checkedInAt").value((String) JsonPath.read(bound, "$.item.checkedInAt")))
-			.andExpect(jsonPath("$.item.checkedInBy").value("Desk Volunteer"));
+			.andExpect(jsonPath("$.item.checkedInBy").isEmpty());
 
 		String first = tap(meals.token(), card, lunch).andExpect(status().isOk())
 			.andExpect(jsonPath("$.result").value("CHECKED_IN"))
@@ -347,7 +347,7 @@ class BadgeApiTests {
 			.andExpect(jsonPath("$.event.general").value(false))
 			.andExpect(jsonPath("$.item.id").value(hacker))
 			.andExpect(jsonPath("$.item.firstName").value("Ada"))
-			.andExpect(jsonPath("$.item.checkedInBy").value("Meal Volunteer"))
+			.andExpect(jsonPath("$.item.checkedInBy").isEmpty())
 			.andExpect(jsonPath("$.item.generalCheckedIn").value(true))
 			.andReturn()
 			.getResponse()
@@ -357,13 +357,14 @@ class BadgeApiTests {
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.result").value("ALREADY_CHECKED_IN"))
 				.andExpect(jsonPath("$.item.checkedInAt").value((String) JsonPath.read(first, "$.item.checkedInAt")))
-				.andExpect(jsonPath("$.item.checkedInBy").value("Meal Volunteer"));
+				.andExpect(caller.equals(admin) ? jsonPath("$.item.checkedInBy").value("Meal Volunteer")
+						: jsonPath("$.item.checkedInBy").isEmpty());
 		}
 		assertThat(eventCheckIns(hacker, lunch)).isEqualTo(1);
 
 		tap(desk.token(), card, workshop).andExpect(jsonPath("$.result").value("CHECKED_IN"))
 			.andExpect(jsonPath("$.event.id").value(workshop))
-			.andExpect(jsonPath("$.item.checkedInBy").value("Desk Volunteer"));
+			.andExpect(jsonPath("$.item.checkedInBy").isEmpty());
 		assertThat(checkIns(hacker)).isEqualTo(3);
 
 		tap(desk.token(), uid(), lunch).andExpect(status().isOk())
@@ -443,7 +444,7 @@ class BadgeApiTests {
 		json(post("/admin/badges/resolve"), volunteer.token(), "{\"code\":\"%s\"}".formatted(token))
 			.andExpect(jsonPath("$.result").value("FOUND"))
 			.andExpect(jsonPath("$.item.generalCheckedIn").value(true))
-			.andExpect(jsonPath("$.item.checkedInBy").value("Desk Volunteer"))
+			.andExpect(jsonPath("$.item.checkedInBy").isEmpty())
 			.andExpect(jsonPath("$.badge.uid").value(card))
 			.andExpect(jsonPath("$.badge.boundBy").value("Desk Volunteer"));
 		setStatus(admin, accepted, "REJECTED");
@@ -710,7 +711,7 @@ class BadgeApiTests {
 				.perform(post("/admin/check-in/" + hacker).header("Authorization", volunteer.token())
 					.header("X-PeachHacks-Client", "staff-app"))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.checkedInBy").value("Desk Volunteer"));
+				.andExpect(jsonPath("$.checkedInBy").isEmpty());
 			mockMvc
 				.perform(delete("/admin/check-in/" + hacker).header("Authorization", volunteer.token())
 					.header("X-PeachHacks-Client", "staff-app"))
