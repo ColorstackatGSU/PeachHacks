@@ -95,9 +95,8 @@ export function AuthFrame({ title, intro, children }) {
           {children}
         </main>
         <p className="auth-legal">
-          <a href="https://www.peachhacks.com/privacy">Privacy Policy</a>
-          <span aria-hidden="true"> · </span>
-          <a href="https://www.peachhacks.com/terms">Terms of Service</a>
+          By continuing you agree to the <a href="https://www.peachhacks.com/terms">Terms of Service</a> and{" "}
+          <a href="https://www.peachhacks.com/privacy">Privacy Policy</a>.
         </p>
       </div>
     </div>

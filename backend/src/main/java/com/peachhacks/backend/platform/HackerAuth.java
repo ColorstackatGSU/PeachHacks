@@ -335,16 +335,14 @@ public class HackerAuth {
 	}
 
 	/**
-	 * The links from the registration form are the starting point for the profile. The
-	 * GitHub link is carried over only when it is a plain profile address, which is all the
-	 * profile accepts.
+	 * A new account starts with an empty card and off the Hackers page. Nothing from the
+	 * registration form is copied onto the card: the hacker fills it in and chooses to be
+	 * listed.
 	 */
 	private void ensureAccount(UUID id) {
 		jdbc.sql("""
-				insert into hacker_accounts (registration_id, linkedin_url, github_url)
-				select r.id, left(r.linkedin_url, 200),
-					case when r.github_url ~ '^https://(www\\.)?github\\.com/[A-Za-z0-9-]{1,39}/?$' then r.github_url end
-				from registrations r where r.id = :id
+				insert into hacker_accounts (registration_id, listed)
+				values (:id, false)
 				on conflict (registration_id) do nothing
 				""").param("id", id).update();
 	}
