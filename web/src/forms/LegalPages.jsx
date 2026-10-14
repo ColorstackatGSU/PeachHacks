@@ -36,7 +36,7 @@ export function PrivacyPage() {
         <li>Only accepted hackers can sign in. The platform shows you details from your accepted application, such as your name, school and ticket.</li>
         <li>If you choose a password, we store it only in scrambled (hashed) form and cannot read it.</li>
         <li>Your browser keeps a sign-in token for up to 30 days so you stay signed in. We do not use advertising or analytics trackers.</li>
-        <li>Your card holds what you choose to add: a short bio, GitHub and LinkedIn links, and whether you are looking for a team.</li>
+        <li>Your card holds a short bio, GitHub and LinkedIn links, and whether you are looking for a team. It starts with the GitHub and LinkedIn links from your application, and you can change or clear anything on it.</li>
         <li>We store the team you are on and requests you send to join one.</li>
       </ul>
 
@@ -69,12 +69,14 @@ export function PrivacyPage() {
       <h2>What other hackers see</h2>
       <ul>
         <li>
-          The Hackers page lists you only if you turn on &ldquo;Show me on the Hackers page&rdquo; on your card.
-          Then other accepted hackers see your name, school, card, team, and Discord username if you connected one.
+          Once you sign in, you are listed on the Hackers page, where other accepted hackers see your name, school,
+          card, team, and Discord username if you connected one. To leave the list, turn off &ldquo;Show me on the
+          Hackers page&rdquo; on your card.
         </li>
         <li>
           If you are on a team, every accepted hacker sees the team on the Teams page with its members&rsquo; names
-          and schools. Only your teammates see your Discord username there.
+          and schools, whether or not you are on the Hackers page. If you leave the Hackers page, only your teammates
+          see your Discord username.
         </li>
         <li>If you ask to join a team, its leader sees your name, school, Discord username and your message.</li>
         <li>Your email address, phone number and age are never shown to other hackers.</li>

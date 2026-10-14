@@ -28,7 +28,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 /**
  * What a signed-in hacker sees and does: their own profile and ticket, the directory of
  * other hackers, and teams. Everyone shown is ACCEPTED; the directory holds only people
- * who have signed in to the platform and chosen to be listed.
+ * who have signed in to the platform and left themselves listed.
  */
 @Service
 public class PlatformService {
@@ -166,7 +166,8 @@ public class PlatformService {
 
 	/**
 	 * Every team, fullest last so the ones with room come first; the caller's own team leads.
-	 * Members' Discord usernames are included only for the caller's own team.
+	 * A member's Discord username is sent only to their teammates, or to everyone if they are
+	 * on the Hackers page, where it is shown anyway.
 	 */
 	public List<Team> teams(UUID callerId) {
 		record Row(UUID id, String name, String description, UUID ownerId) {
@@ -175,35 +176,35 @@ public class PlatformService {
 			.query((rs, rowNum) -> new Row(rs.getObject("id", UUID.class), rs.getString("name"),
 					rs.getString("description"), rs.getObject("owner_id", UUID.class)))
 			.list();
+		UUID own = teamOf(callerId).orElse(null);
 		Map<UUID, List<Member>> members = new LinkedHashMap<>();
 		jdbc.sql("""
-				select m.team_id, r.id, r.first_name, r.last_name, r.school, l.discord_username, t.owner_id = r.id as owner
+				select m.team_id, r.id, r.first_name, r.last_name, r.school, l.discord_username, t.owner_id = r.id as owner,
+					coalesce(a.listed, false) as listed
 				from team_members m
 				join teams t on t.id = m.team_id
 				join registrations r on r.id = m.registration_id
 				left join discord_links l on l.registration_id = r.id
+				left join hacker_accounts a on a.registration_id = r.id
 				where r.status = 'ACCEPTED'
 				order by owner desc, m.joined_at, r.id
 				""").query((rs, rowNum) -> {
-			members.computeIfAbsent(rs.getObject("team_id", UUID.class), key -> new ArrayList<>())
+			UUID teamId = rs.getObject("team_id", UUID.class);
+			boolean visible = rs.getBoolean("listed") || teamId.equals(own);
+			members.computeIfAbsent(teamId, key -> new ArrayList<>())
 				.add(new Member(rs.getObject("id", UUID.class), rs.getString("first_name"), rs.getString("last_name"),
-						rs.getString("school"), rs.getString("discord_username"), rs.getBoolean("owner")));
+						rs.getString("school"), visible ? rs.getString("discord_username") : null,
+						rs.getBoolean("owner")));
 			return rowNum;
 		}).list();
 		List<UUID> requested = jdbc.sql("select team_id from team_join_requests where registration_id = :id")
 			.param("id", callerId)
 			.query(UUID.class)
 			.list();
-		UUID own = teamOf(callerId).orElse(null);
 		List<Team> teams = new ArrayList<>();
 		for (Row row : rows) {
-			boolean mine = row.id().equals(own);
 			List<Member> team = members.getOrDefault(row.id(), List.of());
-			if (!mine) {
-				team = team.stream()
-					.map(m -> new Member(m.id(), m.firstName(), m.lastName(), m.school(), null, m.owner()))
-					.toList();
-			}
+			boolean mine = row.id().equals(own);
 			teams.add(new Team(row.id(), row.name(), row.description(), team,
 					Math.max(0, properties.maxTeamSize() - team.size()), requested.contains(row.id()),
 					mine ? requests(row.id()) : List.of()));

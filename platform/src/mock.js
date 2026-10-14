@@ -5,7 +5,7 @@ const MAX_TEAM_SIZE = 4;
 const ME = "h-me";
 
 const hackers = [
-  { id: ME, firstName: "Ada", lastName: "Example", school: "Georgia State University", bio: "Second-year CS. I like maps and small tools.", discordUsername: null, githubUrl: "https://github.com/ada", linkedinUrl: null, lookingForTeam: true, listed: false },
+  { id: ME, firstName: "Ada", lastName: "Example", school: "Georgia State University", bio: "Second-year CS. I like maps and small tools.", discordUsername: null, githubUrl: "https://github.com/ada", linkedinUrl: null, lookingForTeam: true, listed: true },
   { id: "h-2", firstName: "Grace", lastName: "Okafor", school: "Georgia State University", bio: "Backend and databases. First hackathon.", discordUsername: "graceo", githubUrl: "https://github.com/graceo", linkedinUrl: "https://www.linkedin.com/in/graceo", lookingForTeam: false, listed: true },
   { id: "h-3", firstName: "Linus", lastName: "Tran", school: "Georgia Institute of Technology", bio: null, discordUsername: "linus.t", githubUrl: null, linkedinUrl: null, lookingForTeam: true, listed: true },
   { id: "h-4", firstName: "Maya", lastName: "Reyes", school: "Kennesaw State University", bio: "Design student who codes. Looking for people who want to ship something polished.", discordUsername: "mayareyes", githubUrl: null, linkedinUrl: "https://www.linkedin.com/in/mayareyes", lookingForTeam: false, listed: true },
@@ -34,12 +34,7 @@ function teamView(team) {
     id: team.id,
     name: team.name,
     description: team.description,
-    // Like the API: Discord usernames only on the caller's own team.
-    members: team.members.map((id) => ({
-      ...person(id),
-      owner: id === team.ownerId,
-      ...(team.members.includes(ME) ? {} : { discordUsername: null }),
-    })),
+    members: team.members.map((id) => ({ ...person(id), owner: id === team.ownerId })),
     openSpots: Math.max(0, MAX_TEAM_SIZE - team.members.length),
     requested: team.requests.some((request) => request.hackerId === ME),
     requests: team.members.includes(ME)
