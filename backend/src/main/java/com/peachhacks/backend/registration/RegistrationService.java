@@ -105,6 +105,14 @@ public class RegistrationService {
 		if (!ISO_COUNTRIES.contains(request.countryOfResidence())) {
 			throw ApiException.invalidField("countryOfResidence", "Choose a country from the list");
 		}
+		int age = request.ageAtEvent();
+		if (age < RegistrationRequest.AGE_MIN) {
+			throw ApiException.invalidField("dateOfBirth",
+					"You must be at least " + RegistrationRequest.AGE_MIN + " on the first day of PeachHacks");
+		}
+		if (age > RegistrationRequest.AGE_MAX) {
+			throw ApiException.invalidField("dateOfBirth", "Enter a valid date of birth");
+		}
 		ResumeFile resume = (request.resume() != null) ? request.resume().toFile() : null;
 		Registration registration = Registration.from(request);
 		if (repository.existsByEmail(registration.getEmail())) {

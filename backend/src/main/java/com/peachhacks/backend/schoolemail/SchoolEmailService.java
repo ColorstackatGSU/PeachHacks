@@ -1,6 +1,7 @@
 package com.peachhacks.backend.schoolemail;
 
 import java.sql.Timestamp;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -9,8 +10,11 @@ import com.peachhacks.backend.common.Texts;
 import com.peachhacks.backend.common.Tokens;
 import com.peachhacks.backend.config.EmailProperties;
 import com.peachhacks.backend.email.MailService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -23,12 +27,40 @@ import org.springframework.transaction.support.TransactionTemplate;
 @Service
 public class SchoolEmailService {
 
+	private static final Logger log = LoggerFactory.getLogger(SchoolEmailService.class);
+
 	private static final int LINK_VALID_DAYS = 14;
 
 	private static final int RESEND_AFTER_MINUTES = 10;
 
+	private static final int MAX_AUTOMATIC_RESENDS = 2;
+
+	private record Due(UUID confirmationId, String email, String schoolEmail, String firstName) {
+	}
+
 	private record Person(String firstName, String schoolEmail) {
 	}
+
+	/**
+	 * Unconfirmed pairs whose newest link has expired, that still belong to a
+	 * pre-registration or registration whose owner has not unsubscribed. The registration's
+	 * first name wins, as in {@link #resend}.
+	 */
+	private static final String EXPIRED_UNCONFIRMED = """
+			select id, email, school_email, first_name from (
+				select c.id, c.email, c.school_email, c.last_sent_at, coalesce(
+					(select r.first_name from registrations r
+						where r.email = c.email and r.school_email = c.school_email and not r.unsubscribed),
+					(select p.first_name from pre_registrations p
+						where p.email = c.email and p.school_email = c.school_email and not p.unsubscribed)) as first_name
+				from school_email_confirmations c
+				where c.confirmed_at is null and c.automatic_resends < :maxResends
+					and c.last_sent_at <= now() - make_interval(days => cast(:days as integer))
+			) due
+			where first_name is not null
+			order by last_sent_at
+			limit 500
+			""";
 
 	private record TokenRow(UUID confirmationId, String schoolEmail, boolean used, boolean expired) {
 	}
@@ -96,6 +128,38 @@ public class SchoolEmailService {
 		}
 		find("registrations", email).or(() -> find("pre_registrations", email))
 			.ifPresent(person -> send(email, person.schoolEmail(), person.firstName(), false));
+	}
+
+	/**
+	 * Mails a fresh link to people who never used theirs before it expired, at most
+	 * MAX_AUTOMATIC_RESENDS times per pair. Returns how many links were mailed.
+	 */
+	@Scheduled(cron = "${app.school-email.resend-cron:0 0 11 * * *}", zone = "America/New_York")
+	public int resendExpiredLinks() {
+		List<Due> due = jdbc.sql(EXPIRED_UNCONFIRMED)
+			.param("maxResends", MAX_AUTOMATIC_RESENDS)
+			.param("days", LINK_VALID_DAYS)
+			.query((rs, rowNum) -> new Due(rs.getObject("id", UUID.class), rs.getString("email"),
+					rs.getString("school_email"), rs.getString("first_name")))
+			.list();
+		int sent = 0;
+		for (Due pair : due) {
+			try {
+				if (send(pair.email(), pair.schoolEmail(), pair.firstName(), false)) {
+					jdbc.sql("update school_email_confirmations set automatic_resends = automatic_resends + 1 where id = :id")
+						.param("id", pair.confirmationId())
+						.update();
+					sent++;
+				}
+			}
+			catch (RuntimeException ex) {
+				log.warn("Could not mail a new school email link for confirmation {}", pair.confirmationId(), ex);
+			}
+		}
+		if (sent > 0) {
+			log.info("Mailed {} new school email links after the earlier ones expired", sent);
+		}
+		return sent;
 	}
 
 	/** Returns the confirmed school address. Repeating a used link is not an error. */

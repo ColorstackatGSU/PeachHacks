@@ -1,5 +1,7 @@
 package com.peachhacks.backend.registration;
 
+import java.time.LocalDate;
+import java.time.Period;
 import java.util.List;
 
 import com.peachhacks.backend.common.Patterns;
@@ -9,6 +11,7 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Past;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
@@ -24,8 +27,8 @@ public record RegistrationRequest(
 		@NotBlank(message = "Last name is required") @Size(max = 100,
 				message = "Last name must be at most 100 characters") @Pattern(regexp = Patterns.NAME,
 							message = Patterns.NAME_MESSAGE) String lastName,
-		@NotNull(message = "Age is required") @Min(value = 13, message = "You must be at least 13") @Max(value = 120,
-				message = "Enter a valid age") Integer age,
+		@NotNull(message = "Date of birth is required") @Past(
+				message = "Enter your date of birth") LocalDate dateOfBirth,
 		@NotBlank(message = "Phone number is required") @Size(max = 40,
 				message = "Phone number must be at most 40 characters") @Pattern(
 							regexp = RegistrationRequest.PHONE,
@@ -34,7 +37,8 @@ public record RegistrationRequest(
 				message = "Must be a valid email") @Size(max = 255,
 						message = "Email must be at most 255 characters") String email,
 		@NotBlank(message = "School email is required") @Email(regexp = Patterns.EMAIL,
-				message = "Must be a valid email") @Size(max = 255,
+				message = "Must be a valid email") @Pattern(regexp = Patterns.EDU_EMAIL,
+						message = Patterns.EDU_EMAIL_MESSAGE) @Size(max = 255,
 						message = "School email must be at most 255 characters") String schoolEmail,
 		@NotBlank(message = "School is required") @Size(max = 255,
 				message = "School must be at most 255 characters") String school,
@@ -81,6 +85,12 @@ public record RegistrationRequest(
 		/* Honeypot: real visitors never see or fill this field. */
 		String website) {
 
+	static final LocalDate EVENT_FIRST_DAY = LocalDate.of(2027, 2, 5);
+
+	static final int AGE_MIN = 13;
+
+	static final int AGE_MAX = 120;
+
 	static final int GRADUATION_YEAR_MIN = 2026;
 
 	static final int GRADUATION_YEAR_MAX = 2035;
@@ -93,5 +103,10 @@ public record RegistrationRequest(
 
 	/** Blank, or an http(s) URL whose host is linkedin.com or one of its subdomains. */
 	static final String LINKEDIN_URL = "^\\s*(?:(?i)https?://(?:[a-z0-9-]+\\.)*linkedin\\.com(?::[0-9]+)?(?:[/?#]\\S*)?)?\\s*$";
+
+	/** Age on the event's first day, which is what eligibility is decided by. */
+	int ageAtEvent() {
+		return Period.between(dateOfBirth, EVENT_FIRST_DAY).getYears();
+	}
 
 }

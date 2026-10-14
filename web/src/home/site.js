@@ -7,6 +7,8 @@ export const REGISTER_PANEL_HREF = `/${REGISTER_PANEL_HASH}`;
 // The year and dates also appear in the HTML entry pages (titles, meta tags,
 // JSON-LD), which cannot import this file.
 export const EVENT_YEAR = 2027;
+// Eligibility is decided by age on this day (RegistrationRequest.EVENT_FIRST_DAY in the backend).
+export const EVENT_FIRST_DAY = '2027-02-05';
 export const EVENT_DATES = `February 5–7, ${EVENT_YEAR}`;
 export const EVENT_DATES_SHORT = 'Feb 5–7';
 export const EVENT_PLACE = 'Georgia State University, Atlanta';

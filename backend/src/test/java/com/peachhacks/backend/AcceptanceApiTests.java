@@ -1,5 +1,6 @@
 package com.peachhacks.backend;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -688,14 +689,19 @@ class AcceptanceApiTests {
 		return register(firstName, school, 19);
 	}
 
+	/** A date of birth that makes someone exactly this old on the event's first day. */
+	private static String bornAged(int age) {
+		return LocalDate.of(2027, 2, 5).minusYears(age).toString();
+	}
+
 	private Hacker register(String firstName, String school, int age) throws Exception {
 		String email = firstName.toLowerCase() + "-" + UUID.randomUUID().toString().substring(0, 8) + "@example.com";
 		String created = mockMvc
 			.perform(post("/public/registrations").contentType(MediaType.APPLICATION_JSON).content("""
-					{"firstName":"%s","lastName":"Example","age":%d,"phone":"404 555 0100","email":"%s",
-					 "schoolEmail":"%s","school":"%s","levelOfStudy":"Undergraduate University (3+ year)","graduationYear":2028,"graduationMonth":5,
+					{"firstName":"%s","lastName":"Example","dateOfBirth":"%s","phone":"404 555 0100","email":"%s",
+					 "schoolEmail":"%s.edu","school":"%s","levelOfStudy":"Undergraduate University (3+ year)","graduationYear":2028,"graduationMonth":5,
 					 "countryOfResidence":"US","mlhCodeOfConduct":true,"mlhDataSharing":true,"mlhEmailOptIn":false}
-					""".formatted(firstName, age, email, email, school)))
+					""".formatted(firstName, bornAged(age), email, email, school)))
 			.andExpect(status().isCreated())
 			.andReturn()
 			.getResponse()

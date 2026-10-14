@@ -26,6 +26,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
@@ -138,6 +139,9 @@ class PlatformApiTests {
 
 	@Autowired
 	private MockMvc mockMvc;
+
+	@Autowired
+	private JdbcClient jdbc;
 
 	private String admin;
 
@@ -291,6 +295,17 @@ class PlatformApiTests {
 			.andExpect(jsonPath("$.code").value("TEAM_FULL"));
 		as(late, post("/platform/teams/" + teamId + "/requests")).andExpect(status().isConflict());
 		as(joiner, get("/platform/me")).andExpect(jsonPath("$.teamId").value(teamId));
+		jdbc.sql("insert into discord_links (registration_id, discord_user_id, discord_username) values (:id, :user, 'joiner_on_discord')")
+			.param("id", UUID.fromString(joinerHacker.id()))
+			.param("user", UUID.randomUUID().toString().substring(0, 18))
+			.update();
+		String joinerHandle = "$[?(@.id=='%s')].members[*].discordUsername".formatted(teamId);
+		as(late, get("/platform/teams")).andExpect(jsonPath(joinerHandle, hasItem("joiner_on_discord")));
+		as(joiner, patch("/platform/me")).content("{\"listed\":false}").andExpect(status().isOk());
+		as(late, get("/platform/teams")).andExpect(jsonPath(joinerHandle, not(hasItem("joiner_on_discord"))))
+			.andExpect(jsonPath("$[?(@.id=='%s')].members[*].firstName".formatted(teamId), hasItem("Joiner")));
+		as(lead, get("/platform/teams")).andExpect(jsonPath(joinerHandle, hasItem("joiner_on_discord")));
+		as(joiner, patch("/platform/me")).content("{\"listed\":true}").andExpect(status().isOk());
 		as(joiner, get("/platform/hackers"))
 			.andExpect(jsonPath("$[?(@.id=='%s')].teamName".formatted(joinerHacker.id()), hasItem(name)));
 
@@ -367,8 +382,8 @@ class PlatformApiTests {
 		String email = firstName.toLowerCase() + "-" + UUID.randomUUID().toString().substring(0, 8) + "@example.com";
 		MockHttpServletRequestBuilder request = post("/public/registrations").contentType(MediaType.APPLICATION_JSON)
 			.content("""
-					{"firstName":"%s","lastName":"Example","age":19,"phone":"404 555 0100","email":"%s",
-					 "schoolEmail":"%s","school":"Georgia State University",
+					{"firstName":"%s","lastName":"Example","dateOfBirth":"2007-06-01","phone":"404 555 0100","email":"%s",
+					 "schoolEmail":"%s.edu","school":"Georgia State University",
 					 "levelOfStudy":"Undergraduate University (3+ year)","graduationYear":2028,"graduationMonth":5,
 					 "countryOfResidence":"US","mlhCodeOfConduct":true,"mlhDataSharing":true,"mlhEmailOptIn":false}
 					""".formatted(firstName, email, email));
@@ -382,8 +397,8 @@ class PlatformApiTests {
 		String email = firstName.toLowerCase() + "-" + UUID.randomUUID().toString().substring(0, 8) + "@example.com";
 		String created = mockMvc
 			.perform(post("/public/registrations").contentType(MediaType.APPLICATION_JSON).content("""
-					{"firstName":"%s","lastName":"Example","age":19,"phone":"404 555 0100","email":"%s",
-					 "schoolEmail":"%s","school":"Georgia State University",
+					{"firstName":"%s","lastName":"Example","dateOfBirth":"2007-06-01","phone":"404 555 0100","email":"%s",
+					 "schoolEmail":"%s.edu","school":"Georgia State University",
 					 "levelOfStudy":"Undergraduate University (3+ year)","graduationYear":2028,"graduationMonth":5,
 					 "countryOfResidence":"US","mlhCodeOfConduct":true,"mlhDataSharing":true,"mlhEmailOptIn":false}
 					""".formatted(firstName, email, email)))

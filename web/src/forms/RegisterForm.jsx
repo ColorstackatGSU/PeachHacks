@@ -6,7 +6,7 @@ import {
 } from './fields.jsx';
 import { useFormFields } from './hooks.js';
 import {
-  AGES, DIETARY_RESTRICTIONS, GENDERS, GENDER_SELF_DESCRIBE, HIGHEST_EDUCATION, HIGHEST_EDUCATION_OTHER,
+  DIETARY_RESTRICTIONS, GENDERS, GENDER_SELF_DESCRIBE, HIGHEST_EDUCATION, HIGHEST_EDUCATION_OTHER,
   GRADUATION_MONTHS, GRADUATION_YEARS, LEVELS_OF_STUDY, MAJORS, MAJOR_OTHER, MLH_DISCLAIMER, MLH_LINKS, PRONOUNS, PRONOUNS_OTHER, RACE_ETHNICITY,
   RACE_ETHNICITY_OTHER, SEXUAL_ORIENTATION, SEXUAL_ORIENTATION_OTHER, TSHIRT_SIZES, UNDERREPRESENTED_GROUP,
 } from './options.js';
@@ -14,9 +14,8 @@ import { FormAlert } from './PageShell.jsx';
 import SchoolPicker from './SchoolPicker.jsx';
 import { isHostSchool } from './schools.js';
 import {
-  anotherLookMessage, apiFailure, blankToNull, checkFields, checkResume, normalizeGithubUrl, normalizeLinkedinUrl,
-  readFileAsBase64,
-  schoolEmailHint, validateIdentity,
+  ageAtEvent, anotherLookMessage, apiFailure, blankToNull, checkFields, checkResume, normalizeGithubUrl,
+  normalizeLinkedinUrl, readFileAsBase64, schoolEmailHint, todayIso, validateIdentity,
 } from './validation.js';
 
 const INITIAL_VALUES = {
@@ -25,7 +24,7 @@ const INITIAL_VALUES = {
   email: '',
   schoolEmail: '',
   phone: '',
-  age: '',
+  dateOfBirth: '',
   countryOfResidence: '',
   school: '',
   levelOfStudy: '',
@@ -75,8 +74,9 @@ const OTHER_COUNTRY_OPTIONS = COUNTRY_OPTIONS.filter((option) => option.value !=
 const ADULT_AGE = 18;
 
 function validate(values) {
-  const errors = { ...validateIdentity(values), ...checkFields(values, ['phone', 'linkedinUrl', 'githubUrl']) };
-  if (!AGES.includes(values.age)) errors.age = 'Select your age.';
+  const errors = {
+    ...validateIdentity(values), ...checkFields(values, ['phone', 'dateOfBirth', 'linkedinUrl', 'githubUrl']),
+  };
   if (!values.countryOfResidence) errors.countryOfResidence = 'Select your country of residence.';
   if (!values.levelOfStudy) errors.levelOfStudy = 'Select your level of study.';
   if (!values.graduationMonth) errors.graduationMonth = 'Select the month you expect to graduate.';
@@ -93,7 +93,7 @@ function buildPayload(values, resume) {
   return {
     firstName: values.firstName.trim(),
     lastName: values.lastName.trim(),
-    age: Number.parseInt(values.age, 10),
+    dateOfBirth: values.dateOfBirth,
     phone: values.phone.trim(),
     email: values.email.trim(),
     schoolEmail: values.schoolEmail.trim(),
@@ -238,7 +238,8 @@ export default function RegisterForm({ titleId, onSuccess, onClosed }) {
   };
 
   const field = (name) => ({ name, value: values[name], onChange: setValue, error: errors[name] });
-  const needsAdultNote = values.age !== '' && Number(values.age) < ADULT_AGE
+  const age = ageAtEvent(values.dateOfBirth);
+  const needsAdultNote = age !== null && age < ADULT_AGE
     && values.school.trim() !== '' && !isHostSchool(values.school);
 
   return (
@@ -268,8 +269,9 @@ export default function RegisterForm({ titleId, onSuccess, onClosed }) {
             {...field('phone')} label="Phone Number" hint="With area code, e.g. 404 555 0123"
             type="tel" inputMode="tel" autoComplete="tel" maxLength={40} onBlur={checkOnBlur('phone')}
           />
-          <SelectField
-            {...field('age')} label="Age" options={AGES} placeholder="Select your age"
+          <TextField
+            {...field('dateOfBirth')} label="Date of Birth" type="date" autoComplete="bday"
+            min="1900-01-01" max={todayIso()} onBlur={checkOnBlur('dateOfBirth')}
             hint={needsAdultNote ? "If you don't attend Georgia State, you need to be at least 18 to take part." : undefined}
           />
           <SelectField

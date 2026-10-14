@@ -205,7 +205,8 @@ function ProfileCard({ me, reloadMe }) {
           <div>
             <label htmlFor={`${ids}-listed`}>Show me on the Hackers page</label>
             <p id={`${ids}-listed-hint`} className="hint">
-              Turn this off to stay out of the list. Your teammates still see you on your team.
+              Turn this off to stay out of the list. If you are on a team, every accepted hacker still sees your name
+              and school on the Teams page; only your teammates see your Discord username.
             </p>
           </div>
         </div>

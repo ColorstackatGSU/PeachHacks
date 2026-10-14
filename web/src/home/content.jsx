@@ -1,8 +1,8 @@
 import { CODE_OF_CONDUCT_URL, CONTACT_EMAIL, EVENT_DATES, EVENT_DATES_SHORT, EVENT_THEME, PLATFORM_URL, SPONSOR_FORM_PATH, socialLinks } from './site.js';
 
 export const aboutItems = [
-  { title: 'What it is', body: 'A weekend where students team up and build an app, site, game or other project from scratch.' },
-  { title: 'Who it’s for', body: 'Current college students from any school and any major. First hackathon? That’s who the workshops and mentors are for.' },
+  { title: 'What it is', body: 'A weekend hackathon hosted by ColorStack chapters at Georgia State, Kennesaw State, Georgia Tech, and Emory. Team up with students from across Atlanta and build an app, site, game, or other project from scratch.' },
+  { title: 'Who it’s for', body: 'Current college students from any school and any major. Never done a hackathon? Workshops and mentors will help you go from idea to demo.' },
   { title: 'What it costs', body: 'Nothing. Admission and meals are free for accepted hackers.' },
 ];
 

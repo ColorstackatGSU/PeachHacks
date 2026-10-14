@@ -3,10 +3,6 @@
 
 import { CODE_OF_CONDUCT_URL } from '../home/site.js';
 
-const AGE_MIN = 13;
-const AGE_MAX = 100;
-export const AGES = Array.from({ length: AGE_MAX - AGE_MIN + 1 }, (_, index) => String(AGE_MIN + index));
-
 // The backend accepts 2026 to 2035 (RegistrationRequest); the list stops where a current
 // student could plausibly still be enrolled.
 export const GRADUATION_YEARS = Array.from({ length: 8 }, (_, index) => String(2026 + index));

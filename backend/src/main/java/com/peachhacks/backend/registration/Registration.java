@@ -1,6 +1,7 @@
 package com.peachhacks.backend.registration;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -35,7 +36,11 @@ public class Registration {
 
 	private String lastName;
 
+	/** Age on the event's first day. */
 	private Integer age;
+
+	/** Null for registrations made before the form asked for it. */
+	private LocalDate dateOfBirth;
 
 	private String phone;
 
@@ -131,7 +136,8 @@ public class Registration {
 		r.id = UUID.randomUUID();
 		r.firstName = request.firstName().strip();
 		r.lastName = request.lastName().strip();
-		r.age = request.age();
+		r.age = request.ageAtEvent();
+		r.dateOfBirth = request.dateOfBirth();
 		r.phone = request.phone().strip();
 		r.email = Texts.email(request.email());
 		r.schoolEmail = Texts.email(request.schoolEmail());
@@ -190,6 +196,10 @@ public class Registration {
 
 	public Integer getAge() {
 		return age;
+	}
+
+	public LocalDate getDateOfBirth() {
+		return dateOfBirth;
 	}
 
 	public String getPhone() {

@@ -100,11 +100,13 @@ function makeRegistration(base, createdAt) {
   const veg = rand();
   const resumeRoll = rand();
   const status = pick(STATUSES);
+  const age = 17 + Math.floor(rand() * 9);
   return {
     id: uuid(),
     firstName: base.firstName,
     lastName: base.lastName,
-    age: 17 + Math.floor(rand() * 9),
+    age,
+    dateOfBirth: `${2026 - age}-06-15`,
     phone: `+1 404 555 ${String(1000 + Math.floor(rand() * 9000))}`,
     email: base.email,
     schoolEmail: base.schoolEmail || `${base.email.split("@")[0]}@student.example.edu`,
