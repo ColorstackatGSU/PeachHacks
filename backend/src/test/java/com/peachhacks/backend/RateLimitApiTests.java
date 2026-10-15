@@ -18,7 +18,11 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import static org.hamcrest.Matchers.containsString;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -30,7 +34,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest(properties = { "app.rate-limit.public-per-minute=100000",
 		"app.rate-limit.sign-up-per-window=2", "app.rate-limit.sign-up-global-per-hour=5",
-		"app.rate-limit.login-failures-per-account=3", "app.rate-limit.trust-forwarded-for=true" })
+		"app.rate-limit.login-failures-per-account=3", "app.rate-limit.platform-writes-per-address=4",
+		"app.rate-limit.google-starts-per-address=2", "app.rate-limit.google-starts-per-minute=3",
+		"app.rate-limit.trust-forwarded-for=true" })
 @AutoConfigureMockMvc
 @Testcontainers(disabledWithoutDocker = true)
 class RateLimitApiTests {
@@ -114,6 +120,41 @@ class RateLimitApiTests {
 					"203.0.113.43"))
 			.andExpect(status().isTooManyRequests())
 			.andExpect(jsonPath("$.message").value(containsString("Please try again shortly")));
+	}
+
+	@Test
+	void platformChangesFromOneAddressHaveOnlyABackstopThatCountsEveryWritingMethod() throws Exception {
+		String forged = "Bearer not-a-session";
+		mockMvc.perform(from(post("/platform/teams").header("Authorization", forged), "203.0.113.50"))
+			.andExpect(status().isUnauthorized());
+		mockMvc.perform(from(patch("/platform/me").header("Authorization", forged), "203.0.113.50"))
+			.andExpect(status().isUnauthorized());
+		mockMvc.perform(from(delete("/platform/teams/mine/members/" + UUID.randomUUID()), "203.0.113.50"))
+			.andExpect(status().isUnauthorized());
+		mockMvc.perform(from(post("/platform/discord"), "203.0.113.50")).andExpect(status().isUnauthorized());
+		mockMvc.perform(from(patch("/platform/teams/mine").header("Authorization", forged), "203.0.113.50"))
+			.andExpect(status().isTooManyRequests())
+			.andExpect(jsonPath("$.code").value("RATE_LIMITED"));
+		mockMvc.perform(from(get("/platform/teams").header("Authorization", forged), "203.0.113.50"))
+			.andExpect(status().isUnauthorized());
+		mockMvc.perform(from(post("/platform/auth/logout"), "203.0.113.50")).andExpect(status().isNoContent());
+		mockMvc.perform(from(post("/platform/teams").header("Authorization", forged), "203.0.113.51"))
+			.andExpect(status().isUnauthorized());
+	}
+
+	@Test
+	void googleSignInStartsAreLimitedPerAddressAndAcrossAllAddresses() throws Exception {
+		googleStart("203.0.113.60").andExpect(status().isNotFound());
+		googleStart("203.0.113.60").andExpect(status().isNotFound());
+		googleStart("203.0.113.60").andExpect(status().isFound())
+			.andExpect(header().string("Location", containsString("google_error=failed")));
+		googleStart("203.0.113.61").andExpect(status().isNotFound());
+		googleStart("203.0.113.62").andExpect(status().isFound())
+			.andExpect(header().string("Location", containsString("google_error=failed")));
+	}
+
+	private ResultActions googleStart(String forwardedFor) throws Exception {
+		return mockMvc.perform(from(get("/platform/auth/google/start"), forwardedFor));
 	}
 
 	private String account() {

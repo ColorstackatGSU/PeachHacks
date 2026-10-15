@@ -124,7 +124,8 @@ class RequestGuardTests {
 	}
 
 	private static RateLimitProperties properties(boolean trustForwardedFor) {
-		return new RateLimitProperties(null, null, null, null, null, null, null, trustForwardedFor);
+		return new RateLimitProperties(null, null, null, null, null, null, null, null, null, null, null,
+				trustForwardedFor);
 	}
 
 	private static MockHttpServletRequest request(String path, int length) {

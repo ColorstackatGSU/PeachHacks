@@ -162,13 +162,15 @@ Neither form says whether an email is already known, and neither lets a second s
 
 Both forms accept a hidden `website` honeypot field: when it is filled in, the request gets a normal 201 and nothing is stored.
 
-Rate limits are in memory, per instance, and counted per client address (see `app.rate-limit.*`); over the limit is 429 `RATE_LIMITED`:
+Rate limits are in memory, per instance, and counted per client address unless the table says otherwise (see `app.rate-limit.*`); over the limit is 429 `RATE_LIMITED`. At the event every hacker, organizer and volunteer shares the venue's one network address, so nothing they do there is held to a small per-address limit:
 
 | What | Default |
 | --- | --- |
 | The sign-up and sponsor form POSTs (`/public/pre-registrations`, `/public/registrations`, `/public/sponsor-inquiries`), together | 30 per 10 minutes per address (`SIGN_UP_LIMIT_PER_ADDRESS`), and 1000 per hour across all addresses (`SIGN_UP_LIMIT_PER_HOUR`), which answers "please try again shortly" |
 | Every other public POST | 60 per minute |
-| Sign-in and password routes (`/admin/auth/*`, `/platform/auth/*`) | No limit per address: at the event every organizer, volunteer and hacker signs in from the venue's one network address. Guessing a password is held back per email, in the next row |
+| Hacker platform changes (every `POST`, `PUT`, `PATCH` and `DELETE` under `/platform` except `/platform/auth/*`: teams, join requests, the profile, Connect Discord) | 30 per minute per signed-in hacker (`app.rate-limit.platform-writes-per-hacker`), counted by registration so a hacker's several sessions share it. Behind it, a backstop of 1000 per minute per address (`platform-writes-per-address`), counted before the session is looked up, so requests with made-up tokens cannot hammer the database. Reads under `/platform` are not limited |
+| `GET /platform/auth/google/start` | 300 per minute per address (`google-starts-per-address`) and 1000 per minute across all addresses (`google-starts-per-minute`). Each start stores a state row that expires after 10 minutes and is purged by the next start, so the overall limit bounds that table at about 10,000 rows. Over either limit the browser is sent back to the platform with `?google_error=failed` instead of a 429 |
+| Other sign-in and password routes (`/admin/auth/*`, `/platform/auth/*`) | No limit per address. Guessing a password is held back per email, in the next row |
 | Failed sign-ins for one email, from any address | 10 in 15 minutes (`app.rate-limit.login-failures-per-account`, `login-failure-window`); further attempts for that email are 429 until the window ends, a successful sign-in or a password set from an emailed link clears it. It counts for emails that have no account too, so it does not reveal which emails have one |
 | The ticket endpoints | 1500 per minute per address (`TICKET_LIMIT_PER_MINUTE`): everyone arriving at the venue shares one address, and each person loads the ticket and its QR code, sometimes more than once |
 

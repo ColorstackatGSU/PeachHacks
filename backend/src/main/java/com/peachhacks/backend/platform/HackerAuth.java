@@ -56,6 +56,8 @@ public class HackerAuth {
 
 	private static final String THROTTLE_PREFIX = "hacker:";
 
+	private static final String HACKER_ID = HackerAuth.class.getName() + ".id";
+
 	private record Credentials(UUID id, String passwordHash) {
 	}
 
@@ -97,8 +99,11 @@ public class HackerAuth {
 		this.dummyHash = passwordEncoder.encode(Tokens.random());
 	}
 
-	/** The id of the signed-in hacker's registration. */
+	/** The id of the signed-in hacker's registration, looked up once per request. */
 	public UUID require(HttpServletRequest request) {
+		if (request.getAttribute(HACKER_ID) instanceof UUID known) {
+			return known;
+		}
 		String header = request.getHeader(HttpHeaders.AUTHORIZATION);
 		if (header != null && header.regionMatches(true, 0, BEARER, 0, BEARER.length())) {
 			Optional<UUID> id = jdbc.sql("""
@@ -110,6 +115,7 @@ public class HackerAuth {
 				.query(UUID.class)
 				.optional();
 			if (id.isPresent()) {
+				request.setAttribute(HACKER_ID, id.get());
 				return id.get();
 			}
 		}

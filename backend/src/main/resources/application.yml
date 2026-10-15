@@ -96,4 +96,11 @@ app:
     # Failed sign-ins for one email, whatever address they come from.
     login-failures-per-account: 10
     login-failure-window: 15m
+    # Hacker platform changes: per signed-in hacker, and a backstop per address, which the
+    # whole venue shares.
+    platform-writes-per-hacker: 30
+    platform-writes-per-address: 1000
+    # "Continue with Google" starts: per address (the venue is one address), and across all.
+    google-starts-per-address: 300
+    google-starts-per-minute: 1000
     trust-forwarded-for: false
