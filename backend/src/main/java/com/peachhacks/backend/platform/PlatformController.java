@@ -9,6 +9,7 @@ import com.peachhacks.backend.common.ClientAddress;
 import com.peachhacks.backend.common.RateLimiter;
 import com.peachhacks.backend.config.DiscordProperties;
 import com.peachhacks.backend.config.PlatformProperties;
+import com.peachhacks.backend.config.RateLimitProperties;
 import com.peachhacks.backend.discord.DiscordVerification;
 import jakarta.servlet.http.HttpServletRequest;
 
@@ -57,8 +58,6 @@ public class PlatformController {
 	public record JoinMessage(String message) {
 	}
 
-	private static final int GOOGLE_STARTS_PER_MINUTE = 20;
-
 	private final HackerAuth auth;
 
 	private final PlatformService platform;
@@ -75,11 +74,14 @@ public class PlatformController {
 
 	private final ClientAddress clientAddress;
 
+	private final RateLimitProperties limits;
+
 	public PlatformController(HackerAuth auth, PlatformService platform, DiscordVerification discord,
 			PlatformProperties properties, DiscordProperties discordProperties, GoogleIdentity google,
-			RateLimiter rateLimiter, ClientAddress clientAddress) {
+			RateLimiter rateLimiter, ClientAddress clientAddress, RateLimitProperties limits) {
 		this.rateLimiter = rateLimiter;
 		this.clientAddress = clientAddress;
+		this.limits = limits;
 		this.auth = auth;
 		this.platform = platform;
 		this.discord = discord;
@@ -111,10 +113,15 @@ public class PlatformController {
 		return auth.setPassword(request.token(), request.password());
 	}
 
-	/** A page navigation, not an API call: the whole tab goes to Google and comes back to the callback. */
+	/**
+	 * A page navigation, not an API call: the whole tab goes to Google and comes back to the
+	 * callback. Each start stores a state row for ten minutes; the limit across all addresses
+	 * bounds how many can pile up, and the one per address is sized for a venue signing in at once.
+	 */
 	@GetMapping("/auth/google/start")
 	ResponseEntity<Void> googleStart(HttpServletRequest request) {
-		if (!rateLimiter.tryAcquire("google-start:" + clientAddress.of(request), GOOGLE_STARTS_PER_MINUTE)) {
+		if (!rateLimiter.tryAcquire("google-start:" + clientAddress.of(request), limits.googleStartsPerAddress())
+				|| !rateLimiter.tryAcquire("google-start-all", limits.googleStartsPerMinute())) {
 			return redirect(properties.baseUrl() + "/?google_error=failed");
 		}
 		return redirect(auth.googleStart());

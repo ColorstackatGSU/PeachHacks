@@ -320,6 +320,31 @@ class PlatformApiTests {
 	}
 
 	@Test
+	void changesAreLimitedPerHackerNotPerSharedAddress() throws Exception {
+		String busy = signIn(register("Busy", "ACCEPTED"));
+		String neighbour = signIn(register("Neighbour", "ACCEPTED"));
+		for (int change = 0; change < 15; change++) {
+			as(busy, patch("/platform/me")).content("{\"lookingForTeam\":true}").andExpect(status().isOk());
+			as(busy, delete("/platform/teams/" + UUID.randomUUID() + "/requests")).andExpect(status().isNoContent());
+		}
+		as(busy, post("/platform/teams")).content("{\"name\":\"Too Busy\"}")
+			.andExpect(status().isTooManyRequests())
+			.andExpect(jsonPath("$.code").value("RATE_LIMITED"));
+		as(busy, get("/platform/me")).andExpect(status().isOk());
+
+		String name = "Neighbours " + UUID.randomUUID().toString().substring(0, 6);
+		as(neighbour, post("/platform/teams")).content("{\"name\":\"%s\"}".formatted(name))
+			.andExpect(status().isCreated());
+	}
+
+	@Test
+	void aVenueSignsInWithGoogleFromOneAddress() throws Exception {
+		for (int hacker = 0; hacker < 50; hacker++) {
+			assertThat(googleStart()).startsWith("https://accounts.google.com/");
+		}
+	}
+
+	@Test
 	void connectingDiscordAddsTheHackerToTheServerWithTheRole() throws Exception {
 		Hacker ada = register("Ada", "ACCEPTED");
 		String session = signIn(ada);

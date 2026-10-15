@@ -4,6 +4,7 @@ import java.time.Duration;
 import java.util.Set;
 
 import com.peachhacks.backend.config.RateLimitProperties;
+import com.peachhacks.backend.platform.HackerAuth;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
@@ -20,17 +21,22 @@ public class RateLimitInterceptor implements HandlerInterceptor {
 
 	private static final String ALL_SIGN_UPS = "sign-up-all";
 
+	private static final Set<String> WRITES = Set.of("POST", "PUT", "PATCH", "DELETE");
+
 	private final RateLimiter rateLimiter;
 
 	private final RateLimitProperties properties;
 
 	private final ClientAddress clientAddress;
 
+	private final HackerAuth hackerAuth;
+
 	public RateLimitInterceptor(RateLimiter rateLimiter, RateLimitProperties properties,
-			ClientAddress clientAddress) {
+			ClientAddress clientAddress, HackerAuth hackerAuth) {
 		this.rateLimiter = rateLimiter;
 		this.properties = properties;
 		this.clientAddress = clientAddress;
+		this.hackerAuth = hackerAuth;
 	}
 
 	@Override
@@ -45,12 +51,21 @@ public class RateLimitInterceptor implements HandlerInterceptor {
 			// network address, so they get their own, larger allowance.
 			acquire("ticket:" + client, properties.ticketPerMinute());
 		}
-		else if (!"POST".equalsIgnoreCase(request.getMethod())) {
-			return true;
-		}
 		else if (route.startsWith("/admin/auth/") || route.startsWith("/platform/auth/")) {
 			// Everyone at the venue shares one network address, so a limit per address would lock
 			// the whole check-in queue out. Guessing a password is held back per email instead.
+			return true;
+		}
+		else if (route.startsWith("/platform/")) {
+			if (WRITES.contains(request.getMethod().toUpperCase())) {
+				// Hackers at the venue share one address, so the address only gets a backstop and
+				// each hacker their own allowance. The backstop comes first, so that requests with
+				// made-up tokens are turned away before the session lookup.
+				acquire("platform-address:" + client, properties.platformWritesPerAddress());
+				acquire("platform-hacker:" + hackerAuth.require(request), properties.platformWritesPerHacker());
+			}
+		}
+		else if (!"POST".equalsIgnoreCase(request.getMethod())) {
 			return true;
 		}
 		else if (SIGN_UPS.contains(route)) {
