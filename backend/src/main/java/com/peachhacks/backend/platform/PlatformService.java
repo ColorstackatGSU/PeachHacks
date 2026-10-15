@@ -104,6 +104,9 @@ public class PlatformService {
 	public Me me(UUID id) {
 		Registration r = registrations.findById(id).orElseThrow(() -> ApiException.notFound("Registration not found."));
 		Tickets.Links links = tickets.links(r);
+		// Asked before the query, not in the row mapper: the mapper runs while the query still
+		// holds its connection, and this needs a second one, so a full pool deadlocked.
+		boolean checkedIn = checkIns.generalCheckedIn(id);
 		return jdbc.sql("""
 				select a.bio, a.github_url, a.linkedin_url, a.looking_for_team, a.listed,
 					a.password_hash is not null as has_password, l.discord_username, m.team_id
@@ -118,8 +121,7 @@ public class PlatformService {
 							rs.getBoolean("looking_for_team") && rs.getObject("team_id") == null,
 							rs.getBoolean("listed")),
 					rs.getString("discord_username"), rs.getBoolean("has_password"),
-					new Ticket(r.getTicketToken(), links.url(), links.googleWalletUrl(),
-							checkIns.generalCheckedIn(id)),
+					new Ticket(r.getTicketToken(), links.url(), links.googleWalletUrl(), checkedIn),
 					rs.getObject("team_id", UUID.class)))
 			.single();
 	}
