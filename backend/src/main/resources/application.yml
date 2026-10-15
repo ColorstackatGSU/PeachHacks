@@ -88,7 +88,7 @@ app:
     session-ttl: 30d
   rate-limit:
     public-per-minute: 60
-    ticket-per-minute: 300
+    ticket-per-minute: ${TICKET_LIMIT_PER_MINUTE:1500}
     # The two sign-up POSTs: per client address, and across all addresses together.
     sign-up-per-window: ${SIGN_UP_LIMIT_PER_ADDRESS:30}
     sign-up-window: 10m

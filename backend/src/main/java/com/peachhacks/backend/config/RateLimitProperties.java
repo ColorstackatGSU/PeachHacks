@@ -16,7 +16,7 @@ public record RateLimitProperties(Integer publicPerMinute, Integer ticketPerMinu
 
 	public RateLimitProperties {
 		publicPerMinute = (publicPerMinute != null) ? publicPerMinute : 60;
-		ticketPerMinute = (ticketPerMinute != null) ? ticketPerMinute : 300;
+		ticketPerMinute = (ticketPerMinute != null) ? ticketPerMinute : 1500;
 		signUpPerWindow = (signUpPerWindow != null) ? signUpPerWindow : 30;
 		signUpWindow = (signUpWindow != null) ? signUpWindow : Duration.ofMinutes(10);
 		signUpGlobalPerHour = (signUpGlobalPerHour != null) ? signUpGlobalPerHour : 1000;
