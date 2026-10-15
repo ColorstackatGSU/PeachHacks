@@ -1,12 +1,12 @@
 # PeachHacks Backend
 
-Spring Boot 4 (Java 21, Maven) service for PeachHacks, served at `api.peachhacks.com`. It stores pre-registrations and registrations, gates registration behind an admin switch, issues tickets (QR codes) to accepted hackers, holds acceptances in a bucket until organizers send the acceptance emails together, tracks the host-school share of accepted hackers, records check-ins per event, binds NFC badges to accepted hackers at the check-in desk and checks them in to events by badge tap, serves the organizer admin API and sends email through Resend. The public site (`web/`), the admin site (`admin/`), the hacker platform (`platform/`) and the staff app (`mobile/`) call it.
+Spring Boot 4 (Java 25, Maven) service for PeachHacks, served at `api.peachhacks.com`. It stores pre-registrations and registrations, gates registration behind an admin switch, issues tickets (QR codes) to accepted hackers, holds acceptances in a bucket until organizers send the acceptance emails together, tracks the host-school share of accepted hackers, records check-ins per event, binds NFC badges to accepted hackers at the check-in desk and checks them in to events by badge tap, serves the organizer admin API and sends email through Resend. The public site (`web/`), the admin site (`admin/`), the hacker platform (`platform/`) and the staff app (`mobile/`) call it.
 
 The schema is managed by Flyway (`src/main/resources/db/migration`) and applied automatically at startup. Hibernate only validates it (`ddl-auto: validate`); change the schema by adding a new `V<n>__*.sql` migration, never by editing an applied one.
 
 ## Requirements
 
-- JDK 21
+- JDK 25
 - Docker (local Postgres and the integration tests)
 
 Maven is not required; use the bundled wrapper (`./mvnw`, or `mvnw.cmd` on Windows).
@@ -106,6 +106,7 @@ Standard Spring Boot environment variables; see `.env.example`.
 | `NON_HOST_MINIMUM_AGE` | The minimum age for students of other schools (default `18`); host-school students are eligible at any age. A registration under it from a school that is not the host school is flagged `ageReview` for organizers and is never refused. See [Age review](#age-review) |
 | `SIGN_UP_LIMIT_PER_ADDRESS` | How many sign-up POSTs (pre-registration and registration together) one client address may make in 10 minutes (default `30`). Raise it for an event where many people sign up from one network |
 | `SIGN_UP_LIMIT_PER_HOUR` | How many sign-up POSTs are accepted per hour from all addresses together (default `1000`) |
+| `TICKET_LIMIT_PER_MINUTE` | How many ticket requests (`/public/tickets/...`, the ticket and its QR code) one client address may make per minute (default `1500`). Everyone at the venue shares one address; raise it for a larger crowd |
 | `PORT` | HTTP port (default 8080) |
 
 The URL must be in JDBC form (`jdbc:postgresql://...`), not the `postgres://user:pass@...` form providers display; put the user and password in their own variables.
@@ -169,7 +170,7 @@ Rate limits are in memory, per instance, and counted per client address (see `ap
 | Every other public POST | 60 per minute |
 | Sign-in and password routes (`/admin/auth/*`, `/platform/auth/*`) | No limit per address: at the event every organizer, volunteer and hacker signs in from the venue's one network address. Guessing a password is held back per email, in the next row |
 | Failed sign-ins for one email, from any address | 10 in 15 minutes (`app.rate-limit.login-failures-per-account`, `login-failure-window`); further attempts for that email are 429 until the window ends, a successful sign-in or a password set from an emailed link clears it. It counts for emails that have no account too, so it does not reveal which emails have one |
-| The ticket endpoints | 300 per minute (a whole door queue can share one venue address) |
+| The ticket endpoints | 1500 per minute per address (`TICKET_LIMIT_PER_MINUTE`): everyone arriving at the venue shares one address, and each person loads the ticket and its QR code, sometimes more than once |
 
 The bucket is chosen from the route the request matched, not from the URL as sent. Every failed sign-in is logged at WARN with the email attempted and the client address, never the password. There is no CAPTCHA. Many people signing up from one campus network share one address: raise `SIGN_UP_LIMIT_PER_ADDRESS` for a sign-up drive.
 

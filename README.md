@@ -15,7 +15,7 @@ The website, organizer tools, staff app and API for PeachHacks, the hackathon ru
 | [`web/`](web/) | Public site: homepage, pre-registration, registration, ticket, sponsor form | Vite, React | Vercel |
 | [`admin/`](admin/) | Organizer site: sign-ups, check-in, email, settings | Vite, React | Vercel |
 | [`mobile/`](mobile/) | Staff app for the event: check-in desk, badge taps at events, badge lookup | React Native, Expo | TestFlight, Android internal builds |
-| [`backend/`](backend/) | API and database | Spring Boot 4, Java 21, PostgreSQL, Flyway | Railway |
+| [`backend/`](backend/) | API and database | Spring Boot 4, Java 25, PostgreSQL, Flyway | Railway |
 
 Each package has its own README with the details: [backend](backend/README.md), [admin](admin/README.md), [mobile](mobile/README.md). Notes for the public site are in [`web/docs/`](web/docs/).
 
@@ -40,7 +40,7 @@ Accounts are admins (everything), volunteers (check-in only) or lookup accounts 
 
 ## Run it locally
 
-You need Node 22, JDK 21 and Docker.
+You need Node 22, JDK 25 and Docker.
 
 ```sh
 # 1. API on http://localhost:8080 (starts its own Postgres in Docker)
