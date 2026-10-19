@@ -1,5 +1,5 @@
 :root {
-  --navy: #001f3a;
+  --navy: #042436;
   --peach: #fca324;
   --peach-hover: #ffb341;
   --cream: #f4f6ed;
@@ -167,7 +167,7 @@ main:focus { outline: none; }
 .card-head .muted { font-size: 12.5px; }
 .two-col { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; align-items: start; }
 
-.signin { display: grid; place-items: center; min-height: 100dvh; padding: 24px 16px; background: radial-gradient(120% 80% at 50% 0%, #003f64 0%, var(--navy) 60%); }
+.signin { display: grid; place-items: center; min-height: 100dvh; padding: 24px 16px; background: radial-gradient(120% 80% at 50% 0%, #06324B 0%, var(--navy) 60%); }
 .signin-card { display: grid; gap: 16px; width: min(100%, 400px); padding: clamp(24px, 6vw, 36px); border: 4px solid #00213d; border-radius: 4px; background: rgba(0, 31, 58, .72); box-shadow: 0 26px 80px rgba(0, 20, 36, .34); }
 .signin-logo { display: block; justify-self: center; width: 200px; height: auto; }
 .signin-card .eyebrow { text-align: center; }

@@ -4,7 +4,7 @@ import LoadBoundary from './LoadBoundary.jsx';
 import RegisterLayer from './RegisterLayer.jsx';
 import SiteFooter from './SiteFooter.jsx';
 import SiteHeader from './SiteHeader.jsx';
-import { PARTNER_PLACEHOLDERS, aboutItems, backdropRows, getFaqColumns } from './content.jsx';
+import { PARTNER_PLACEHOLDERS, aboutItems, getFaqColumns } from './content.jsx';
 import { useReducedMotion } from './reducedMotion.js';
 import { useRegisterPanelShown } from './registerPanel.js';
 import { useRegistrationCta } from './registration.js';
@@ -131,14 +131,14 @@ const CLOUD_PUFFS = 'M0 78A60 60 0 0 1 96 52A74 74 0 0 1 226 44A56 56 0 0 1 318 
 
 // A bank of cream clouds over the seam between two sections. `hanging` turns it
 // over, for a cream section that ends above a dark one.
-function CloudDivider({ id, hanging = false }) {
+function CloudDivider({ id, hanging = false, backFill = '#0A2B3D' }) {
   return (
     <div className={`section-divider scroll-scope${hanging ? ' is-hanging' : ''}`} data-progress="cover" aria-hidden="true">
       <svg className="section-cloud-divider" viewBox="0 0 2400 220" preserveAspectRatio="xMidYMid slice" focusable="false">
         <defs>
           <path id={`${id}-puffs`} d={CLOUD_PUFFS} />
           <pattern id={`${id}-back`} width="480" height="400" patternUnits="userSpaceOnUse" patternTransform="translate(210 0) scale(.86)">
-            <use href={`#${id}-puffs`} y="6" fill="#b9d3dc" opacity=".32" />
+            <use href={`#${id}-puffs`} y="6" fill={backFill} />
           </pattern>
           <pattern id={`${id}-front`} width="480" height="400" patternUnits="userSpaceOnUse">
             <use href={`#${id}-puffs`} y="46" fill="#F4F6EC" />
@@ -156,17 +156,6 @@ function CloudDivider({ id, hanging = false }) {
 function AboutSection() {
   return (
     <section className="about-section scroll-scope" id="about" data-progress="cover" aria-labelledby="about-title">
-      <div className="about-backdrop" aria-hidden="true">
-        {backdropRows.map((row, rowIndex) => (
-          <div className="about-backdrop-row scroll-fx" key={row.join('-')}>
-            {[0, 1].map((copy) => (
-              <span className="about-backdrop-copy" key={copy}>
-                {row.map((word) => <span className="about-backdrop-word" key={`${rowIndex}-${copy}-${word}`}>{word}</span>)}
-              </span>
-            ))}
-          </div>
-        ))}
-      </div>
       <div className="about-content">
         <h2 className="about-title scroll-fx" id="about-title">About</h2>
         <ul className="about-list">
@@ -187,7 +176,7 @@ function FaqSection() {
 
   return (
     <section className="faq-panel" id="faq" aria-labelledby="faq-title">
-      <CloudDivider id="faq-clouds" />
+      <CloudDivider id="faq-clouds" backFill="#0A2B3D" />
       <div className="faq-section">
         <h2 className="faq-title scroll-fx scroll-fx-self" id="faq-title" data-progress="cover">FAQ<span className="faq-dot scroll-fx scroll-fx-self" data-progress="cover">.</span></h2>
         <div className="faq-list">
@@ -211,7 +200,7 @@ function PartnersSection() {
   return (
     <section className="partners-section scroll-scope" id="partners" data-progress="cover" aria-labelledby="partners-title">
       {renderStarField('partners-stars scroll-fx', partnerStars)}
-      <CloudDivider id="partners-clouds" hanging />
+      <CloudDivider id="partners-clouds" hanging backFill="#06324B" />
       <img className="partners-moon scroll-fx" src="/assets/moon.svg" alt="" aria-hidden="true" width="140" height="140" loading="lazy" decoding="async" />
       <div className="partners-body">
         <div className="partners-layout">
@@ -246,7 +235,7 @@ function UpcomingSection() {
 
   return (
     <section className="upcoming-section" id="upcoming" aria-labelledby="upcoming-title">
-      <CloudDivider id="upcoming-clouds" />
+      <CloudDivider id="upcoming-clouds" backFill="#06324B" />
       <div className="upcoming-card scroll-fx scroll-fx-self" data-progress="cover">
         <span className="upcoming-eyelet" aria-hidden="true" />
         <h2 id="upcoming-title">Still to come</h2>
@@ -296,12 +285,12 @@ function App() {
             </div>
             <div className="hero-sky hero-fx" aria-hidden="true">
               <img className="top-cloud cloud-one" src="/assets/Cloud.svg" alt="" />
-              <img className="top-cloud cloud-two" src="/assets/Cloud.svg" alt="" />
-              <img className="top-cloud cloud-three" src="/assets/Cloud.svg" alt="" />
+              <img className="top-cloud cloud-two" src="/assets/Cloud-2.svg" alt="" />
+              <img className="top-cloud cloud-three" src="/assets/Cloud-3.svg" alt="" />
             </div>
             <div className="hero-stack">
               <div className="hero-logo-shell hero-fx">
-                <div className="hero-logo-circle" aria-hidden="true" />
+                <img className="hero-logo-moon" src="/assets/moon.svg" alt="" aria-hidden="true" width="118" height="118" />
                 <picture className="hero-logo-picture">
                   <source media="(max-width: 620px)" srcSet="/assets/logo-stacked.svg" width="78" height="46" />
                   <img className="hero-logo" src="/assets/logo.svg" alt="PeachHacks" width="210" height="79" />

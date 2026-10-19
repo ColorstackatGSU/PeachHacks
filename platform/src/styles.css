@@ -1,9 +1,9 @@
 :root {
-  --navy: #001f3a;
+  --navy: #042436;
   --peach: #fca324;
   --peach-hover: #ffb341;
   --cream: #f4f6ed;
-  --mist: #b9d3dc;
+  --mist: #A4B8C2;
   --sky: #67bed9;
 
   --bg: var(--navy);
@@ -112,7 +112,7 @@ img { max-width: 100%; }
 
 /* Sign-in pages: one centred column on the public site's night sky. The logo sits over
    the moon, as it does in the homepage hero. */
-.auth { position: relative; display: grid; height: 100vh; height: 100svh; overflow: hidden; background: linear-gradient(180deg, #00162a 0, #001f3a 30%, #003f64 100%); }
+.auth { position: relative; display: grid; height: 100vh; height: 100svh; overflow: hidden; background: linear-gradient(180deg, #031B2A 0, #042436 30%, #06324B 100%); }
 .auth-sky { position: absolute; inset: 0; pointer-events: none; }
 .auth-star { position: absolute; opacity: .72; filter: drop-shadow(0 0 5px rgba(244, 246, 237, .8)); animation: auth-twinkle 4.8s ease-in-out infinite; }
 .auth-star:nth-child(3n) { animation-delay: -1.6s; }
@@ -262,7 +262,7 @@ img { max-width: 100%; }
     radial-gradient(circle at 63% 54%, rgba(252, 163, 36, .85) 0 1.2px, transparent 1.8px),
     radial-gradient(circle at 71% 18%, rgba(244, 246, 237, .55) 0 1px, transparent 1.6px),
     url("/assets/Hero.svg") center 30px / 100% auto no-repeat,
-    linear-gradient(180deg, #00162a 0, #003f64 100%); }
+    linear-gradient(180deg, #031B2A 0, #06324B 100%); }
 .hacker-slot { position: absolute; top: 12px; left: 50%; width: 46px; height: 10px; border-radius: 999px; background: var(--bg-deep); box-shadow: inset 0 2px 0 rgba(0, 0, 0, .45), 0 1px 0 rgba(244, 246, 237, .14); transform: translateX(-50%); }
 .hacker-moon { position: absolute; top: 16px; right: 22px; width: 30px; height: 30px; border-radius: 50%; background: var(--tone); box-shadow: 0 0 18px color-mix(in srgb, var(--tone) 70%, transparent); opacity: .95; }
 .hacker-body { display: flex; flex: 1; flex-direction: column; gap: 8px; padding: 0 20px 16px; }
