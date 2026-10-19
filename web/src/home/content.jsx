@@ -1,4 +1,4 @@
-import { CODE_OF_CONDUCT_URL, CONTACT_EMAIL, EVENT_DATES, EVENT_DATES_SHORT, EVENT_THEME, PLATFORM_URL, SPONSOR_FORM_PATH, socialLinks } from './site.js';
+import { CODE_OF_CONDUCT_URL, CONTACT_EMAIL, EVENT_DATES, PLATFORM_URL, SPONSOR_FORM_PATH, socialLinks } from './site.js';
 
 export const aboutItems = [
   { title: 'What it is', body: 'A weekend hackathon hosted by ColorStack chapters at Georgia State, Kennesaw State, Georgia Tech, and Emory. Team up with students from across Atlanta and build an app, site, game, or other project from scratch.' },
@@ -6,11 +6,6 @@ export const aboutItems = [
   { title: 'What it costs', body: 'Nothing. Admission and meals are free for accepted hackers.' },
 ];
 
-export const backdropRows = [
-  ['PeachHacks', EVENT_THEME, 'Atlanta', 'Build', 'Learn', 'Ship'],
-  ['Hack', 'Georgia State', 'Mentors', 'Prizes', EVENT_DATES_SHORT, 'Beginners welcome'],
-  ['Ship it', 'PeachHacks', 'Atlanta', 'Build', 'Learn', EVENT_THEME],
-];
 
 export const PARTNER_PLACEHOLDERS = 5;
 

@@ -4,14 +4,14 @@
    do not load src/styles.css. */
 
 :root {
-  --pf-navy: #001f3a;
-  --pf-blue: #003f64;
-  --pf-ink: #233e56;
+  --pf-navy: #042436;
+  --pf-blue: #06324B;
+  --pf-ink: #0F354A;
   --pf-muted: #46607a;
-  --pf-peach: #fca324;
+  --pf-peach: #F5A328;
   --pf-peach-light: #ffe2b0;
   --pf-peach-hover: #ffb341;
-  --pf-cream: #f4f6ed;
+  --pf-cream: #EFE4CB;
   --pf-mist: #b9d3dc;
   --pf-link: #00588a;
   --pf-error: #a5271f;
@@ -37,7 +37,7 @@
   position: relative;
   padding: 26px 28px 28px;
   border-radius: 6px 6px 0 0;
-  background: var(--pf-mist);
+  background: var(--pf-cream);
   text-align: center;
 }
 
